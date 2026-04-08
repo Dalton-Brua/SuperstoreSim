@@ -1,0 +1,92 @@
+package com.example.superstoresimulator.ui.components.cards
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.superstoresimulator.ui.state.InventoryItemUI
+import com.yourapp.ui.theme.GameButtonStyles
+import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.TextSecondary
+
+@Composable
+fun InventoryItemCard(
+    item: InventoryItemUI,
+    canAffordBuy: Boolean,
+    onBuy: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(CardWhite),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+
+            // Name
+            Text(
+                text = item.name,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+
+            // First stat row
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Shelf: ${item.shelfStock}")
+                Text("Price: ${item.price}")
+            }
+
+            // Second stat row
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Back: ${item.backroomStock}")
+                Text("Unit Cost: ${item.unitCost}")
+            }
+
+            // Case pack info
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Case Pack: ${item.casePack} items", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = TextSecondary)
+                Text("Case Cost: ${item.casePackCost}", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = PrimaryDark)
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Button(
+                onClick = onBuy,
+                modifier = Modifier.fillMaxWidth(),
+                colors = GameButtonStyles.primaryBlueColor(),
+                enabled = canAffordBuy
+            ) {
+                Text("Order (${item.casePackCost})", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+

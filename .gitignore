@@ -1,0 +1,40 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# ── IDE / IntelliJ generated (user-specific, not shared) ─────────────────────
+.idea/copilot*.xml
+.idea/deploymentTargetSelector.xml
+.idea/deviceManager.xml
+.idea/copilotDiffState.xml
+.idea/migrations.xml
+.idea/runConfigurations.xml
+.idea/markdown.xml
+
+# ── Kotlin compiler error logs ────────────────────────────────────────────────
+.kotlin/
+
+# ── Build artefacts already excluded by /build, but be explicit ───────────────
+app/build/
+build/
+
+# ── Local build logs & output dumps ──────────────────────────────────────────
+build.log
+build_output.txt
+build_test_output.txt
+test_output.txt
+
+# ── Scratch / personal notes ──────────────────────────────────────────────────
+**/TODO THINGS

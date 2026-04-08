@@ -1,0 +1,281 @@
+package com.example.superstoresimulator.ui.screens.home
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.superstoresimulator.domain.items.ItemDao
+import com.example.superstoresimulator.domain.player.PlayerRole
+import com.example.superstoresimulator.domain.time.StoreState
+import com.example.superstoresimulator.ui.components.CustomerQueueIndicator
+import com.example.superstoresimulator.ui.components.PlayerRoleButtons
+import com.example.superstoresimulator.ui.components.buttons.PendingRefundsButton
+import com.example.superstoresimulator.ui.components.panels.SettingsPanel
+import com.example.superstoresimulator.ui.components.cards.StoreOverviewCard
+import com.example.superstoresimulator.ui.components.cards.TransactionSummaryCard
+import com.example.superstoresimulator.ui.components.common.TimeDisplayBar
+import com.example.superstoresimulator.ui.dialogs.PendingRefundsDialog
+import com.example.superstoresimulator.ui.dialogs.TransactionDetailDialog
+import com.example.superstoresimulator.ui.state.GameUiState
+import com.example.superstoresimulator.ui.theme.IconBlue
+import com.example.superstoresimulator.ui.theme.LightBackground
+import com.example.superstoresimulator.ui.theme.PlaceholderSurface
+import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.TextMuted
+import com.example.superstoresimulator.ui.theme.TextSecondary
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StoreHomeScreen (
+    state: GameUiState,
+    onRingUpItem: (Int) -> Unit,
+    onViewItem: (Int) -> Unit,
+    onStoreNameChange: (String) -> Unit,
+    itemDao: ItemDao,
+    onNavigateToInventory: () -> Unit,
+    modifier: Modifier = Modifier,
+    onProcessRefundLine: (refundId: Int, itemId: Int, qty: Int) -> Unit = { _, _, _ -> },
+    onSpeedChanged: (Float) -> Unit = {},
+    onOpenStore: () -> Unit = {},
+    onSetPlayerRole: (PlayerRole) -> Unit = {},
+    onSkipDay: () -> Unit = {}
+) {
+    var showTransactionDialog by remember { mutableStateOf(false) }
+    var showPendingRefunds by remember { mutableStateOf(false) }
+    var settingsOpen by remember { mutableStateOf(false) }
+
+    Box {
+        LazyColumn(
+            modifier = modifier
+                .fillMaxSize()
+                .background(LightBackground),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+            contentPadding = PaddingValues(12.dp)
+        ) {
+            item { Spacer(Modifier.height(12.dp)) }
+
+            // Time display
+            item {
+                if (state.time != null) {
+                    TimeDisplayBar(
+                        timeUI = state.time,
+                        onSpeedChanged = onSpeedChanged,
+                        onStoreStateClick = onOpenStore
+                    )
+                }
+            }
+
+            // Phase 2: Player role control — always visible, segments dim when store is closed
+            item {
+                if (state.time != null) {
+                    val hasBackroomItems = state.inventory.items.any { it.backroomStock > 0 }
+                    PlayerRoleButtons(
+                        currentRole = state.time.playerRole,
+                        hasBackroomItems = hasBackroomItems,
+                        onRoleChanged = onSetPlayerRole,
+                        playerCashierProgress = state.time.playerCashierProgress,
+                        playerStockerProgress = state.time.playerStockerProgress,
+                    )
+                }
+            }
+
+            // Overview card
+            item {
+                StoreOverviewCard(
+                    cash = state.dashboard.money,
+                    totalEmployees = state.dashboard.totalStaff
+                )
+            }
+
+            // Transaction card — only shown when store is open and at least one
+            // transaction has started or completed today. Otherwise a status placeholder
+            // explains to the player why there is nothing to show.
+            item {
+                val storeState = state.time?.storeState
+                val hasTransactionToday = state.transactions.isActive || state.transactions.completedToday > 0
+                val showCard = storeState != StoreState.CLOSED && hasTransactionToday
+
+                // Customer queue — only relevant when the store is open
+                if (storeState == StoreState.OPEN) {
+                    CustomerQueueIndicator(
+                        pendingCustomers = state.transactions.pendingCustomers,
+                        transactionActive = state.transactions.isActive,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+
+                if (showCard) {
+                    val fulfillableLines = state.transactions.current.lines.filter { !it.lostToOutOfStock }
+                    val totalRung = fulfillableLines.sumOf { it.rungQty }
+                    val totalRequired = fulfillableLines.sumOf { it.quantity }
+                    TransactionSummaryCard(
+                        transactionId = state.transactions.current.id,
+                        totalRung = totalRung,
+                        totalRequired = totalRequired,
+                        onClick = { showTransactionDialog = true },
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                } else {
+                    // Placeholder — tell the player why there is nothing to show
+                    val isClosed = storeState == StoreState.CLOSED
+                    val placeholderIcon = if (isClosed) Icons.Default.Lock else Icons.Default.AccessTime
+                    val placeholderTitle = if (isClosed) "Store is closed" else "Waiting for customers…"
+                    val placeholderSub = if (isClosed)
+                        "Transactions will appear here once the store opens."
+                    else
+                        "The first customer of the day hasn't arrived yet."
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp),
+                        colors = CardDefaults.cardColors(containerColor = PlaceholderSurface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Icon(
+                                imageVector = placeholderIcon,
+                                contentDescription = null,
+                                tint = if (isClosed) TextMuted else IconBlue,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = placeholderTitle,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 15.sp,
+                                    color = if (isClosed) TextSecondary else PrimaryDark
+                                )
+                                Text(
+                                    text = placeholderSub,
+                                    fontSize = 12.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Skip Day button — simulate the rest of the day instantly
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    OutlinedButton(
+                        onClick = onSkipDay,
+                        enabled = !(state.metrics.showEndOfDayReport),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = PrimaryDark,
+                            disabledContentColor = Color.Gray
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Skip Day",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Skip Day", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+
+            // Pending refunds button - only show when there are pending refunds
+            if (state.transactions.pendingRefunds.isNotEmpty()) {
+                item {
+                    PendingRefundsButton(
+                        onClick = { showPendingRefunds = true },
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
+            }
+
+            item { Spacer(Modifier.height(12.dp)) }
+        }
+
+        // Settings panel drawer
+        AnimatedVisibility(
+            visible = settingsOpen,
+            enter = slideInHorizontally(
+                initialOffsetX = { it },
+                animationSpec = tween(300)
+            ),
+            exit = slideOutHorizontally(
+                targetOffsetX = { it },
+                animationSpec = tween(300)
+            )
+        ) {
+            SettingsPanel(
+                app = state.app,
+                onStoreNameChange = onStoreNameChange,
+                onClose = { settingsOpen = false }
+            )
+        }
+
+        // Header with menu button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = state.app.storeName,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = PrimaryDark
+            )
+            IconButton(onClick = { settingsOpen = !settingsOpen }) {
+                Icon(Icons.Default.Menu, "Menu")
+            }
+        }
+
+        // Dialogs
+        if (showTransactionDialog) {
+            TransactionDetailDialog(
+                transactionLines = state.transactions.current.lines,
+                itemDao = itemDao,
+                onDismiss = { showTransactionDialog = false },
+                onRingUpItem = onRingUpItem,
+                onViewItem = { itemId ->
+                    onViewItem(itemId)
+                    onNavigateToInventory()
+                },
+            )
+        }
+
+        if (showPendingRefunds) {
+            PendingRefundsDialog(
+                pending = state.transactions.pendingRefunds,
+                itemDao = itemDao,
+                onDismiss = { showPendingRefunds = false },
+                onProcessLine = onProcessRefundLine
+            )
+        }
+    }
+}
