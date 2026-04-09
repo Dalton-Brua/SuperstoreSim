@@ -8,6 +8,7 @@ import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemWithName
 import com.example.superstoresimulator.domain.items.MoneyData
+import com.example.superstoresimulator.domain.time.StoreState
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
@@ -228,9 +229,10 @@ class GameEngineAdvancedTest {
 
     @Test
     fun testStartTransaction() {
-        // GameEngine init already started a transaction; startTransaction() is a no-op
-        // when one is already active.  With items present, transactionActive is true.
-        assertTrue("Should have active transaction after init with inventory",
+        // startTransaction() requires storeState != CLOSED; open the store first.
+        gameEngine.state = gameEngine.state.copy(storeState = StoreState.OPEN)
+        gameEngine.startTransaction()
+        assertTrue("Should have active transaction after startTransaction() with inventory",
             gameEngine.currentState().transactionActive)
     }
 

@@ -133,8 +133,18 @@ class CashierTransactionTest {
         return gameEngine.currentState()
     }
 
-    /** Rings up every item line in the currently active transaction. */
+    /** Rings up every item line in the currently active transaction.
+     *
+     * If no transaction is active, calls [GameEngine.ringUpItem] with the first
+     * inventory item to trigger the auto-start path inside [TransactionEngine.ringUpSingleItem]
+     * (when lines are empty that method calls startNewTransaction without checking store state).
+     */
     private fun completeActiveTransaction() {
+        if (!gameEngine.currentState().transactionActive) {
+            // ringUpSingleItem auto-starts a transaction when lines are empty.
+            // The item is NOT rung up — the transaction is just started.
+            gameEngine.ringUpItem(1)
+        }
         val lines = gameEngine.currentState().currentTransaction.lines
         for (line in lines) {
             repeat(line.quantity) { gameEngine.ringUpItem(line.itemId) }
@@ -201,8 +211,11 @@ class CashierTransactionTest {
         setMoney(10_000L)
         gameEngine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
 
-        // The engine auto-started a transaction on init
-        assertTrue("Transaction should be active before ring-up",
+        // Open the store so startTransaction() passes the storeState != CLOSED guard,
+        // then verify a transaction is active before ringing up.
+        gameEngine.state = gameEngine.state.copy(storeState = StoreState.OPEN)
+        gameEngine.startTransaction()
+        assertTrue("Transaction should be active after startTransaction()",
             gameEngine.currentState().transactionActive)
 
         completeActiveTransaction()

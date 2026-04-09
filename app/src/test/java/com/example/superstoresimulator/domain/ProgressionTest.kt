@@ -109,8 +109,17 @@ class ProgressionTest {
         category: ItemCategory = ItemCategory.GROCERY
     ): GameEngine = newEngine(listOf(makeItem(id, priceCents, category)))
 
-    /** Rings up every line in the current transaction to completion. */
+    /** Rings up every line in the current transaction to completion.
+     *
+     * If no transaction is active, calls [GameEngine.ringUpItem] with the first
+     * inventory item to trigger the auto-start path inside [TransactionEngine.ringUpSingleItem]
+     * (when lines are empty that method calls startNewTransaction without checking store state).
+     */
     private fun completeSingleTransaction(engine: GameEngine) {
+        if (!engine.currentState().transactionActive) {
+            val firstItemId = engine.currentState().inventory.keys.first()
+            engine.ringUpItem(firstItemId)
+        }
         val lines = engine.currentState().currentTransaction.lines
         for (line in lines) {
             repeat(line.quantity) { engine.ringUpItem(line.itemId) }

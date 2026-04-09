@@ -43,7 +43,7 @@ enum class ItemUnlockTier(
 		narrativeDescription = "Purchase and install commercial refrigeration units along the " +
 				"back wall to stock milk, cheese, yogurt, and other dairy products. " +
 				"Also unlocks Bulk Ordering — purchase entire categories at once with " +
-				"tiered discounts: 10% off 10+ cases, 15% off 20+ cases, up to 25% off 50+ cases.",
+				"tiered discounts: 10% off 20+ cases, 15% off 50+ cases, up to 25% off 100+ cases.",
 	),
 
 	// Fresh and frozen unlock together — PRODUCE demands active restocking like FROZEN and BAKERY

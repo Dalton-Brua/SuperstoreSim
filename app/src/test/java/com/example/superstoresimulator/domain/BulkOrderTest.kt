@@ -247,7 +247,7 @@ class BulkOrderTest {
     // ── Discount boundary: 0% → 10% at 20 cases ──────────────────────────────
 
     @Test
-    fun `placeBulkOrder charges full base cost with no discount at 19 total cases`() {
+    fun `placeBulkOrder charges full base cost with zero discount at 19 total cases`() {
         // 1 item × 19 cases = 19 total cases  (<20 → 0% discount)
         // baseCost = 3_000×19 = 57_000 ¢;  finalCost = 57_000 ¢
         // money: 1_000_000 - 57_000 = 943_000
@@ -265,7 +265,7 @@ class BulkOrderTest {
     }
 
     @Test
-    fun `placeBulkOrder applies 10% discount at exactly 20 total cases`() {
+    fun `placeBulkOrder applies 10pct discount at exactly 20 total cases`() {
         // 1 item × 20 cases = 20 total cases  (≥20 → 10% off)
         // baseCost = 3_000×20 = 60_000 ¢
         // finalCost = (60_000 × 0.90).toLong() = 54_000 ¢
@@ -286,7 +286,7 @@ class BulkOrderTest {
     // ── Discount boundary: 10% → 15% at 50 cases ─────────────────────────────
 
     @Test
-    fun `placeBulkOrder applies 10% discount at 49 total cases`() {
+    fun `placeBulkOrder applies 10pct discount at 49 total cases`() {
         // 1 item × 49 cases = 49 total cases  (≥20 but <50 → 10% off)
         // baseCost = 3_000×49 = 147_000 ¢
         // finalCost = (147_000 × 0.90).toLong() = 132_300 ¢
@@ -305,7 +305,7 @@ class BulkOrderTest {
     }
 
     @Test
-    fun `placeBulkOrder applies 15% discount at exactly 50 total cases`() {
+    fun `placeBulkOrder applies 15pct discount at exactly 50 total cases`() {
         // 1 item × 50 cases = 50 total cases  (≥50 → 15% off)
         // baseCost = 3_000×50 = 150_000 ¢
         // finalCost = (150_000 × 0.85).toLong() = 127_500 ¢
@@ -326,7 +326,7 @@ class BulkOrderTest {
     // ── Discount boundary: 15% → 25% at 100 cases ────────────────────────────
 
     @Test
-    fun `placeBulkOrder applies 15% discount at 99 total cases`() {
+    fun `placeBulkOrder applies 15pct discount at 99 total cases`() {
         // 1 item × 99 cases = 99 total cases  (≥50 but <100 → 15% off)
         // baseCost = 3_000×99 = 297_000 ¢
         // finalCost = (297_000 × 0.85).toLong() = 252_450 ¢
@@ -345,7 +345,7 @@ class BulkOrderTest {
     }
 
     @Test
-    fun `placeBulkOrder applies 25% discount at exactly 100 total cases`() {
+    fun `placeBulkOrder applies 25pct discount at exactly 100 total cases`() {
         // 1 item × 100 cases = 100 total cases  (≥100 → 25% off)
         // baseCost = 3_000×100 = 300_000 ¢
         // finalCost = (300_000 × 0.75).toLong() = 225_000 ¢
@@ -437,4 +437,3 @@ class BulkOrderTest {
         )
     }
 }
-

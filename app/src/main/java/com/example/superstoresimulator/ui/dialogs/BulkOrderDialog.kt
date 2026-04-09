@@ -60,9 +60,9 @@ import kotlin.math.roundToInt
 private data class DiscountTier(val minCases: Int, val fraction: Double, val label: String)
 
 private val BULK_DISCOUNT_TIERS = listOf(
-    DiscountTier(50, 0.25, "25% off"),
-    DiscountTier(20, 0.15, "15% off"),
-    DiscountTier(10, 0.10, "10% off"),
+    DiscountTier(100, 0.25, "25% off"),
+    DiscountTier(50,  0.15, "15% off"),
+    DiscountTier(20,  0.10, "10% off"),
 )
 
 private fun discountFractionForCases(totalCases: Int): Double =
@@ -85,9 +85,9 @@ private fun nextDiscountHint(totalCases: Int): String? {
  *  - Cases-per-item slider: how many case packs to order for each matching item
  *
  * Discount tiers (applied to the full order total):
- *  - 10–19 total cases: 10% off
- *  - 20–49 total cases: 15% off
- *  - 50+   total cases: 25% off
+ *  - 20–49  total cases: 10% off
+ *  - 50–99  total cases: 15% off
+ *  - 100+   total cases: 25% off
  */
 @Composable
 fun BulkOrderDialog(
@@ -324,7 +324,7 @@ fun BulkOrderDialog(
                         color = Primary,
                         modifier = Modifier.padding(bottom = 2.dp)
                     )
-                } else if (totalCases >= 50) {
+                } else if (totalCases >= 100) {
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "🎉 Maximum bulk discount applied!",

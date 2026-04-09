@@ -179,7 +179,7 @@ when (event) {
 **See**: `ui/GameEvent.kt` | `ui/viewmodels/GameViewModel.kt`
 ---
 ### **8. Database & Room Integration**
-- **AppDatabase**: Room DB **v4** (`@Database(version = 4)`), single entity: `Item` (table: `items`), db file `superstore-database-v4`
+- **AppDatabase**: Room DB **v6** (`@Database(version = 6)`), single entity: `Item` (table: `items`)
 - **ItemDao**: Query interface (`getAllItems()`, `getItemById()`, `insertItem()`)
 - **Item Entity**:
   - `id` (String, PK): Format "item_001" (parsed to Int)
@@ -314,12 +314,14 @@ Revenue tiers gate which store sections the player can see. The system runs enti
 
 **Tiers** (`domain/items/ItemUnlockTier.kt`):
 
-| Tier | Revenue threshold | Newly unlocked categories |
-|------|------------------|--------------------------|
-| `TIER_1` | $0 (start) | GROCERY, SNACKS, DRINKS |
-| `TIER_2` | $5,000 | + DAIRY |
-| `TIER_3` | $20,000 | + FROZEN, BAKERY, PRODUCE |
-| `TIER_GM` | $100,000 | all remaining categories |
+| Tier | Revenue threshold | `unlockCost` | Newly unlocked categories |
+|------|------------------|-------------|--------------------------|
+| `TIER_1` | $0 (start) | $0 | GROCERY, SNACKS, DRINKS |
+| `TIER_2` | $5,000 | $1,000 | + DAIRY |
+| `TIER_3` | $20,000 | $4,000 | + FROZEN, BAKERY, PRODUCE |
+| `TIER_GM` | $100,000 | $20,000 | all remaining categories |
+
+Each tier also carries `narrativeTitle: String` and `narrativeDescription: String` shown in `UnlocksScreen`.
 
 **`GameState` fields added**:
 ```kotlin
@@ -327,15 +329,21 @@ val totalRevenue: Money = Money.ZERO    // cumulative, never decreases (not affe
 val currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1
 ```
 
-**Engine flow**:
+**Engine flow** — tier advancement is a **manual purchase**, NOT automatic:
 ```
 ringUpItem() → TransactionEngine.completeTransaction()
     → state.totalRevenue += tx.totalEarned          // updated inside TransactionEngine
-    → GameEngine.checkAndAdvanceTier()               // private, called after every completed tx
-        → ItemUnlockTier.fromTotalEarned(cents)
-        → if new tier: state.currentTier = newTier
-        → _changes.emit(GameStateChange.TierUnlocked(newTier, previousTier))
+
+// Revenue gate met but tier does NOT auto-advance.
+// Player must explicitly trigger:
+GameEvent.UnlockNextTier → gameEngine.unlockNextTier()
+    → guard: totalRevenue.cents >= nextTier.unlockAmount AND money >= nextTier.unlockCost
+    → state.currentTier = nextTier
+    → state.money -= nextTier.unlockCost
+    → _changes.emit(GameStateChange.TierUnlocked(nextTier, previousTier))
 ```
+
+> ⚠️ `checkAndAdvanceTier()` **no longer exists** — it was removed when tier advancement became a purchase. Never try to call it.
 
 **`GameStateChange.TierUnlocked(newTier, previousTier)`** — emitted via `_changes` StateFlow so `IncrementalUiStateBuilder` can set `ProgressionUIState.justUnlockedTier` without a full rebuild.
 
@@ -348,6 +356,7 @@ data class ProgressionUIState(
     val revenueToNextTier: Money?,            // null at top tier
     val tierProgressFraction: Float,          // 0.0–1.0 within current tier band
     val justUnlockedTier: ItemUnlockTier?,    // non-null for ONE frame after unlock; cleared by DismissTierUnlock
+    val availableTier: ItemUnlockTier?,       // non-null when revenue gate is met but tier not yet paid for
 )
 ```
 
@@ -378,13 +387,70 @@ data class ProgressionUIState(
 
 **Breaking rules for AI agents**:
 - ❌ Never add `totalRevenue` to spending operations (buying inventory, hiring staff)
+- ❌ Never call `checkAndAdvanceTier()` — it does not exist; tiers are purchased, not auto-advanced
 - ✅ `totalRevenue` is updated only inside `TransactionEngine.completeTransaction()`
+- ✅ Always dispatch `GameEvent.UnlockNextTier` to advance a tier — this deducts `unlockCost` from `money`
 - ✅ Always dispatch `GameEvent.DismissTierUnlock` to clear the unlock banner — never mutate `ProgressionUIState` directly
+- ✅ Use `ProgressionUIState.availableTier` to know when the player CAN purchase the next tier (revenue gate met, not yet paid)
 
-**See**: `domain/items/ItemUnlockTier.kt` | `domain/GameEngine.kt` (`checkAndAdvanceTier`) | `domain/TransactionEngine.kt` (`completeTransaction`) | `ui/state/GameUiState.kt` (`ProgressionUIState`) | `domain/GameStateChange.kt` (`TierUnlocked`)
+**See**: `domain/items/ItemUnlockTier.kt` | `domain/GameEngine.kt` (`unlockNextTier`) | `domain/TransactionEngine.kt` (`completeTransaction`) | `ui/state/GameUiState.kt` (`ProgressionUIState`) | `domain/GameStateChange.kt` (`TierUnlocked`)
 
 ---
-## 🎮 Game Events & User Interaction
+### **15. Skip Day** ⭐ IMPLEMENTED (April 8, 2026)
+
+Fast-forwards the rest of the current game day in a synchronous tight loop, then surfaces the end-of-day report exactly as midnight would.
+
+- **Event**: `GameEvent.SkipDay` → `gameEngine.simulateRestOfDay()`
+- **Implementation**: calls `tick(500L)` in a while-loop until `totalMinutesElapsed >= nextMidnight`; `rollOverDay()` fires when the day boundary is crossed, setting `showEndOfDayReport = true` and auto-pausing time
+- **Player role**: suspended during simulation (accumulators zeroed) — result is deterministic regardless of active role
+- **Guard**: no-op if `showEndOfDayReport` is already `true` (report pending)
+- **Thread-safety**: pure computation, no I/O — safe to call on the main thread
+- **UI entry point**: `StoreHomeScreen` "Skip Day" button → `onSkipDay` callback
+
+**Pattern**:
+```kotlin
+// ViewModel routes the event:
+GameEvent.SkipDay -> gameEngine.simulateRestOfDay()
+// After the call, showEndOfDayReport == true; the normal EndOfDayReportDialog handling takes over.
+```
+
+**See**: `domain/GameEngine.kt` (`simulateRestOfDay`) | `ui/screens/home/StoreHomeScreen.kt`
+
+---
+### **16. Bulk Order System** ⭐ IMPLEMENTED (April 8, 2026)
+
+Allows the player to restock an entire category (or all accessible categories) in one action with tiered volume discounts.
+
+- **Unlocked at**: TIER_2 and above (the `BulkOrderDialog` appears in `InventoryScreen`)
+- **Event**: `GameEvent.BulkOrder(maxTotalQuantity, casePacksPerItem, categoryFilter)` → `gameEngine.placeBulkOrder()`
+- **Eligibility filter** (all three must pass):
+  1. Item tier ≤ `currentTier` (per-item tier gate)
+  2. Category matches `categoryFilter` (or `null` = all categories)
+  3. `shelfStock + backroomStock ≤ maxTotalQuantity`
+- **Volume discount tiers** (applied to the entire order's base cost):
+
+  | Total case packs | Discount |
+  |-----------------|---------|
+  | < 20 | 0% |
+  | ≥ 20 | 10% |
+  | ≥ 50 | 15% |
+  | ≥ 100 | 25% |
+
+- **Guard**: does nothing if player cannot afford the discounted total
+- **Metrics**: `itemsOrdered` accumulator updated for all items added to backroom
+- **UI**: `BulkOrderDialog` (slider for max stock threshold, slider for case packs per item, category chip filter) is accessed via a button in `InventoryScreen`
+
+**Pattern**:
+```kotlin
+// Dispatch from MainActivity:
+onBulkOrder = { maxQty, casePacks, category ->
+    viewModel.onEvent(GameEvent.BulkOrder(maxQty, casePacks, category))
+}
+```
+
+**See**: `domain/GameEngine.kt` (`placeBulkOrder`) | `ui/dialogs/BulkOrderDialog.kt` | `ui/screens/inventory/InventoryScreen.kt`
+
+---
 **Event Types** (sealed interface GameEvent):
 - **Core**: Tick, StartTransaction, RingUp, RingUpItem(itemId)
 - **Inventory**: StockItem(itemId), BuyItem(itemId), SelectItemCategory(category), FocusInventoryItem(itemId)
@@ -393,7 +459,9 @@ data class ProgressionUIState(
 - **Other**: ProcessRefund(id), ProcessRefundLine(id, itemId, qty), ChangeStoreName(name)
 - **Phase 2**: SetPlayerRole(role: PlayerRole)
 - **Phase 3**: DismissEndOfDayReport
-- **Progression**: DismissTierUnlock
+- **Progression**: DismissTierUnlock, UnlockNextTier
+- **Skip Day**: SkipDay
+- **Bulk Order**: BulkOrder(maxTotalQuantity, casePacksPerItem, categoryFilter)
 
 **⚠️ Pure-UI events** (handled directly by ViewModel, no GameEngine call, no domain state rebuild):
 - `SelectItemCategory`, `FocusInventoryItem`, `SelectStaffType`, `SetGameSpeed`
@@ -404,6 +472,11 @@ data class ProgressionUIState(
 
 **⚠️ Phase 3 events** (routed to GameEngine — NOT pure-UI):
 - `DismissEndOfDayReport` → `gameEngine.dismissEndOfDayReport()` — clears `showEndOfDayReport` flag
+
+**⚠️ Progression / store upgrade events** (routed to GameEngine — NOT pure-UI):
+- `UnlockNextTier` → `gameEngine.unlockNextTier()` — revenue gate must be met AND player must have ≥ `nextTier.unlockCost` cash; deducts money, advances `currentTier`, emits `TierUnlocked`
+- `SkipDay` → `gameEngine.simulateRestOfDay()` — pure computation, runs all staff + traffic at normal rates until midnight, then surfaces the end-of-day report; safe to call on the main thread
+- `BulkOrder(maxTotalQuantity, casePacksPerItem, categoryFilter)` → `gameEngine.placeBulkOrder()` — buys `casePacksPerItem` case packs for every tier-gated, category-matched item whose combined stock ≤ `maxTotalQuantity`; volume discounts applied automatically
 ---
 ## 🧪 Testing & Quality
 
@@ -523,6 +596,20 @@ All trivial tests were removed in the April 7 audit. Do not reintroduce them.
 ./gradlew clean                                       # Clean (needed after Room schema changes)
 adb shell am start -n com.example.superstoresimulator/.MainActivity  # Launch app
 ```
+
+### **Git Workflow** (see `GIT_WORKFLOW.md` for full detail)
+- **Branches**: `main` (production) | `dev` (active development)
+- ❌ Never commit directly to `main` — merge via `dev`
+- ✅ Run `./gradlew test` before merging into `main`
+- **Commit prefixes**: `feat:` | `fix:` | `refac:` | `test:` | `docs:` | `chore:`
+
+```bash
+git checkout dev
+git checkout -b feature/my-feature   # branch off dev
+# ... work ...
+git checkout dev
+git merge feature/my-feature
+```
 ---
 ## ⚡ Critical Gotchas
 
@@ -539,6 +626,10 @@ adb shell am start -n com.example.superstoresimulator/.MainActivity  # Launch ap
 | Hired stocker vs. player stocker | Hired stocker: 0.1 case-packs/sec; Player stocker: 0.3 case-packs/sec |
 | `totalRevenue` not updating | Updated only in `TransactionEngine.completeTransaction()` — never in spending paths |
 | Tier unlock banner stuck | Dispatch `GameEvent.DismissTierUnlock`; never mutate `ProgressionUIState` directly |
+| Tier not advancing after revenue gate | Tiers are **purchased** — dispatch `GameEvent.UnlockNextTier` (costs `unlockCost`); check `ProgressionUIState.availableTier` to know when the gate is met |
+| `checkAndAdvanceTier()` missing | It was removed — tiers are manually purchased via `unlockNextTier()` |
+| Skip Day has no effect | Guard: `simulateRestOfDay()` is a no-op if `showEndOfDayReport` is already `true`; dismiss the current report first |
+| Bulk Order not available | `BulkOrderDialog` only appears when `currentTier >= TIER_2` |
 ---
 ## 🗂️ File Organization
 
@@ -561,13 +652,13 @@ adb shell am start -n com.example.superstoresimulator/.MainActivity  # Launch ap
 **ui/** — User interface (Compose)
 - viewmodels/ [GameViewModel, ItemViewModel]
 - state/ [GameUiState (AppUIState, DashboardUIState, TransactionUIState, InventoryUIState, StaffUIState, HistoryUIState, TimeUIState, MetricsUIState, **ProgressionUIState**), mappers, builders]
-- screens/ [home/StoreHomeScreen, inventory/InventoryScreen, sales/SalesHistoryScreen, staff/StaffScreen, **metrics/MetricsScreen**]
-- components/ [buttons/, cards/, common/, panels/, CustomerQueueIndicator.kt, PlayerRoleButtons.kt, PlayerRoleButtonsA.kt, PlayerRoleButtonsB.kt, PlayerRoleIndicator.kt]
-- dialogs/ [PendingRefundsDialog, TransactionDetailDialog, **EndOfDayReportDialog**, **OutOfStockReportDialog**, **SoldItemsReportDialog**]
+- screens/ [home/StoreHomeScreen, inventory/InventoryScreen, sales/SalesHistoryScreen, staff/StaffScreen (**StaffAndUnlocksScreen** composite with "Staff"/"Unlocks" tabs), staff/UnlocksScreen, **metrics/MetricsScreen**]
+- components/ [buttons/, cards/, common/, panels/, CustomerQueueIndicator.kt, PlayerRoleButtons.kt, PlayerRoleIndicator.kt]
+- dialogs/ [PendingRefundsDialog, TransactionDetailDialog, **EndOfDayReportDialog**, **OutOfStockReportDialog**, **SoldItemsReportDialog**, **BulkOrderDialog**]
 - theme/ [Colors, Styles]
 
 **di/** — Dependency injection
-- AppDatabase.kt [Room definition, version 4]
+- AppDatabase.kt [Room definition, version 6]
 - DatabaseModule.kt [Hilt providers, @TickDelta qualifier]
 ---
 ## 🎬 Feature Addition Checklist

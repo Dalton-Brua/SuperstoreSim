@@ -176,9 +176,9 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
      * category matches [categoryFilter].
      *
      * Volume discount tiers (applied to the entire order):
-     *   ≥ 10 cases → 10% off
-     *   ≥ 20 cases → 15% off
-     *   ≥ 50 cases → 25% off
+     *   ≥ 20 cases  → 10% off
+     *   ≥ 50 cases  → 15% off
+     *   ≥ 100 cases → 25% off
      *
      * Does nothing if the player cannot afford the discounted total.
      * Only items whose tier ≤ [GameState.currentTier] are eligible.
@@ -207,10 +207,10 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
 
         // Apply volume discount
         val discountFraction = when {
-            totalCases >= 50 -> 0.25
-            totalCases >= 20 -> 0.15
-            totalCases >= 10 -> 0.10
-            else             -> 0.0
+            totalCases >= 100 -> 0.25
+            totalCases >= 50  -> 0.15
+            totalCases >= 20  -> 0.10
+            else              -> 0.0
         }
         val finalCost = Money((baseCost.cents * (1.0 - discountFraction)).toLong())
 
