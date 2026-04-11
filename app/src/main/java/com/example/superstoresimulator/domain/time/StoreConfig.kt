@@ -7,8 +7,16 @@ data class StoreConfig(
     val openTimeMinutes: Int = 360,         // 6:00 AM
     val closeTimeMinutes: Int = 1260,       // 9:00 PM (21:00)
     val closingProcedureDuration: Int = 30, // 30 minutes
-    val allowTransactionsDuringClosing: Boolean = false,
-    val gameSpeedMultiplier: Float = 1.0f   // Multiplier: 1x, 2x, 4x, etc. (base speed is 60.0f = 1 sec = 1 min)
+    val allowTransactionsDuringClosing: Boolean = true,
+    val gameSpeedMultiplier: Float = 1.0f,  // Multiplier: 1x, 2x, 4x, etc. (base speed is 60.0f = 1 sec = 1 min)
+    /**
+     * Maximum units of a single item that can be stored in the backroom at once.
+     * Prevents unlimited stockpiling via bulk or repeated single orders.
+     *
+     * Interim value (50) matches the SMALL_GROCERY cap planned in PROGRESSION_SYSTEM.md.
+     * Will be superseded by StoreSize.maxBackroomPerItem once the Store Size system is implemented.
+     */
+    val backroomCapPerItem: Int = 50,
 ) {
     fun isOpen(gameTime: GameTime): Boolean {
         return gameTime.isOpen(openTimeMinutes, closeTimeMinutes)

@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.ui.state.InventoryItemUI
 import com.yourapp.ui.theme.GameButtonStyles
 import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.Destructive
 import com.example.superstoresimulator.ui.theme.PrimaryDark
 import com.example.superstoresimulator.ui.theme.TextSecondary
 
@@ -63,7 +64,17 @@ fun InventoryItemCard(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Back: ${item.backroomStock}")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Back: ${item.backroomStock}")
+                    if (item.backroomFull) {
+                        Text(
+                            "FULL",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Destructive
+                        )
+                    }
+                }
                 Text("Unit Cost: ${item.unitCost}")
             }
 
@@ -82,9 +93,13 @@ fun InventoryItemCard(
                 onClick = onBuy,
                 modifier = Modifier.fillMaxWidth(),
                 colors = GameButtonStyles.primaryBlueColor(),
-                enabled = canAffordBuy
+                enabled = canAffordBuy && !item.backroomFull
             ) {
-                Text("Order (${item.casePackCost})", color = Color.White, fontWeight = FontWeight.Bold)
+                Text(
+                    if (item.backroomFull) "Backroom Full" else "Order (${item.casePackCost})",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

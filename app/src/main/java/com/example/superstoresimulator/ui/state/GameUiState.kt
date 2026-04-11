@@ -66,6 +66,11 @@ data class InventoryItemUI(
     val category: ItemCategory,
     val casePack: Int,
     val casePackCost: Money,
+    /**
+     * True when the backroom holds so many units that even one more full case pack
+     * would exceed the per-item backroom cap. The "Order" button is disabled when this is true.
+     */
+    val backroomFull: Boolean = false,
 )
 
 

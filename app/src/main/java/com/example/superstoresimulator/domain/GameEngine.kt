@@ -115,14 +115,19 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     fun buyItemToBackroom(itemId: Int) {
         val dyn = state.inventory[itemId] ?: return
         val dbItem = itemMetadataCache.getItem(itemId) ?: return
-        
+
+        val itemsInCasePack = dbItem.casePack
+
+        // Backroom cap: refuse if a full case pack would exceed the per-item limit.
+        // Player must stock shelves to free up backroom space before ordering more.
+        val cap = state.storeConfig.backroomCapPerItem
+        if (dyn.backroomStock + itemsInCasePack > cap) return
+
         // Calculate cost for one case pack
         val casePackCost = dbItem.getCasePackCostAsMoney()
-
         if (state.money < casePackCost) return
 
         // When ordering a case pack, add all items from the case to backroom
-        val itemsInCasePack = dbItem.casePack
         val updated = dyn.copy(
             backroomStock = dyn.backroomStock + itemsInCasePack
         )
@@ -141,22 +146,30 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     }
     
     /**
-     * Order multiple case packs at once
+     * Order multiple case packs at once.
+     * Delivery is clamped to however many full case packs fit within the backroom cap.
+     * The player is only charged for the case packs actually delivered.
      */
     fun buyItemCasePacks(itemId: Int, numCasePacks: Int) {
         val dyn = state.inventory[itemId] ?: return
         val dbItem = itemMetadataCache.getItem(itemId) ?: return
         
         if (numCasePacks <= 0) return
+
+        // Clamp to however many full case packs still fit within the backroom cap.
+        val cap = state.storeConfig.backroomCapPerItem
+        val availableSpace = cap - dyn.backroomStock
+        val actualCasePacks = minOf(numCasePacks, availableSpace / dbItem.casePack)
+        if (actualCasePacks <= 0) return
         
-        // Calculate total cost
+        // Calculate total cost for actually delivered case packs
         val casePackCost = dbItem.getCasePackCostAsMoney()
-        val totalCost = casePackCost * numCasePacks
+        val totalCost = casePackCost * actualCasePacks
         
         if (state.money < totalCost) return
         
-        // Add all items from all case packs to backroom
-        val totalItemsAdded = dbItem.casePack * numCasePacks
+        // Add all items from delivered case packs to backroom
+        val totalItemsAdded = dbItem.casePack * actualCasePacks
         val updated = dyn.copy(
             backroomStock = dyn.backroomStock + totalItemsAdded
         )
@@ -175,7 +188,11 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
      * combined shelf + backroom stock is ≤ [maxTotalQuantity] and (optionally) whose
      * category matches [categoryFilter].
      *
-     * Volume discount tiers (applied to the entire order):
+     * Backroom cap: items with no room for even one full case pack are excluded.
+     * Per-item delivery is clamped to however many full case packs fit in the remaining
+     * backroom space; the player is only charged for case packs actually delivered.
+     *
+     * Volume discount tiers (applied to the total actual cases delivered):
      *   ≥ 20 cases  → 10% off
      *   ≥ 50 cases  → 15% off
      *   ≥ 100 cases → 25% off
@@ -186,26 +203,45 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     fun placeBulkOrder(maxTotalQuantity: Int, casePacksPerItem: Int, categoryFilter: com.example.superstoresimulator.domain.items.ItemCategory?) {
         if (casePacksPerItem <= 0) return
 
-        // Collect matching items (tier-gated, category-filtered, below stock threshold)
+        val cap = state.storeConfig.backroomCapPerItem
+
+        // Collect matching items: tier-gated, category-filtered, below stock threshold,
+        // AND must have room in the backroom for at least one full case pack.
         val matchingEntries = state.inventory.filter { (itemId, inv) ->
             val meta = itemMetadataCache.get(itemId) ?: return@filter false
             val totalQty = inv.shelfStock + inv.backroomStock
             val tierOk = meta.tier.unlockAmount <= state.currentTier.unlockAmount
             val categoryOk = categoryFilter == null || meta.category == categoryFilter
             val qtyOk = totalQty <= maxTotalQuantity
-            tierOk && categoryOk && qtyOk
+            val capOk = (cap - inv.backroomStock) >= meta.casePack  // ≥1 full case pack fits
+            tierOk && categoryOk && qtyOk && capOk
         }
 
         if (matchingEntries.isEmpty()) return
 
-        // Compute total case packs and base cost
-        val totalCases = matchingEntries.size * casePacksPerItem
-        val baseCost = matchingEntries.keys.fold(Money.ZERO) { acc, itemId ->
-            val dbItem = itemMetadataCache.getItem(itemId) ?: return@fold acc
-            acc + dbItem.getCasePackCostAsMoney() * casePacksPerItem
+        // Per-item: clamp to however many full case packs actually fit within the cap.
+        // Only charge for (and deliver) the case packs that can actually be received.
+        val itemsToAddMap = mutableMapOf<Int, Int>()   // itemId → units to add to backroom
+        val itemCostMap   = mutableMapOf<Int, Money>() // itemId → cost for this item's order
+        var totalCases = 0
+        var baseCost = Money.ZERO
+
+        matchingEntries.forEach { (itemId, inv) ->
+            val dbItem = itemMetadataCache.getItem(itemId) ?: return@forEach
+            val availableSpace = cap - inv.backroomStock
+            val actualCasePacks = minOf(casePacksPerItem, availableSpace / dbItem.casePack)
+            if (actualCasePacks <= 0) return@forEach
+            val itemsToAdd = dbItem.casePack * actualCasePacks
+            val cost = dbItem.getCasePackCostAsMoney() * actualCasePacks
+            itemsToAddMap[itemId] = itemsToAdd
+            itemCostMap[itemId] = cost
+            totalCases += actualCasePacks
+            baseCost += cost
         }
 
-        // Apply volume discount
+        if (itemsToAddMap.isEmpty()) return
+
+        // Apply volume discount based on actual total cases delivered
         val discountFraction = when {
             totalCases >= 100 -> 0.25
             totalCases >= 50  -> 0.15
@@ -219,10 +255,8 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         // Apply stock additions
         var newInventory = state.inventory
         var totalItemsAdded = 0
-        matchingEntries.keys.forEach { itemId ->
-            val dbItem = itemMetadataCache.getItem(itemId) ?: return@forEach
+        itemsToAddMap.forEach { (itemId, itemsToAdd) ->
             val inv = newInventory[itemId] ?: return@forEach
-            val itemsToAdd = dbItem.casePack * casePacksPerItem
             newInventory = newInventory + (itemId to inv.copy(backroomStock = inv.backroomStock + itemsToAdd))
             totalItemsAdded += itemsToAdd
         }

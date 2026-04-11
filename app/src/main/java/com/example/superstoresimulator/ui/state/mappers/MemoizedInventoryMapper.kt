@@ -32,16 +32,18 @@ class MemoizedInventoryMapper(
     private var lastDomainInventory: Map<Int, InventoryState>? = null
     private var lastMappedItems: List<InventoryItemUI>? = null
     private var lastTier: ItemUnlockTier? = null
+    private var lastBackroomCap: Int? = null
     private val itemCache: MutableMap<Int, InventoryItemUI> = mutableMapOf()
     
-    fun map(currentInventory: Map<Int, InventoryState>, tier: ItemUnlockTier): InventoryUIState {
+    fun map(currentInventory: Map<Int, InventoryState>, tier: ItemUnlockTier, backroomCap: Int): InventoryUIState {
         val domainInventory = currentInventory
 
-        // Invalidate the cache when the tier changes — the set of visible items changes
-        if (tier != lastTier) {
+        // Invalidate the cache when the tier or backroom cap changes
+        if (tier != lastTier || backroomCap != lastBackroomCap) {
             lastDomainInventory = null
             lastMappedItems = null
             lastTier = tier
+            lastBackroomCap = backroomCap
         }
 
         // ✅ If inventory hasn't changed structurally, return cached result immediately
@@ -83,6 +85,8 @@ class MemoizedInventoryMapper(
                 category = meta.category,
                 casePack = meta.casePack,
                 casePackCost = meta.casePackCost,
+                // True when there is no room for even one more full case pack
+                backroomFull = (dyn.backroomStock + meta.casePack) > backroomCap,
             )
         }
         

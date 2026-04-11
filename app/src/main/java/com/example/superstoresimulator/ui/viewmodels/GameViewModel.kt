@@ -243,7 +243,7 @@ class GameViewModel @Inject constructor(
                 pendingCustomers = domain.pendingCustomers,
                 completedToday = domain.currentDayMetrics.transactionsCompleted,
             ),
-            inventory = inventoryMapper.map(domain.inventory, domain.currentTier).copy(
+            inventory = inventoryMapper.map(domain.inventory, domain.currentTier, domain.storeConfig.backroomCapPerItem).copy(
                 selectedCategory = null,
 
             ),
@@ -314,7 +314,7 @@ class GameViewModel @Inject constructor(
                 pendingCustomers = domain.pendingCustomers,
                 completedToday = domain.currentDayMetrics.transactionsCompleted,
             ),
-            inventory = inventoryMapper.map(domain.inventory, domain.currentTier).copy(
+            inventory = inventoryMapper.map(domain.inventory, domain.currentTier, domain.storeConfig.backroomCapPerItem).copy(
                 selectedCategory = oldUi?.inventory?.selectedCategory,
                 focusedItemId = oldUi?.inventory?.focusedItemId,
             ),
