@@ -91,20 +91,89 @@ MemoizedInventoryMapper(cache)       // No extra DB load
 **See**: `domain/items/ItemMetadataCache.kt` | Updated: `GameEngine.kt` | `GameViewModel.kt` | `InventoryScreen.kt` | All test files
 
 ---
-### **3. GameEngine: The Core State Machine**
+### **3B. Service-Layer Manager Architecture** ⭐ NEW (April 15, 2026)
+
+**Problem Solved**: GameEngine had grown to 400+ lines handling concerns across 6+ domains (inventory, staff, progression, day metrics, store state, player actions). Maintenance and testing were difficult.
+
+**Solution**: Extract pure sub-systems into dedicated managers. GameEngine now orchestrates them via a **thin facade** pattern.
+
+**Architecture**:
+```
+GameEngine.onEvent(event)
+    ↓
+Routes to specialized managers:
+  ├─ ProgressionManager.unlockNextTier()
+  ├─ StaffManager.{hireEntity, upgradeEntity, fireEntity}
+  ├─ StoreController.{toggleStore, setStoreName, setGameSpeed}
+  ├─ InventoryManager.{stockItem, buyItem, etc}
+  ├─ PlayerActionHandler.{advanceCashierProgress, advanceStockerProgress}
+  ├─ DayManager.{rollOverDay, dismissEndOfDayReport}
+  ├─ TrafficManager.update()
+  └─ TransactionEngine.{ringUpItem, completeTransaction, etc}
+    ↓
+Each returns new GameState via .copy()
+    ↓
+GameEngine.state = newState
+Emit change via _changes.emit(...)
+```
+
+**Key Managers**:
+
+1. **ProgressionManager** (`domain/progression/ProgressionManager.kt`)
+   - `unlockNextTier(state)` → new state with advanced tier, deducted cost
+
+2. **StaffManager** (`domain/staff/StaffManager.kt`)
+   - `hireEntity(state, def, type)` → new state with hired entity
+   - `upgradeEntity(state, entityId)` → new state with upgraded entity
+   - `fireEntity(state, entityId)` → new state with dismissed entity
+   - `advanceCashierProgress(deltaSeconds)` → `PlayerWorkResult(actionsToTake, newProgress)`
+   - `advanceStockerProgress(deltaSeconds)` → `PlayerWorkResult(actionsToTake, newProgress)`
+   - Fractional accumulators (`cashierProgress`, `stockerProgress`) are **outside GameState** — internal engine counters, not player-visible
+
+3. **StoreController** (`domain/store/StoreController.kt`)
+   - `setStoreName(state, newName)` → new state
+   - `setGameSpeed(state, multiplier)` → new state
+   - `handleStoreStateChange(state, newState, trafficManager)` → new state with side-effects (closes customers on CLOSED)
+
+4. **InventoryManager** (`domain/inventory/InventoryManager.kt`)
+   - `stockItemFromBackroom(state, itemId)` → new state
+   - `stockCasePackFromBackroom(state, itemId)` → new state
+   - `buyItemToBackroom(state, itemId, quantity)` → new state
+   - `buyItemCasePacks(state, itemId, casePacks)` → new state
+   - `placeBulkOrder(state, maxTotalQty, casePacksPerItem, categoryFilter)` → new state with volume discounts applied
+
+5. **PlayerActionHandler** (`domain/player/PlayerActionHandler.kt`)
+   - `advanceCashierWork(state, playerRole, deltaSeconds)` → `PlayerWorkResult`
+   - `advanceStockingWork(state, playerRole, deltaSeconds)` → `PlayerWorkResult`
+
+6. **DayManager** (`domain/metrics/DayManager.kt`)
+   - `rollOverDay(state, time)` → new state with metrics snapshot appended
+   - `dismissEndOfDayReport(state)` → new state with flag cleared
+   - **Mutable counter**: `lastKnownDayNumber` — engine-internal, not in GameState
+
+**Breaking Rules for AI Agents**:
+- ❌ Never call manager methods directly — GameEngine.onEvent() orchestrates them
+- ❌ Never mutate manager state (accumulators like `staffManager.cashierProgress`) — only GameEngine writes
+- ✅ When reading GameEngine code, understand managers are pure: all state flows through GameState.copy()
+- ✅ Managers are testable in isolation by passing mocked GameState
+- ✅ Each manager knows ONE domain; never cross-call between managers
+
+**See**: `domain/progression/` | `domain/staff/` | `domain/store/` | `domain/inventory/` | `domain/player/` | `domain/metrics/`
+
+---
+### **3. GameEngine: The Core State Machine (Facade)**
+- **Role**: Thin orchestrator — receives GameEvents, routes to appropriate managers, emits changes
 - **Single source of truth**: `var state: GameState`
-- **Integrates**: `TimeManager`, `TransactionEngine`, entity/inventory logic
 - **Lifecycle**: Async-initialized (not in constructor)
-  - ItemDataLoader loads JSON → ItemDao → GameEngine loads from DB
-  - GameViewModel waits for async completion before accessing engine
-- **Database Access**: ~~Maintains `dbItems: Map<Int, Item>` for metadata lookups~~ (OLD)
-  - **NEW (April 3, 2026)**: `ItemMetadataCache` is the SINGLE source of truth for all item data
-  - **Single database load**: `itemDao.getAllItems()` called ONCE in `itemMetadataCache.initialize()`
-  - **3 cache layers**: metadata (name/price/category), full Items (for GameEngine), item names (for UI)
-  - **Eliminates 3 redundant loads**: GameEngine, GameViewModel, InventoryScreen all used separate `getAllItems()` calls
-  - **New pattern**: GameViewModel.itemMetadataCache → GameEngine → InventoryScreen (single load point)
-  - **Performance**: 1 DB call instead of 3+ redundant calls per app launch
-- **Change Emission**: `_changes: StateFlow<GameStateChange?>` for incremental UI updates (solves problem #4: 99% fewer reconstructions)
+  - ItemDataLoader loads JSON → ItemDao → ItemMetadataCache initialized
+  - GameViewModel waits for async completion before creating engine
+- **Managers** (April 15, 2026): Delegates to 6 specialized managers (see section 3B):
+  - ProgressionManager, StaffManager, StoreController, InventoryManager, PlayerActionHandler, DayManager
+  - Each manager is pure: receives GameState, returns new GameState
+  - Each manager owns one domain of logic; GameEngine coordinates
+- **Database Access**: Passes `ItemMetadataCache` to managers that need item lookups (InventoryManager, etc.)
+  - Single database load: `itemDao.getAllItems()` called ONCE in `itemMetadataCache.initialize()`
+- **Change Emission**: `_changes: StateFlow<GameStateChange?>` for incremental UI updates (99% fewer reconstructions)
   - `GameStateChange` subtypes: `MoneyChanged`, `InventoryUpdated`, `TransactionCompleted`, `TransactionStarted`, `RefundRequested`, `RefundProcessed`, `StaffUpdated`, `StoreStateChanged`, `TimeUpdated`, `TierUnlocked(newTier, previousTier)`
 
 **See**: `domain/GameEngine.kt`
@@ -634,7 +703,7 @@ git merge feature/my-feature
 ## 🗂️ File Organization
 
 **domain/** — Business logic
-- GameEngine.kt [State machine]
+- GameEngine.kt [Facade orchestrator, routes to managers]
 - GameStateData.kt [GameState, Money]
 - GameStateChange.kt [Incremental updates]
 - InventoryState.kt [shelfStock, backroomStock per item]
@@ -645,9 +714,13 @@ git merge feature/my-feature
 - items/ [Item, ItemDao, ItemMetadataCache, ItemDataLoader, ItemMetadata (has `purchaseWeight: Float` for weighted basket sampling), ItemCategory, ItemUnlockTier, ItemDefinition, ItemWithName, MoneyData, ItemRegistry (legacy)]
 - Entities/ [HiredEntity, EntityDef, EntityType, EntityTrait, EntityUpgrades, HiredEntityRegistry]
 - Transactions/ [Transaction.kt — contains both `Transaction` and `TransactionLine`]
-- player/ [PlayerRole.kt — enum: NONE, CASHIER, STOCKER]
+- **progression/** ⭐ NEW [ProgressionManager — tier unlock logic]
+- **staff/** ⭐ NEW [StaffManager — hire/upgrade/fire, cashier/stocker ticks]
+- **store/** ⭐ NEW [StoreController — store name, speed, open/close state]
+- **inventory/** ⭐ NEW [InventoryManager — stock/buy/bulk-order operations]
+- **player/** [PlayerRole.kt — enum: NONE, CASHIER, STOCKER] + **PlayerActionHandler** ⭐ NEW [player work ticks]
+- **metrics/** [DailyMetrics.kt — DailyMetrics (snapshot), DailyMetricsAccumulator (live)] + **DayManager** ⭐ NEW [day rollover, end-of-day report]
 - traffic/ [TrafficManager.kt, TrafficPattern.kt — TrafficPattern, TrafficSchedule, TransactionRequest]
-- metrics/ [DailyMetrics.kt — DailyMetrics (snapshot), DailyMetricsAccumulator (live)]
 
 **ui/** — User interface (Compose)
 - viewmodels/ [GameViewModel, ItemViewModel]
@@ -665,13 +738,21 @@ git merge feature/my-feature
 
 1. Add to GameState (if needed) → `domain/GameStateData.kt`
 2. Add GameEvent (if user-triggered) → `ui/GameEvent.kt`
-3. Implement in GameEngine → `domain/GameEngine.kt`
-4. Add ViewModel handler → `GameViewModel.onEvent()`
-5. Create UI State (if visible) → `ui/state/GameUiState.kt`
-6. Create Composable → `ui/screens/` or `ui/components/`
-7. Pass UI State only (not GameState)
-8. Write tests → `app/src/test/java/`
-9. Run coverage → `./gradlew testCoverageReport`
+3. **Implement logic in appropriate manager** (April 15, 2026):
+   - Inventory ops → `domain/inventory/InventoryManager.kt`
+   - Staff ops → `domain/staff/StaffManager.kt`
+   - Progression → `domain/progression/ProgressionManager.kt`
+   - Store admin (name, speed, open/close) → `domain/store/StoreController.kt`
+   - Player work ticks → `domain/player/PlayerActionHandler.kt`
+   - Day rollover → `domain/metrics/DayManager.kt`
+   - Otherwise → implement in `domain/GameEngine.kt` and call from manager orchestration
+4. Add manager call to GameEngine.onEvent() routing
+5. Add ViewModel handler → `GameViewModel.onEvent()`
+6. Create UI State (if visible) → `ui/state/GameUiState.kt`
+7. Create Composable → `ui/screens/` or `ui/components/`
+8. Pass UI State only (not GameState)
+9. Write tests → `app/src/test/java/`
+10. Run coverage → `./gradlew testCoverageReport`
 ---
 ## 🚀 Performance Notes
 
