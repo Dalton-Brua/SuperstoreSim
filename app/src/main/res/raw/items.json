@@ -62,8 +62,8 @@
 
     { "id": "item_056", "name": "Coca-Cola 2L", "price": 249, "description": "Coca-Cola 2-liter bottle", "unitCost": 119, "category": "DRINKS", "tier": "TIER_1", "casePack": 8, "purchaseWeight": 9.0 },
     { "id": "item_057", "name": "Orange Juice", "price": 499, "description": "100% pure orange juice, 64 oz", "unitCost": 329, "category": "DRINKS", "tier": "TIER_1", "casePack": 12, "purchaseWeight": 7.0 },
-    { "id": "item_058", "name": "Water 24-Pack", "price": 549, "description": "Purified drinking water, 24 x 16.9 oz", "unitCost": 329, "category": "DRINKS", "tier": "TIER_1", "casePack": 5, "purchaseWeight": 9.0 },
-    { "id": "item_059", "name": "Soda Can 12-Pack", "price": 599, "description": "Assorted soda cans, 12 x 12 oz", "unitCost": 349, "category": "DRINKS", "tier": "TIER_1", "casePack": 4, "purchaseWeight": 9.0 },
+    { "id": "item_058", "name": "Water 24-Pack", "price": 549, "description": "Purified drinking water, 24 x 16.9 oz", "unitCost": 329, "category": "DRINKS", "tier": "TIER_1", "casePack": 12, "purchaseWeight": 9.0 },
+    { "id": "item_059", "name": "Soda Can 12-Pack", "price": 599, "description": "Assorted soda cans, 12 x 12 oz", "unitCost": 349, "category": "DRINKS", "tier": "TIER_1", "casePack": 12, "purchaseWeight": 9.0 },
     { "id": "item_060", "name": "Apple Juice", "price": 399, "description": "100% apple juice, 64 oz", "unitCost": 249, "category": "DRINKS", "tier": "TIER_1", "casePack": 12, "purchaseWeight": 7.0 },
     { "id": "item_061", "name": "Ground Coffee", "price": 999, "description": "Medium-roast ground coffee, 12 oz", "unitCost": 649, "category": "DRINKS", "tier": "TIER_1", "casePack": 6, "purchaseWeight": 8.0 },
     { "id": "item_062", "name": "Herbal Tea", "price": 449, "description": "Assorted herbal tea bags, 20-count", "unitCost": 229, "category": "DRINKS", "tier": "TIER_2", "casePack": 12, "purchaseWeight": 6.0 },
