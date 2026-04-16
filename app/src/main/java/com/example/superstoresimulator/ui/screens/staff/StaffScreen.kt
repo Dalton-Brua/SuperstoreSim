@@ -12,9 +12,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -26,9 +29,11 @@ import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +52,7 @@ import com.example.superstoresimulator.ui.theme.LightBackground
 import com.example.superstoresimulator.ui.theme.PrimaryDark
 import com.example.superstoresimulator.ui.theme.Primary
 import com.yourapp.ui.theme.GameButtonStyles
+import kotlinx.coroutines.launch
 
 @Composable
 fun StaffScreen(
@@ -59,6 +65,7 @@ fun StaffScreen(
         modifier = modifier
             .fillMaxSize()
             .background(LightBackground)
+            .statusBarsPadding()
             .padding(16.dp)
     ) {
         ScreenHeader(
@@ -75,6 +82,9 @@ fun StaffScreen(
                     count = state.registry.countByType(type),
                     onClick = { onSelectStaffType(type) }
                 )
+            }
+            item {
+                Spacer(Modifier.height(6.dp))
             }
         }
     }
@@ -114,7 +124,8 @@ fun StaffTypeCard(
                 Text(
                     text = type.displayName,
                     fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = PrimaryDark
                 )
             }
 
@@ -149,27 +160,40 @@ fun EntityTypeDetailScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(LightBackground)
+            .statusBarsPadding()
             .padding(16.dp)
     ) {
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(type.icon, contentDescription = null, modifier = Modifier.size(32.dp))
+            Icon(type.icon, contentDescription = null, modifier = Modifier.size(32.dp), tint = Primary)
             Spacer(Modifier.width(12.dp))
-            Text(type.displayName, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text(type.displayName, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = PrimaryDark)
         }
 
         Spacer(Modifier.height(12.dp))
 
         Button(
             onClick = { onHire(hireable) },
-            enabled = money >= hireable.cost
+            enabled = money >= hireable.cost,
+            colors = GameButtonStyles.primaryBlueColor(),
+            shape = GameButtonStyles.Shape,
+            border = GameButtonStyles.PrimaryBorder,
+            elevation = androidx.compose.material3.ButtonDefaults.buttonElevation(
+                defaultElevation = 4.dp,
+                pressedElevation = 8.dp,
+                disabledElevation = 0.dp
+            )
         ) {
-            Text("Hire ${hireable.displayName}")
+            Text("Hire ${hireable.displayName}", color = Color.White)
         }
 
         Spacer(Modifier.height(20.dp))
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.weight(1f)
+        ) {
             items(entities) { entity ->
                 HiredEntityCard(
                     entity = entity,
@@ -182,8 +206,13 @@ fun EntityTypeDetailScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        Button(onClick = onBack) {
-            Text("Back")
+        Button(
+            onClick = onBack,
+            colors = GameButtonStyles.primaryBlueColor(),
+            shape = GameButtonStyles.Shape,
+            border = GameButtonStyles.PrimaryBorder
+        ) {
+            Text("Back", color = Color.White)
         }
     }
 }
@@ -310,10 +339,30 @@ fun StaffAndUnlocksScreen(
 ) {
     var selectedTab by remember { mutableIntStateOf(initialTab) }
     val tabs = listOf("Staff", "Unlocks")
+    
+    // Pager state for tab navigation
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    val coroutineScope = rememberCoroutineScope()
+    
+    // Sync pager with selectedTab
+    LaunchedEffect(selectedTab) {
+        if (pagerState.currentPage != selectedTab) {
+            pagerState.animateScrollToPage(selectedTab)
+        }
+    }
+    
+    // Sync selectedTab with pager
+    LaunchedEffect(pagerState.currentPage) {
+        if (selectedTab != pagerState.currentPage) {
+            selectedTab = pagerState.currentPage
+            onTabChanged(pagerState.currentPage)
+        }
+    }
 
     Column(modifier = modifier
         .fillMaxSize()
         .background(LightBackground)
+        .statusBarsPadding()
     ) {
         TabRow(
             selectedTabIndex = selectedTab,
@@ -332,6 +381,9 @@ fun StaffAndUnlocksScreen(
                     onClick = { 
                         selectedTab = index
                         onTabChanged(index)
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(index)
+                        }
                     },
                     text = { Text(title, fontWeight = FontWeight.SemiBold) },
                     selectedContentColor = Primary,
@@ -340,17 +392,22 @@ fun StaffAndUnlocksScreen(
             }
         }
 
-        when (selectedTab) {
-            0 -> StaffScreen(
-                state = staffState,
-                money = money,
-                onSelectStaffType = onSelectStaffType
-            )
-            1 -> UnlocksScreen(
-                progression = progression,
-                money = money,
-                onUnlockNextTier = onUnlockNextTier,
-            )
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            when (page) {
+                0 -> StaffScreen(
+                    state = staffState,
+                    money = money,
+                    onSelectStaffType = onSelectStaffType
+                )
+                1 -> UnlocksScreen(
+                    progression = progression,
+                    money = money,
+                    onUnlockNextTier = onUnlockNextTier,
+                )
+            }
         }
     }
 }

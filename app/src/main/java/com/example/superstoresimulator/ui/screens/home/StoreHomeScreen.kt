@@ -71,7 +71,12 @@ fun StoreHomeScreen (
                 .fillMaxSize()
                 .background(LightBackground),
             verticalArrangement = Arrangement.spacedBy(20.dp),
-            contentPadding = PaddingValues(12.dp)
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                end = 12.dp,
+                top = 68.dp,  // Extra padding for header bar
+                bottom = 12.dp
+            )
         ) {
             item { Spacer(Modifier.height(12.dp)) }
 

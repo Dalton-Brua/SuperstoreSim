@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddShoppingCart
@@ -25,6 +28,8 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +61,7 @@ import com.example.superstoresimulator.ui.theme.NavBarIndicator
 import com.example.superstoresimulator.ui.theme.NavBarUnselectedIcon
 import com.example.superstoresimulator.ui.theme.NavBarUnselectedText
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -92,19 +98,51 @@ class MainActivity : ComponentActivity() {
                 // Extract non-null uiState to avoid smart cast issues with delegated properties
                 val state = uiState!!
 
-                Box {
+                // List of main navigation screens (excluding detail screens)
+                val mainScreens = remember {
+                    listOf(Screen.GAME, Screen.INVENTORY, Screen.STAFF, Screen.HISTORY, Screen.METRICS)
+                }
+                
+                // Pager state for main screen navigation
+                val pagerState = rememberPagerState(pageCount = { mainScreens.size })
+                val coroutineScope = rememberCoroutineScope()
+                
+                // Sync pager with currentScreen
+                LaunchedEffect(currentScreen) {
+                    val index = mainScreens.indexOf(currentScreen)
+                    if (index != -1 && pagerState.currentPage != index) {
+                        pagerState.animateScrollToPage(index)
+                    }
+                }
+                
+                // Sync currentScreen with pager
+                LaunchedEffect(pagerState.currentPage) {
+                    currentScreen = mainScreens[pagerState.currentPage]
+                }
+
+                Box(modifier = Modifier.statusBarsPadding()) {
                     Scaffold(
                         bottomBar = {
                             BottomNavBar(
                                 current = currentScreen,
                                 onSelect = { screen ->
                                     currentScreen = screen
+                                    val index = mainScreens.indexOf(screen)
+                                    if (index != -1) {
+                                        coroutineScope.launch {
+                                            pagerState.animateScrollToPage(index)
+                                        }
+                                    }
                                 },
                                 pendingRefundsCount = state.app.pendingRefunds
                             )
                         }
                     ) { paddingValues ->
-                        when (currentScreen) {
+                        HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier.fillMaxSize()
+                        ) { page ->
+                            when (mainScreens[page]) {
                             Screen.GAME -> StoreHomeScreen(
                                 state = state,
                                 onStoreNameChange = { viewModel.onEvent(GameEvent.ChangeStoreName(it)) },
@@ -131,6 +169,7 @@ class MainActivity : ComponentActivity() {
                                 money = state.app.money,
                                 itemMetadataCache = viewModel.itemMetadataCache,
                                 currentTier = state.progression.currentTier,
+                                metricsData = state.metrics.completedDays,
                                 onBuyItem = { itemId -> viewModel.onEvent(GameEvent.BuyItem(itemId)) },
                                 onSelectCategory = { category -> viewModel.onEvent(GameEvent.SelectItemCategory(category)) },
                                 onBulkOrder = { maxQty, casePacks, category ->
@@ -152,22 +191,7 @@ class MainActivity : ComponentActivity() {
                                 onUnlockNextTier = { viewModel.onEvent(GameEvent.UnlockNextTier) },
                                 modifier = Modifier.padding(paddingValues)
                             )
-
-                            Screen.STAFF_ENTITY_LIST -> EntityTypeDetailScreen(
-                                state = state.staff,
-                                money = state.app.money,
-                                type = state.staff.selectedType,
-                                onHire = { def ->
-                                    viewModel.onEvent(GameEvent.HireStaff(def, state.staff.selectedType )) },
-                                onFire = { id -> viewModel.onEvent(GameEvent.FireStaff(id)) },
-                                onUpgrade = { id -> viewModel.onEvent(GameEvent.UpgradeStaff(id)) },
-                                onBack = {
-                                    viewModel.onEvent(GameEvent.SelectStaffType(EntityType.NONE))
-                                    currentScreen = Screen.STAFF
-                                }
-
-                            )
-
+                                
                             Screen.HISTORY -> SalesHistoryScreen(
                                 state = state.history,
                                 itemDao = itemDao,
@@ -180,6 +204,28 @@ class MainActivity : ComponentActivity() {
                                 onFocusInventoryItem = { itemId ->
                                     viewModel.onEvent(GameEvent.FocusInventoryItem(itemId))
                                     currentScreen = Screen.INVENTORY
+                                }
+                            )
+                            
+                            else -> {} // Should not reach here for main screens
+                        }
+                    }
+                }
+                
+                    // Staff Entity Detail Screen as overlay (not part of pager)
+                    if (currentScreen == Screen.STAFF_ENTITY_LIST) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            EntityTypeDetailScreen(
+                                state = state.staff,
+                                money = state.app.money,
+                                type = state.staff.selectedType,
+                                onHire = { def ->
+                                    viewModel.onEvent(GameEvent.HireStaff(def, state.staff.selectedType )) },
+                                onFire = { id -> viewModel.onEvent(GameEvent.FireStaff(id)) },
+                                onUpgrade = { id -> viewModel.onEvent(GameEvent.UpgradeStaff(id)) },
+                                onBack = {
+                                    viewModel.onEvent(GameEvent.SelectStaffType(EntityType.NONE))
+                                    currentScreen = Screen.STAFF
                                 }
                             )
                         }

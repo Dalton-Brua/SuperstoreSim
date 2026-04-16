@@ -26,6 +26,7 @@ import com.example.superstoresimulator.ui.state.HistoryUIState
 import com.example.superstoresimulator.ui.theme.Secondary
 import com.example.superstoresimulator.ui.theme.TextWhite
 import com.example.superstoresimulator.ui.theme.LightBackground
+import com.example.superstoresimulator.ui.theme.PrimaryDark
 import java.util.Locale
 
 @Composable
@@ -149,7 +150,8 @@ private fun TransactionCard(transaction: Transaction, onClick: () -> Unit, itemV
             Text(
                 text = "Transaction #${transaction.id}",
                 fontWeight = FontWeight.Medium,
-                fontSize = 16.sp
+                fontSize = 16.sp,
+                color = PrimaryDark
             )
 
             Text(
@@ -185,7 +187,7 @@ private fun RefundCard(transaction: Transaction, onClick: () -> Unit, itemViewMo
     LaunchedEffect(transaction.lines) {
         val fetchedItems = transaction.lines.map { line ->
             // Convert integer itemId to database format "item_XXX"
-            val dbItemId = "item_" + String.format("%03d", line.itemId)
+            val dbItemId = "item_" + String.format(Locale.US, "%03d", line.itemId)
             itemViewModel.getItemById(dbItemId)?.name ?: "Unknown Item"
         }
         items.value = fetchedItems

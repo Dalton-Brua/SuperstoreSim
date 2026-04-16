@@ -1,5 +1,6 @@
 package com.example.superstoresimulator.ui.components.cards
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,10 +30,13 @@ fun InventoryItemCard(
     item: InventoryItemUI,
     canAffordBuy: Boolean,
     onBuy: () -> Unit,
+    onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(CardWhite),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
@@ -47,7 +51,8 @@ fun InventoryItemCard(
             Text(
                 text = item.name,
                 fontSize = 16.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                color = PrimaryDark
             )
 
             // First stat row
@@ -55,8 +60,8 @@ fun InventoryItemCard(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Shelf: ${item.shelfStock}")
-                Text("Price: ${item.price}")
+                Text("Shelf: ${item.shelfStock}", color = TextSecondary)
+                Text("Price: ${item.price}", color = PrimaryDark)
             }
 
             // Second stat row
@@ -65,7 +70,7 @@ fun InventoryItemCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Back: ${item.backroomStock}")
+                    Text("Back: ${item.backroomStock}", color = TextSecondary)
                     if (item.backroomFull) {
                         Text(
                             "FULL",
@@ -75,7 +80,7 @@ fun InventoryItemCard(
                         )
                     }
                 }
-                Text("Unit Cost: ${item.unitCost}")
+                Text("Unit Cost: ${item.unitCost}", color = PrimaryDark)
             }
 
             // Case pack info
