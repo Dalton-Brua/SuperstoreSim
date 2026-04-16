@@ -337,23 +337,33 @@ fun StaffAndUnlocksScreen(
     onSelectStaffType: (EntityType) -> Unit,
     onUnlockNextTier: () -> Unit
 ) {
-    var selectedTab by remember { mutableIntStateOf(initialTab) }
     val tabs = listOf("Staff", "Unlocks")
     
     // Pager state for tab navigation
-    val pagerState = rememberPagerState(pageCount = { 2 })
+    val pagerState = rememberPagerState(
+        pageCount = { 2 },
+        initialPage = initialTab
+    )
     val coroutineScope = rememberCoroutineScope()
     
-    // Sync pager with selectedTab
+    // Track selected tab - start with initialTab and update from pager or external changes
+    var selectedTab by remember { mutableIntStateOf(initialTab) }
+    
+    // Immediately update selectedTab when initialTab changes (e.g., from tier card navigation)
+    if (selectedTab != initialTab) {
+        selectedTab = initialTab
+    }
+    
+    // Sync pager to selectedTab when it changes
     LaunchedEffect(selectedTab) {
         if (pagerState.currentPage != selectedTab) {
             pagerState.animateScrollToPage(selectedTab)
         }
     }
     
-    // Sync selectedTab with pager
-    LaunchedEffect(pagerState.currentPage) {
-        if (selectedTab != pagerState.currentPage) {
+    // Update selectedTab when user swipes to a different page
+    LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
+        if (!pagerState.isScrollInProgress && selectedTab != pagerState.currentPage) {
             selectedTab = pagerState.currentPage
             onTabChanged(pagerState.currentPage)
         }

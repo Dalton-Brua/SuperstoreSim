@@ -172,7 +172,17 @@ class MainActivity : ComponentActivity() {
                                 onViewItem = { itemId: Int -> viewModel.onEvent(GameEvent.FocusInventoryItem(itemId)) },
                                 onRingUpItem = { itemId: Int -> viewModel.onEvent(GameEvent.RingUpItem(itemId)) },
                                 itemDao = itemDao,
-                                onNavigateToInventory = { currentScreen = Screen.INVENTORY },
+                                onNavigateToInventory = { 
+                                    val targetIndex = mainScreens.indexOf(Screen.INVENTORY)
+                                    if (targetIndex != -1) {
+                                        isNavigatingProgrammatically = true
+                                        currentScreen = Screen.INVENTORY
+                                        coroutineScope.launch {
+                                            pagerState.animateScrollToPage(targetIndex)
+                                            isNavigatingProgrammatically = false
+                                        }
+                                    }
+                                },
                                 modifier = Modifier.padding(paddingValues),
                                 onSpeedChanged = { multiplier: Float -> viewModel.onEvent(GameEvent.SetGameSpeed(multiplier)) },
                                 onOpenStore = { viewModel.onEvent(GameEvent.ToggleStore) },
@@ -181,8 +191,16 @@ class MainActivity : ComponentActivity() {
                                 onUpgradeStore = { viewModel.onEvent(GameEvent.UpgradeStoreSize) },
                                 onUnlockNextTier = { viewModel.onEvent(GameEvent.UnlockNextTier) },
                                 onNavigateToUnlocks = { 
-                                    currentScreen = Screen.STAFF
-                                    selectedStaffTab = 1  // 1 = Unlocks tab
+                                    val targetIndex = mainScreens.indexOf(Screen.STAFF)
+                                    if (targetIndex != -1) {
+                                        isNavigatingProgrammatically = true
+                                        selectedStaffTab = 1  // 1 = Unlocks tab
+                                        currentScreen = Screen.STAFF
+                                        coroutineScope.launch {
+                                            pagerState.animateScrollToPage(targetIndex)
+                                            isNavigatingProgrammatically = false
+                                        }
+                                    }
                                 }
                             )
 
@@ -226,7 +244,15 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(paddingValues),
                                 onFocusInventoryItem = { itemId ->
                                     viewModel.onEvent(GameEvent.FocusInventoryItem(itemId))
-                                    currentScreen = Screen.INVENTORY
+                                    val targetIndex = mainScreens.indexOf(Screen.INVENTORY)
+                                    if (targetIndex != -1) {
+                                        isNavigatingProgrammatically = true
+                                        currentScreen = Screen.INVENTORY
+                                        coroutineScope.launch {
+                                            pagerState.animateScrollToPage(targetIndex)
+                                            isNavigatingProgrammatically = false
+                                        }
+                                    }
                                 }
                             )
                             
