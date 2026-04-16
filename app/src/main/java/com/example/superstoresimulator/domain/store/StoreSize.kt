@@ -34,7 +34,7 @@ enum class StoreSize(
         dailyRent = Money(40_000),      // $400/day
         shelfCapacity = 5_000,
         backroomCapPerItem = 5,          // 5 case packs per item (2.5x)
-        trafficMultiplier = 3.0f,        // 3× traffic
+        trafficMultiplier = 2.0f,        // 2× traffic
         upgradeCost = Money(100_000)     // $1,000 to upgrade
     ),
     GROCERY_STORE(
@@ -42,7 +42,7 @@ enum class StoreSize(
         dailyRent = Money(120_000),     // $1,200/day
         shelfCapacity = 10_000,
         backroomCapPerItem = 10,         // 10 case packs per item (5x)
-        trafficMultiplier = 9.0f,        // 9× traffic (3² = 3×3)
+        trafficMultiplier = 4.0f,        // 4× traffic (3² = 3×3)
         upgradeCost = Money(2_000_000)   // $20,000 to upgrade
     ),
     SUPERSTORE(
@@ -50,7 +50,7 @@ enum class StoreSize(
         dailyRent = Money(300_000),     // $3,000/day
         shelfCapacity = 20_000,
         backroomCapPerItem = 30,         // 30 case packs per item (15x)
-        trafficMultiplier = 27.0f,       // 27× traffic (3³ = 9×3)
+        trafficMultiplier = 8.0f,       // 8× traffic (3³ = 9×3)
         upgradeCost = Money(20_000_000)  // $200,000 to upgrade
     ),
     SUPERCENTER(
@@ -58,7 +58,7 @@ enum class StoreSize(
         dailyRent = Money(500_000),     // $5,000/day
         shelfCapacity = 40_000,
         backroomCapPerItem = 999,        // Effectively unlimited case packs
-        trafficMultiplier = 81.0f,       // 81× traffic (3⁴ = 27×3)
+        trafficMultiplier = 16.0f,       // 16× traffic (3⁴ = 27×3)
         upgradeCost = Money(100_000_000) // $1,000,000 to upgrade
     );
 
