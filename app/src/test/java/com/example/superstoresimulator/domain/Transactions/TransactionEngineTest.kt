@@ -1,7 +1,9 @@
 package com.example.superstoresimulator.domain
 
 import com.example.superstoresimulator.domain.Transactions.Transaction
+import com.example.superstoresimulator.domain.Transactions.TransactionEngine
 import com.example.superstoresimulator.domain.Transactions.TransactionLine
+import com.example.superstoresimulator.domain.inventory.InventoryState
 import org.junit.Test
 import org.junit.Assert.*
 import org.junit.Before
@@ -153,7 +155,10 @@ class TransactionEngineTest {
         val rungQtyBefore = state.currentTransaction.lines[0].rungQty  // 0
 
         // Force shelf stock to 0 for this item
-        state = state.copy(inventory = state.inventory + (itemId to InventoryState(shelfStock = 0, backroomStock = 100)))
+        state = state.copy(inventory = state.inventory + (itemId to InventoryState(
+            shelfStock = 0,
+            backroomStock = 100
+        )))
 
         state = engine.ringUpSingleItem(state, itemId)
 

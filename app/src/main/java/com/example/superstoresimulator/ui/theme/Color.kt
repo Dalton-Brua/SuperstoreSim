@@ -52,6 +52,18 @@ val IconBlue = Color(0xFF60A5FA)            // Blue-400 — informational / "wai
 val ChipSurface = Color(0xFFE2E8F0)   // Unselected chip/pill background (slate-200)
 val ChipTextDark = Color(0xFF1E293B)  // Dark text on unselected chips (slate-900)
 
+// ===== NAVIGATION BAR COLORS =====
+val NavBarBackground = Color(0xFFFFFFFF)        // Navigation bar background (white)
+val NavBarSelectedIcon = Color(0xFF3B82F6)      // Selected icon color (Primary Blue)
+val NavBarSelectedText = Color(0xFF3B82F6)      // Selected text color (Primary Blue)
+val NavBarIndicator = Color(0xFFDEEBFF)         // Selected item indicator background (light blue)
+val NavBarUnselectedIcon = Color(0xFF64748B)   // Unselected icon color (grey)
+val NavBarUnselectedText = Color(0xFF64748B)   // Unselected text color (grey)
+
+// ===== PROGRESS BAR COLORS =====
+val ProgressBarTrack = Color(0xFFE2E8F0)        // Progress bar track/background (light grey)
+val ProgressBarIndicator = Color(0xFF334155)    // Progress bar indicator (dark grey/slate)
+
 // ===== DEPRECATED - USE NEW NAMES =====
 @Deprecated("Use Primary instead", ReplaceWith("Primary"))
 val upgradeButtonColor = Color(0xFF3B82F6)

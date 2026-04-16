@@ -5,6 +5,9 @@ data class HiredEntityRegistry(
     private var nextEntityId: Int = 1
 
 ) {
+    
+    /** Public accessor for the hired entities list (used by wage calculator and other systems). */
+    val hiredEntities: List<HiredEntity> get() = entities
 
     private val firstNames = listOf(
         "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Jamie", "Avery", "Parker", "Reese",

@@ -43,7 +43,7 @@ state.inventory[itemId] = newInventoryState
 
 **Problem Solved**: Before this fix, the codebase made 3+ redundant `getAllItems()` database calls:
 1. `ItemMetadataCache.initialize()` → loads for UI inventory mapping
-2. `GameEngine.__init__()` → loads to populate `dbItems` map
+2. `GameEngine` init block → loads to populate `dbItems` map
 3. `InventoryScreen` → LaunchedEffect calling `itemDao.getAllItemsWithNames()`
 
 **Solution**: Consolidate into single `ItemMetadataCache` with 3 cache layers:
@@ -91,25 +91,29 @@ MemoizedInventoryMapper(cache)       // No extra DB load
 **See**: `domain/items/ItemMetadataCache.kt` | Updated: `GameEngine.kt` | `GameViewModel.kt` | `InventoryScreen.kt` | All test files
 
 ---
-### **3B. Service-Layer Manager Architecture** ⭐ NEW (April 15, 2026)
+### **3B. Service-Layer Manager Architecture** ⭐ IMPLEMENTED (April 15, 2026)
 
 **Problem Solved**: GameEngine had grown to 400+ lines handling concerns across 6+ domains (inventory, staff, progression, day metrics, store state, player actions). Maintenance and testing were difficult.
 
 **Solution**: Extract pure sub-systems into dedicated managers. GameEngine now orchestrates them via a **thin facade** pattern.
 
+**Public vs. Private Methods**: Managers only expose methods that GameEngine calls from ViewModel-routed engine methods. All internal helpers (e.g., `TransactionEngine.ringUpSingleItem()`, `InventoryManager.stockCasePackFromBackroom()`) remain private. ❌ Never call private manager methods from outside code — always route through GameEngine.
+
 **Architecture**:
 ```
-GameEngine.onEvent(event)
+GameViewModel.onEvent(event)
     ↓
-Routes to specialized managers:
+Calls GameEngine public methods
+    ↓
+GameEngine routes to specialized managers:
   ├─ ProgressionManager.unlockNextTier()
   ├─ StaffManager.{hireEntity, upgradeEntity, fireEntity}
-  ├─ StoreController.{toggleStore, setStoreName, setGameSpeed}
-  ├─ InventoryManager.{stockItem, buyItem, etc}
-  ├─ PlayerActionHandler.{advanceCashierProgress, advanceStockerProgress}
+  ├─ StoreController.{toggleTimePaused, updateStoreName, setGameSpeedState, upgradeStoreSize}
+  ├─ InventoryManager.{stockItemFromBackroom, buyItemToBackroom, placeBulkOrder, etc}
+  ├─ PlayerActionHandler.{calculateCashierWork, calculateStockerWork, setPlayerRole}
   ├─ DayManager.{rollOverDay, dismissEndOfDayReport}
   ├─ TrafficManager.update()
-  └─ TransactionEngine.{ringUpItem, completeTransaction, etc}
+  └─ TransactionEngine.{ringUpSingleItem, processRefund, etc}
     ↓
 Each returns new GameState via .copy()
     ↓
@@ -126,33 +130,38 @@ Emit change via _changes.emit(...)
    - `hireEntity(state, def, type)` → new state with hired entity
    - `upgradeEntity(state, entityId)` → new state with upgraded entity
    - `fireEntity(state, entityId)` → new state with dismissed entity
-   - `advanceCashierProgress(deltaSeconds)` → `PlayerWorkResult(actionsToTake, newProgress)`
-   - `advanceStockerProgress(deltaSeconds)` → `PlayerWorkResult(actionsToTake, newProgress)`
+   - `advanceCashierProgress(cashierCount, deltaSeconds, multiplier)` → `Int` actions to perform this tick
+   - `advanceStockerProgress(stockerCount, deltaSeconds, multiplier)` → `Int` actions to perform this tick
    - Fractional accumulators (`cashierProgress`, `stockerProgress`) are **outside GameState** — internal engine counters, not player-visible
 
 3. **StoreController** (`domain/store/StoreController.kt`)
-   - `setStoreName(state, newName)` → new state
-   - `setGameSpeed(state, multiplier)` → new state
-   - `handleStoreStateChange(state, newState, trafficManager)` → new state with side-effects (closes customers on CLOSED)
+   - `updateStoreName(state, newName)` → new state
+   - `setGameSpeedState(state, multiplier)` → new state (updates `storeConfig.gameSpeedMultiplier`)
+   - `upgradeStoreSize(state)` → new state (deducts `nextSize.upgradeCost`, updates `currentStoreSize`, syncs `storeConfig.backroomCapPerItem`)
+   - `handleStoreStateChange(state, newState, trafficManager)` → new state with side-effects (closes customers on CLOSED transition, resets traffic)
+   - `toggleTimePaused(state)` → new state (flips `playerPausedTime` flag)
 
 4. **InventoryManager** (`domain/inventory/InventoryManager.kt`)
    - `stockItemFromBackroom(state, itemId)` → new state
    - `stockCasePackFromBackroom(state, itemId)` → new state
-   - `buyItemToBackroom(state, itemId, quantity)` → new state
-   - `buyItemCasePacks(state, itemId, casePacks)` → new state
+   - `buyItemToBackroom(state, itemId)` → new state (refuses if full case pack exceeds backroom cap)
+   - `buyItemCasePacks(state, itemId, casePacks)` → new state (clamps delivery to backroom cap)
    - `placeBulkOrder(state, maxTotalQty, casePacksPerItem, categoryFilter)` → new state with volume discounts applied
+   - **Backroom cap**: `StoreConfig.backroomCapPerItem` is in **case packs per item** and is synced to `currentStoreSize` (starts at `StoreSize.MOM_AND_POP.backroomCapPerItem = 2`)
 
 5. **PlayerActionHandler** (`domain/player/PlayerActionHandler.kt`)
-   - `advanceCashierWork(state, playerRole, deltaSeconds)` → `PlayerWorkResult`
-   - `advanceStockingWork(state, playerRole, deltaSeconds)` → `PlayerWorkResult`
+   - `setPlayerRole(state, role)` → new state (toggles active role back to `NONE`)
+   - `calculateCashierWork(state, deltaSeconds)` → `PlayerWorkResult`
+   - `calculateStockerWork(state, deltaSeconds)` → `PlayerWorkResult`
 
 6. **DayManager** (`domain/metrics/DayManager.kt`)
-   - `rollOverDay(state, time)` → new state with metrics snapshot appended
+   - `rollOverDay(state, dayNumber)` → new state with metrics snapshot appended, daily costs applied, and end-of-day report surfaced
    - `dismissEndOfDayReport(state)` → new state with flag cleared
    - **Mutable counter**: `lastKnownDayNumber` — engine-internal, not in GameState
 
 **Breaking Rules for AI Agents**:
-- ❌ Never call manager methods directly — GameEngine.onEvent() orchestrates them
+- ❌ Never call manager methods directly — GameEngine public methods orchestrate them
+- ❌ Never instantiate managers outside GameEngine — managers are created and owned by the engine
 - ❌ Never mutate manager state (accumulators like `staffManager.cashierProgress`) — only GameEngine writes
 - ✅ When reading GameEngine code, understand managers are pure: all state flows through GameState.copy()
 - ✅ Managers are testable in isolation by passing mocked GameState
@@ -167,6 +176,7 @@ Emit change via _changes.emit(...)
 - **Lifecycle**: Async-initialized (not in constructor)
   - ItemDataLoader loads JSON → ItemDao → ItemMetadataCache initialized
   - GameViewModel waits for async completion before creating engine
+- **Helper method**: `getDbItem(itemId: Int): Item?` — public access to cached item metadata for UI components (returns full Item object from ItemMetadataCache)
 - **Managers** (April 15, 2026): Delegates to 6 specialized managers (see section 3B):
   - ProgressionManager, StaffManager, StoreController, InventoryManager, PlayerActionHandler, DayManager
   - Each manager is pure: receives GameState, returns new GameState
@@ -181,9 +191,23 @@ Emit change via _changes.emit(...)
 ### **4. ViewModel Projection: GameState → GameUiState**
 - **GameViewModel** transforms domain state into UI-safe state
 - **Lazy init**: Engine created AFTER items loaded (ItemDataLoader handles async)
+- **Automatic Tick Loop**: Init block spawns a coroutine that dispatches `GameEvent.Tick` every `@TickDelta` milliseconds (16ms default)
+  - This drives the entire game loop: staff actions, traffic generation, player work, day rollover
+  - Ticks are skipped when `playerPausedTime` is true
 - **MemoizedInventoryMapper**: Caches item metadata, prevents redundant DB lookups
 - **IncrementalUiStateBuilder**: Rebuilds only changed UI state blocks (99% reduction in reconstructions)
-- **Tick Loop**: @TickDelta (16ms) injected, updates every frame via coroutine
+- **Structural Change Detection**: `shouldRebuildUiState()` compares only UI-relevant fields; skips rebuild if nothing changed
+  - Prevents unnecessary Compose recompositions when intermediate state updates don't affect the UI
+- **Event Routing Structure**:
+The `GameViewModel.onEvent()` method has four routing patterns:
+
+1. **GameEngine calls + rebuild** (most events): Route to engine method, then rebuild UI state if domain state changed
+2. **Pure-UI updates** (`SelectItemCategory`, `FocusInventoryItem`, `SelectStaffType`, `DismissTierUnlock`): Call `_uiState.update {}` directly, then `return` early to skip domain state rebuild
+3. **GameEngine call + early return** (`SetGameSpeed`): Route to `gameEngine.setGameSpeed(...)`, then return early to skip full UI rebuild
+4. **Special handling** (`Tick`): Always route to engine, never skip domain state rebuild (drives the entire game loop)
+
+This pattern ensures performance: pure-UI events don't trigger expensive GameState→GameUiState transformations, while domain events properly rebuild UI state through the incremental builder.
+
 **See**: ui/viewmodels/GameViewModel.kt | ui/state/mappers/MemoizedInventoryMapper.kt | ui/state/builders/IncrementalUiStateBuilder.kt
 ---
 ### **5. Time System (Decoupled from Real Time)**
@@ -238,7 +262,7 @@ GameViewModel.onEvent() routes to GameEngine methods:
 ```kotlin
 when (event) {
     is GameEvent.RingUpItem → gameEngine.ringUpItem(event.itemId)
-    is GameEvent.HireStaff → gameEngine.hireStaff(event.entityDef, event.entityType)
+    is GameEvent.HireStaff → gameEngine.hireEntity(event.entityDef, event.entityType)
     // ...
 }
 ```
@@ -256,8 +280,11 @@ when (event) {
   - `price`, `unitCost`: MoneyData embedded (persists as cents)
   - `category`: ItemCategory enum
   - `casePack`: Int (items per box)
+  - `purchaseWeight`: Float (weighted customer basket sampling)
+  - `tier`: String enum name (per-item unlock tier; e.g., `TIER_1`)
+
 - **Indexes**: `category` & `name` for filtered queries (50-70% fewer items loaded)
-- **MoneyData**: Embedded Room type (stores Money as cents Long)
+- **MoneyData**: Embedded Room type (stores Money as cents)
 - **ItemMetadataCache**: Singleton caching all item metadata (99% fewer DB lookups)
 
 **Pattern**: Increment `@Database(version = X)` for schema changes. Provide Migration if data must persist.
@@ -288,7 +315,7 @@ when (event) {
 - **DatabaseModule**: Provides `AppDatabase` and `ItemDao` singletons
 - **No constructor injection for GameEngine**: Lazily created after data loading
 
-**Pattern**: Never `new GameEngine()`. Always use Hilt injection.
+**Pattern**: GameEngine is created lazily in `GameViewModel` after `ItemDataLoader` + `ItemMetadataCache.initialize()` complete; do not constructor-inject it with Hilt.
 
 **See**: `di/DatabaseModule.kt` | `SuperstoreSimulatorApp.kt`
 ---
@@ -312,6 +339,7 @@ when (event) {
 - **TrafficManager**: fractional-accumulation customer generator — same technique as `TimeManager`
   - `update(state, deltaSeconds)` → returns `List<TransactionRequest>` (one per arrived customer)
   - `reset()` called on store `CLOSED` — drains `pendingCustomers`
+  - Effective arrival rate multiplies by both `storeConfig.gameSpeedMultiplier` and `currentStoreSize.trafficMultiplier`
 - **TrafficPattern**: per-hour config (`baseCustomerRate`, `averageBasketSize`, `peakMultiplier`)
 - **TrafficSchedule**: weekday vs. weekend hourly schedules
   - Weekday peaks: 12 PM (lunch rush, rate 12.0) · 5 PM (evening rush, rate 14.0)
@@ -339,6 +367,7 @@ rollOverDay() → toSnapshot() → appended to GameState.completedDayMetrics
 - **`DailyMetrics`** (immutable snapshot): stored in `GameState.completedDayMetrics: List<DailyMetrics>`
 - **Tracked metrics per day**:
   - `revenue`, `subtotal`, `taxCollected`, `transactionsCompleted`
+  - `rentPaid`, `wagesPaid` (deducted at day rollover)
   - `refundsProcessed`, `refundAmount`
   - `customersServed`, `itemsSold` (units)
   - `itemsStocked` (units moved backroom → shelf), `itemsOrdered` (units bought to backroom)
@@ -356,6 +385,7 @@ rollOverDay() → toSnapshot() → appended to GameState.completedDayMetrics
   - `buyItemToBackroom()` + `buyItemCasePacks()` → adds to `itemsOrdered`
   - `processRefund()` → records refund count + amount
 - **Day rollover**: `GameEngine.tick()` compares `state.currentTime.dayNumber` to `lastKnownDayNumber` — calls `rollOverDay()` on change
+  - `DayManager.rollOverDay()` snapshots metrics, deducts daily rent + wages from `money`, and pauses time for the report
 - **`GameEvent.DismissEndOfDayReport`**: dismisses the dialog → `gameEngine.dismissEndOfDayReport()` clears the flag
 
 **UI**:
@@ -429,7 +459,7 @@ data class ProgressionUIState(
 )
 ```
 
-**Inventory filtering**: `MemoizedInventoryMapper.map(inventory, currentTier)` — takes `currentTier` as second argument and hides items whose **individual `tier` field** requires a higher tier than the player currently has.
+**Inventory filtering**: `MemoizedInventoryMapper.map(inventory, currentTier, backroomCap)` — takes `currentTier` and `backroomCap`, then hides items whose **individual `tier` field** requires a higher tier than the player currently has.
 
 **Per-item tier gating** ⭐ NEW (April 8, 2026): Items now carry a `tier: String` field in the Room entity and a `tier: ItemUnlockTier` field in `ItemMetadata`. This allows items in the **same category** to have different unlock requirements (e.g., 28 GROCERY items start visible at TIER_1; 8 more premium GROCERY items unlock at TIER_2; 4 specialty GROCERY items unlock at TIER_3).
 
@@ -462,7 +492,7 @@ data class ProgressionUIState(
 - ✅ Always dispatch `GameEvent.DismissTierUnlock` to clear the unlock banner — never mutate `ProgressionUIState` directly
 - ✅ Use `ProgressionUIState.availableTier` to know when the player CAN purchase the next tier (revenue gate met, not yet paid)
 
-**See**: `domain/items/ItemUnlockTier.kt` | `domain/GameEngine.kt` (`unlockNextTier`) | `domain/TransactionEngine.kt` (`completeTransaction`) | `ui/state/GameUiState.kt` (`ProgressionUIState`) | `domain/GameStateChange.kt` (`TierUnlocked`)
+**See**: `domain/items/ItemUnlockTier.kt` | `domain/GameEngine.kt` (`unlockNextTier`) | `domain/Transactions/TransactionEngine.kt` (`completeTransaction`) | `ui/state/GameUiState.kt` (`ProgressionUIState`) | `domain/GameStateChange.kt` (`TierUnlocked`)
 
 ---
 ### **15. Skip Day** ⭐ IMPLEMENTED (April 8, 2026)
@@ -493,7 +523,7 @@ Allows the player to restock an entire category (or all accessible categories) i
 - **Unlocked at**: TIER_2 and above (the `BulkOrderDialog` appears in `InventoryScreen`)
 - **Event**: `GameEvent.BulkOrder(maxTotalQuantity, casePacksPerItem, categoryFilter)` → `gameEngine.placeBulkOrder()`
 - **Eligibility filter** (all three must pass):
-  1. Item tier ≤ `currentTier` (per-item tier gate)
+  1. Item tier ≤ `currentTier` (per-item unlock tier)
   2. Category matches `categoryFilter` (or `null` = all categories)
   3. `shelfStock + backroomStock ≤ maxTotalQuantity`
 - **Volume discount tiers** (applied to the entire order's base cost):
@@ -525,6 +555,7 @@ onBulkOrder = { maxQty, casePacks, category ->
 - **Inventory**: StockItem(itemId), BuyItem(itemId), SelectItemCategory(category), FocusInventoryItem(itemId)
 - **Staff**: HireStaff(def, type), UpgradeStaff(id), FireStaff(id), SelectStaffType(staffType)
 - **Time**: SetGameSpeed(multiplier), ToggleStore
+- **Store Size**: UpgradeStoreSize
 - **Other**: ProcessRefund(id), ProcessRefundLine(id, itemId, qty), ChangeStoreName(name)
 - **Phase 2**: SetPlayerRole(role: PlayerRole)
 - **Phase 3**: DismissEndOfDayReport
@@ -533,8 +564,11 @@ onBulkOrder = { maxQty, casePacks, category ->
 - **Bulk Order**: BulkOrder(maxTotalQuantity, casePacksPerItem, categoryFilter)
 
 **⚠️ Pure-UI events** (handled directly by ViewModel, no GameEngine call, no domain state rebuild):
-- `SelectItemCategory`, `FocusInventoryItem`, `SelectStaffType`, `SetGameSpeed`
+- `SelectItemCategory`, `FocusInventoryItem`, `SelectStaffType`
 - `DismissTierUnlock` → clears `ProgressionUIState.justUnlockedTier` via `_uiState.update {}`
+
+**⚠️ Lightweight domain event** (calls GameEngine but returns early to skip full GameState→GameUiState rebuild):
+- `SetGameSpeed` → `gameEngine.setGameSpeed(event.multiplier)`
 
 **⚠️ Phase 2 events** (routed to GameEngine — NOT pure-UI):
 - `SetPlayerRole` → `gameEngine.setPlayerRole(event.role)` — toggling the active role again returns to `PlayerRole.NONE`
@@ -543,6 +577,7 @@ onBulkOrder = { maxQty, casePacks, category ->
 - `DismissEndOfDayReport` → `gameEngine.dismissEndOfDayReport()` — clears `showEndOfDayReport` flag
 
 **⚠️ Progression / store upgrade events** (routed to GameEngine — NOT pure-UI):
+- `UpgradeStoreSize` → `gameEngine.upgradeStoreSize()` — advances to `StoreSize.nextSize(currentStoreSize)` when affordable; updates `storeConfig.backroomCapPerItem` and deducts `upgradeCost`
 - `UnlockNextTier` → `gameEngine.unlockNextTier()` — revenue gate must be met AND player must have ≥ `nextTier.unlockCost` cash; deducts money, advances `currentTier`, emits `TierUnlocked`
 - `SkipDay` → `gameEngine.simulateRestOfDay()` — pure computation, runs all staff + traffic at normal rates until midnight, then surfaces the end-of-day report; safe to call on the main thread
 - `BulkOrder(maxTotalQuantity, casePacksPerItem, categoryFilter)` → `gameEngine.placeBulkOrder()` — buys `casePacksPerItem` case packs for every tier-gated, category-matched item whose combined stock ≤ `maxTotalQuantity`; volume discounts applied automatically
@@ -560,15 +595,22 @@ onBulkOrder = { maxQty, casePacks, category ->
 
 | File | Focus |
 |------|-------|
-| `domain/GameEngineTest.kt` | Engine init, time, speed, state immutability |
-| `domain/GameEngineAdvancedTest.kt` | Inventory ops, transactions, entities, invariants |
+| `domain/GameEngineIntegrationTest.kt` | Engine flow integration (events + tick-driven state transitions) |
 | `domain/CashierTransactionTest.kt` | Transaction lifecycle, store-open guards |
 | `domain/StockRandomItemFromBackroomTest.kt` | Stocking logic, stocker tick behaviour |
 | `domain/UpgradeEntityTest.kt` | Full upgrade paths, exact cost deduction, registry isolation |
 | `domain/MoneyTest.kt` | Formatting, rounding, real-world scenarios |
 | `domain/InventoryStateTest.kt` | Documents that InventoryState allows negative values (guard is in GameEngine) |
 | `domain/ProgressionTest.kt` | Revenue accumulation, tier advancement via GameEngine |
+| `domain/TierUnlockTest.kt` | Unlock purchase guards and tier state transitions |
+| `domain/BulkOrderTest.kt` | Bulk ordering filters, discounts, and affordability guards |
 | `domain/ItemUnlockTierTest.kt` | Tier thresholds, category boundaries, `requiredTierForSection` |
+| `domain/store/StoreControllerTest.kt` | Store admin behavior (pause/speed/state-change/size upgrade) |
+| `domain/inventory/InventoryManagerTest.kt` | Inventory manager pure-logic cases and cap rules |
+| `domain/staff/StaffManagerTest.kt` | Staff manager hire/upgrade/fire + progress accumulators |
+| `domain/player/PlayerActionHandlerTest.kt` | Player-role toggle and per-tick work math |
+| `domain/metrics/DayManagerTest.kt` | Day rollover snapshots, cost deduction, pause restore semantics |
+| `domain/progression/ProgressionManagerTest.kt` | Progression manager guard checks and state updates |
 | `domain/time/GameTimeTest.kt` | Hour/minute/day/week computed properties, `isOpen`, formatting |
 | `domain/time/TimeManagerTest.kt` | Fractional accumulation, speed ratio, non-regression |
 | `domain/time/StoreConfigTest.kt` | Open/closing/closed boundaries, mutual exclusivity across 1440 minutes |
@@ -709,11 +751,11 @@ git merge feature/my-feature
 - InventoryState.kt [shelfStock, backroomStock per item]
 - RefundRequest.kt [RefundRequest, RefundLine]
 - Screen.kt [Screen enum: GAME, INVENTORY, HISTORY, METRICS, STAFF, STAFF_ENTITY_LIST]
-- TransactionEngine.kt [Transaction logic, tax calculation]
+- Transactions/TransactionEngine.kt [Transaction logic, tax calculation]
 - time/ [TimeManager, GameTime, StoreConfig, StoreState]
 - items/ [Item, ItemDao, ItemMetadataCache, ItemDataLoader, ItemMetadata (has `purchaseWeight: Float` for weighted basket sampling), ItemCategory, ItemUnlockTier, ItemDefinition, ItemWithName, MoneyData, ItemRegistry (legacy)]
 - Entities/ [HiredEntity, EntityDef, EntityType, EntityTrait, EntityUpgrades, HiredEntityRegistry]
-- Transactions/ [Transaction.kt — contains both `Transaction` and `TransactionLine`]
+- Transactions/ [Transaction.kt — contains both `Transaction` and `TransactionLine`; `TransactionEngine.kt`]
 - **progression/** ⭐ NEW [ProgressionManager — tier unlock logic]
 - **staff/** ⭐ NEW [StaffManager — hire/upgrade/fire, cashier/stocker ticks]
 - **store/** ⭐ NEW [StoreController — store name, speed, open/close state]
@@ -746,7 +788,7 @@ git merge feature/my-feature
    - Player work ticks → `domain/player/PlayerActionHandler.kt`
    - Day rollover → `domain/metrics/DayManager.kt`
    - Otherwise → implement in `domain/GameEngine.kt` and call from manager orchestration
-4. Add manager call to GameEngine.onEvent() routing
+4. Add/adjust GameEngine routing by calling the appropriate manager from the relevant GameEngine method
 5. Add ViewModel handler → `GameViewModel.onEvent()`
 6. Create UI State (if visible) → `ui/state/GameUiState.kt`
 7. Create Composable → `ui/screens/` or `ui/components/`

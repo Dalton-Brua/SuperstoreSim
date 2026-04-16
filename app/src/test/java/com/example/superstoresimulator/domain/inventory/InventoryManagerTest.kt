@@ -2,7 +2,7 @@ package com.example.superstoresimulator.domain.inventory
 
 import com.example.superstoresimulator.domain.GameEngine
 import com.example.superstoresimulator.domain.GameState
-import com.example.superstoresimulator.domain.InventoryState
+import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
@@ -11,7 +11,7 @@ import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.items.ItemWithName
 import com.example.superstoresimulator.domain.items.MoneyData
-import com.example.superstoresimulator.domain.time.StoreConfig
+import com.example.superstoresimulator.domain.store.StoreConfig
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

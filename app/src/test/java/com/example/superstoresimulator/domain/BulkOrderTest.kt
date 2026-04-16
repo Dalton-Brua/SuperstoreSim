@@ -1,5 +1,6 @@
 package com.example.superstoresimulator.domain
 
+import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemDao
@@ -546,7 +547,10 @@ class BulkOrderTest {
         // Set different caps per-item by manually pinning item 1's backroom to cap
         setBackroomCap(engine, 50)
         engine.state = engine.state.copy(
-            inventory = engine.state.inventory + (1 to InventoryState(shelfStock = 10, backroomStock = 50))
+            inventory = engine.state.inventory + (1 to InventoryState(
+                shelfStock = 10,
+                backroomStock = 50
+            ))
         )
 
         engine.placeBulkOrder(maxTotalQuantity = 100, casePacksPerItem = 2, categoryFilter = null)

@@ -1,5 +1,6 @@
 package com.example.superstoresimulator.domain
 
+import com.example.superstoresimulator.domain.inventory.InventoryState
 import org.junit.Test
 import org.junit.Assert.*
 

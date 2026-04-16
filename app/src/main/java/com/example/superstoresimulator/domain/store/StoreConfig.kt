@@ -1,4 +1,6 @@
-package com.example.superstoresimulator.domain.time
+package com.example.superstoresimulator.domain.store
+
+import com.example.superstoresimulator.domain.time.GameTime
 
 /**
  * Store configuration including opening/closing times
@@ -10,13 +12,13 @@ data class StoreConfig(
     val allowTransactionsDuringClosing: Boolean = true,
     val gameSpeedMultiplier: Float = 1.0f,  // Multiplier: 1x, 2x, 4x, etc. (base speed is 60.0f = 1 sec = 1 min)
     /**
-     * Maximum units of a single item that can be stored in the backroom at once.
+     * Maximum CASE PACKS of a single item that can be stored in the backroom at once.
      * Prevents unlimited stockpiling via bulk or repeated single orders.
      *
-     * Interim value (50) matches the SMALL_GROCERY cap planned in PROGRESSION_SYSTEM.md.
-     * Will be superseded by StoreSize.maxBackroomPerItem once the Store Size system is implemented.
+     * Synchronized with StoreSize.backroomCapPerItem when the store is upgraded.
+     * Default (2) matches the MOM_AND_POP starting size.
      */
-    val backroomCapPerItem: Int = 50,
+    val backroomCapPerItem: Int = 2,
 ) {
     fun isOpen(gameTime: GameTime): Boolean {
         return gameTime.isOpen(openTimeMinutes, closeTimeMinutes)

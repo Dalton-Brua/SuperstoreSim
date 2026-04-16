@@ -120,6 +120,10 @@ class GameViewModel @Inject constructor(
                 // Will update UI state after this
             }
 
+            GameEvent.UpgradeStoreSize -> {
+                gameEngine.upgradeStoreSize()
+            }
+
             is GameEvent.SetPlayerRole -> {
                 gameEngine.setPlayerRole(event.role)
             }
@@ -263,14 +267,21 @@ class GameViewModel @Inject constructor(
                 playerRole = domain.playerRole,
                 playerCashierProgress = domain.playerCashierProgress,
                 playerStockerProgress = domain.playerStockerProgress,
+                currentStoreSize = domain.currentStoreSize,
+                dailyRent = domain.currentStoreSize.dailyRent,
+                dailyWages = calculateDailyWages(domain),
             ),
             metrics = MetricsUIState(
                 completedDays = domain.completedDayMetrics.sortedByDescending { it.dayNumber },
                 showEndOfDayReport = domain.showEndOfDayReport,
                 lastReport = domain.lastEndOfDayReport,
             ),
-            progression = buildProgressionUiState(domain, null),
+            progression = buildProgressionUiState(domain, null)
         )
+    }
+
+    private fun calculateDailyWages(domain: GameState): com.example.superstoresimulator.domain.Money {
+        return com.example.superstoresimulator.domain.store.StaffWageCalculator.calculateTotalWages(domain.hiredEntityRegistry)
     }
 
     private fun buildProgressionUiState(domain: GameState, old: ProgressionUIState?): ProgressionUIState {
@@ -336,6 +347,9 @@ class GameViewModel @Inject constructor(
                 playerRole = domain.playerRole,
                 playerCashierProgress = domain.playerCashierProgress,
                 playerStockerProgress = domain.playerStockerProgress,
+                currentStoreSize = domain.currentStoreSize,
+                dailyRent = domain.currentStoreSize.dailyRent,
+                dailyWages = calculateDailyWages(domain),
             ),
             metrics = MetricsUIState(
                 completedDays = domain.completedDayMetrics.sortedByDescending { it.dayNumber },
@@ -374,7 +388,8 @@ class GameViewModel @Inject constructor(
                newDomainState.showEndOfDayReport != oldDomainState.showEndOfDayReport ||
                newDomainState.completedDayMetrics.size != oldDomainState.completedDayMetrics.size ||
                newDomainState.currentTier != oldDomainState.currentTier ||
-               newDomainState.totalRevenue != oldDomainState.totalRevenue
+               newDomainState.totalRevenue != oldDomainState.totalRevenue ||
+               newDomainState.currentStoreSize != oldDomainState.currentStoreSize
     }
 }
 

@@ -22,12 +22,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.player.PlayerRole
-import com.example.superstoresimulator.domain.time.StoreState
+import com.example.superstoresimulator.domain.store.StoreState
 import com.example.superstoresimulator.ui.components.CustomerQueueIndicator
 import com.example.superstoresimulator.ui.components.PlayerRoleButtons
 import com.example.superstoresimulator.ui.components.buttons.PendingRefundsButton
 import com.example.superstoresimulator.ui.components.panels.SettingsPanel
+import com.example.superstoresimulator.ui.components.cards.StoreSizeCard
 import com.example.superstoresimulator.ui.components.cards.StoreOverviewCard
+import com.example.superstoresimulator.ui.components.cards.TierProgressCard
 import com.example.superstoresimulator.ui.components.cards.TransactionSummaryCard
 import com.example.superstoresimulator.ui.components.common.TimeDisplayBar
 import com.example.superstoresimulator.ui.dialogs.PendingRefundsDialog
@@ -54,7 +56,10 @@ fun StoreHomeScreen (
     onSpeedChanged: (Float) -> Unit = {},
     onOpenStore: () -> Unit = {},
     onSetPlayerRole: (PlayerRole) -> Unit = {},
-    onSkipDay: () -> Unit = {}
+    onSkipDay: () -> Unit = {},
+    onUpgradeStore: () -> Unit = {},
+    onUnlockNextTier: () -> Unit = {},
+    onNavigateToUnlocks: () -> Unit = {},
 ) {
     var showTransactionDialog by remember { mutableStateOf(false) }
     var showPendingRefunds by remember { mutableStateOf(false) }
@@ -81,7 +86,7 @@ fun StoreHomeScreen (
                 }
             }
 
-            // Phase 2: Player role control — always visible, segments dim when store is closed
+            // Player role buttons (Cashier, Stocker) with progress bars
             item {
                 if (state.time != null) {
                     val hasBackroomItems = state.inventory.items.any { it.backroomStock > 0 }
@@ -103,9 +108,7 @@ fun StoreHomeScreen (
                 )
             }
 
-            // Transaction card — only shown when store is open and at least one
-            // transaction has started or completed today. Otherwise a status placeholder
-            // explains to the player why there is nothing to show.
+            // Transaction card
             item {
                 val storeState = state.time?.storeState
                 val hasTransactionToday = state.transactions.isActive || state.transactions.completedToday > 0
@@ -174,6 +177,36 @@ fun StoreHomeScreen (
                             }
                         }
                     }
+                }
+            }
+
+            // Tier progress card (NEW - card style)
+            item {
+                TierProgressCard(
+                    currentTier = state.progression.currentTier,
+                    totalRevenue = state.progression.totalRevenue,
+                    nextTier = state.progression.nextTier,
+                    revenueToNextTier = state.progression.revenueToNextTier,
+                    tierProgressFraction = state.progression.tierProgressFraction,
+                    availableTier = state.progression.availableTier,
+                    playerMoney = state.app.money,
+                    onUnlockNextTier = onUnlockNextTier,
+                    onClick = onNavigateToUnlocks,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
+
+            // Store size card
+            item {
+                if (state.time != null) {
+                    StoreSizeCard(
+                        currentSize = state.time.currentStoreSize,
+                        dailyRent = state.time.dailyRent,
+                        dailyWages = state.time.dailyWages,
+                        playerMoney = state.app.money,
+                        onUpgrade = onUpgradeStore,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
                 }
             }
 

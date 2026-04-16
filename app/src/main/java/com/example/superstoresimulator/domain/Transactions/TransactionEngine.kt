@@ -1,8 +1,11 @@
-package com.example.superstoresimulator.domain
+package com.example.superstoresimulator.domain.Transactions
 
 import android.annotation.SuppressLint
-import com.example.superstoresimulator.domain.Transactions.Transaction
-import com.example.superstoresimulator.domain.Transactions.TransactionLine
+import com.example.superstoresimulator.domain.GameState
+import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.RefundLine
+import com.example.superstoresimulator.domain.RefundRequest
+import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import java.time.Instant
@@ -10,7 +13,7 @@ import kotlin.random.Random
 
 class TransactionEngine(
     private val salesTaxRate: Double = 0.0825,
-    private val refundChance: Double = 0.10,
+    private val refundChance: Double = 0.00,
     private val random: Random = Random.Default,
     private val itemMetadataCache: ItemMetadataCache? = null,
 ) {
@@ -34,7 +37,7 @@ class TransactionEngine(
             val itemId = chosen[index]
 
             val qty = (1..3).random(random)
-            val unitPrice = itemMetadataCache?.get(itemId)?.price ?: Money.fromDollars(9.99)
+            val unitPrice = itemMetadataCache?.get(itemId)?.price ?: Money.Companion.fromDollars(9.99)
 
             lines += TransactionLine(
                 itemId = itemId,
@@ -46,7 +49,7 @@ class TransactionEngine(
         }
 
         val subtotal = lines.fold(Money(0)) { acc, line -> acc + line.lineTotal }
-        val tax = Money.fromDollars(subtotal.toDouble() * salesTaxRate)
+        val tax = Money.Companion.fromDollars(subtotal.toDouble() * salesTaxRate)
         val totalEarned = subtotal + tax
 
         return state.copy(
@@ -87,7 +90,7 @@ class TransactionEngine(
 
         for (itemId in chosen) {
             val qty = (1..3).random(random)
-            val unitPrice = itemMetadataCache?.get(itemId)?.price ?: Money.fromDollars(9.99)
+            val unitPrice = itemMetadataCache?.get(itemId)?.price ?: Money.Companion.fromDollars(9.99)
             lines += TransactionLine(
                 itemId = itemId,
                 quantity = qty,
@@ -98,7 +101,7 @@ class TransactionEngine(
         }
 
         val subtotal = lines.fold(Money(0)) { acc, line -> acc + line.lineTotal }
-        val tax = Money.fromDollars(subtotal.toDouble() * salesTaxRate)
+        val tax = Money.Companion.fromDollars(subtotal.toDouble() * salesTaxRate)
         val totalEarned = subtotal + tax
 
         return state.copy(
@@ -273,7 +276,7 @@ class TransactionEngine(
 
         // Subtotal/tax/totalEarned only reflect rung lines — lost lines have lineTotal = ZERO
         val subtotal = lines.fold(Money(0)) { acc, line -> acc + line.lineTotal }
-        val tax = Money.fromDollars(subtotal.toDouble() * salesTaxRate)
+        val tax = Money.Companion.fromDollars(subtotal.toDouble() * salesTaxRate)
         val totalEarned = subtotal + tax
 
         return Transaction(
@@ -333,7 +336,7 @@ class TransactionEngine(
 
         if (refundLines.isEmpty()) return state
 
-        val refundTax = Money.fromDollars(refundSubtotal.toDouble() * salesTaxRate)
+        val refundTax = Money.Companion.fromDollars(refundSubtotal.toDouble() * salesTaxRate)
 
         val refundRequest = RefundRequest(
             id = state.nextRefundId,

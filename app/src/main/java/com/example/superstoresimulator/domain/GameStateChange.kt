@@ -1,7 +1,9 @@
 package com.example.superstoresimulator.domain
 
 import com.example.superstoresimulator.domain.Transactions.Transaction
+import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
+import com.example.superstoresimulator.domain.store.StoreState
 
 /**
  * ✅ Problem #4: Incremental State Changes
@@ -40,7 +42,7 @@ sealed class GameStateChange {
     ) : GameStateChange()
     
     data class StoreStateChanged(
-        val newStoreState: com.example.superstoresimulator.domain.time.StoreState
+        val newStoreState: StoreState
     ) : GameStateChange()
     
     data class TimeUpdated(

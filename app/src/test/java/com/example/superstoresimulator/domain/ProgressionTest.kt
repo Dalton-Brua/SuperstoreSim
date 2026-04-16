@@ -112,7 +112,7 @@ class ProgressionTest {
     /** Rings up every line in the current transaction to completion.
      *
      * If no transaction is active, calls [GameEngine.ringUpItem] with the first
-     * inventory item to trigger the auto-start path inside [TransactionEngine.ringUpSingleItem]
+     * inventory item to trigger the auto-start path inside [com.example.superstoresimulator.domain.Transactions.TransactionEngine.ringUpSingleItem]
      * (when lines are empty that method calls startNewTransaction without checking store state).
      */
     private fun completeSingleTransaction(engine: GameEngine) {

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.background
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -21,6 +22,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,8 +40,12 @@ import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Entities.HiredEntity
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.state.ProgressionUIState
 import com.example.superstoresimulator.ui.state.StaffUIState
+import com.example.superstoresimulator.ui.theme.LightBackground
+import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.Primary
 import com.yourapp.ui.theme.GameButtonStyles
 
 @Composable
@@ -51,18 +58,12 @@ fun StaffScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(LightBackground)
             .padding(16.dp)
     ) {
-        Text(
-            text = "Staff Management",
-            fontSize = 26.sp,
-            fontWeight = FontWeight.Bold
-        )
-
-        Text(
-            text = "Cash: $money",
-            fontSize = 16.sp,
-            color = Color(0xFF64748B)
+        ScreenHeader(
+            title = "Staff Management",
+            money = money
         )
 
         Spacer(Modifier.height(20.dp))
@@ -301,20 +302,40 @@ fun StaffAndUnlocksScreen(
     staffState: StaffUIState,
     progression: ProgressionUIState,
     money: Money,
+    modifier: Modifier = Modifier,
+    initialTab: Int = 0,
+    onTabChanged: (Int) -> Unit,
     onSelectStaffType: (EntityType) -> Unit,
-    onUnlockNextTier: () -> Unit,
-    modifier: Modifier = Modifier
+    onUnlockNextTier: () -> Unit
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by remember { mutableIntStateOf(initialTab) }
     val tabs = listOf("Staff", "Unlocks")
 
-    Column(modifier = modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = selectedTab) {
+    Column(modifier = modifier
+        .fillMaxSize()
+        .background(LightBackground)
+    ) {
+        TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = Color.White,
+            contentColor = PrimaryDark,
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                    color = Primary
+                )
+            }
+        ) {
             tabs.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = { Text(title, fontWeight = FontWeight.SemiBold) }
+                    onClick = { 
+                        selectedTab = index
+                        onTabChanged(index)
+                    },
+                    text = { Text(title, fontWeight = FontWeight.SemiBold) },
+                    selectedContentColor = Primary,
+                    unselectedContentColor = Color(0xFF64748B)
                 )
             }
         }

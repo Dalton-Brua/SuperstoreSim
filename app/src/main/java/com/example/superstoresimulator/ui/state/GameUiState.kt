@@ -10,7 +10,7 @@ import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.domain.time.GameTime
-import com.example.superstoresimulator.domain.time.StoreState
+import com.example.superstoresimulator.domain.store.StoreState
 
 data class GameUiState(
 
@@ -94,6 +94,10 @@ data class TimeUIState(
     val playerRole: PlayerRole = PlayerRole.NONE,
     val playerCashierProgress: Float = 0f,
     val playerStockerProgress: Float = 0f,
+    // Phase 1.5: Store size and operating costs
+    val currentStoreSize: com.example.superstoresimulator.domain.store.StoreSize = com.example.superstoresimulator.domain.store.StoreSize.MOM_AND_POP,
+    val dailyRent: Money = Money.ZERO,
+    val dailyWages: Money = Money.ZERO,
 )
 
 // Phase 3: Daily metrics UI state
@@ -126,4 +130,3 @@ data class ProgressionUIState(
      */
     val availableTier: ItemUnlockTier? = null,
 )
-

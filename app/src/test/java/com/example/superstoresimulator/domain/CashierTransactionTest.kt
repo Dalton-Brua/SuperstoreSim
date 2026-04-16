@@ -8,7 +8,7 @@ import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemWithName
 import com.example.superstoresimulator.domain.items.MoneyData
-import com.example.superstoresimulator.domain.time.StoreState
+import com.example.superstoresimulator.domain.store.StoreState
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
@@ -136,7 +136,7 @@ class CashierTransactionTest {
     /** Rings up every item line in the currently active transaction.
      *
      * If no transaction is active, calls [GameEngine.ringUpItem] with the first
-     * inventory item to trigger the auto-start path inside [TransactionEngine.ringUpSingleItem]
+     * inventory item to trigger the auto-start path inside [com.example.superstoresimulator.domain.Transactions.TransactionEngine.ringUpSingleItem]
      * (when lines are empty that method calls startNewTransaction without checking store state).
      */
     private fun completeActiveTransaction() {

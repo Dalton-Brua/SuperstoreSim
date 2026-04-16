@@ -5,10 +5,12 @@ import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.domain.metrics.DailyMetricsAccumulator
 import com.example.superstoresimulator.domain.player.PlayerRole
+import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.time.GameTime
-import com.example.superstoresimulator.domain.time.StoreConfig
-import com.example.superstoresimulator.domain.time.StoreState
 import com.example.superstoresimulator.domain.Transactions.Transaction
+import com.example.superstoresimulator.domain.inventory.InventoryState
+import com.example.superstoresimulator.domain.store.StoreConfig
+import com.example.superstoresimulator.domain.store.StoreState
 import java.util.Locale
 
 data class GameState(
@@ -33,26 +35,25 @@ data class GameState(
     val nextRefundId: Int = 1,
 
     val inventory: Map<Int, InventoryState> = emptyMap(),
-    
-    // Phase 1: Time System
+
+    // Time and store state
     val currentTime: GameTime = GameTime(0),
     val storeConfig: StoreConfig = StoreConfig(),
     val storeState: StoreState = StoreState.CLOSED,
     val playerPausedTime: Boolean = false,
 
-    // Phase 2: Player Role System
+    val currentStoreSize: StoreSize = StoreSize.MOM_AND_POP,
+
     val playerRole: PlayerRole = PlayerRole.NONE,
     val playerCashierProgress: Float = 0f,  // Fractional ring-up accumulator
     val playerStockerProgress: Float = 0f,  // Fractional stock accumulator
 
-    // Phase 2: Customer queue — customers waiting for an open register
     val pendingCustomers: Int = 0,
 
     // Progression: cumulative revenue (never decreases) and the resolved unlock tier
     val totalRevenue: Money = Money.ZERO,
     val currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
 
-    // Phase 3: Daily metrics
     val currentDayMetrics: DailyMetricsAccumulator = DailyMetricsAccumulator(),
     val completedDayMetrics: List<DailyMetrics> = emptyList(),
     val showEndOfDayReport: Boolean = false,
@@ -60,6 +61,8 @@ data class GameState(
     // True when the game engine paused time on behalf of the player for the end-of-day report.
     // Allows dismissEndOfDayReport() to restore the correct paused/running state.
     val pausedByEndOfDay: Boolean = false,
+
+    val objectiveBonusEarned: Money = Money.ZERO,  // Bonus from completed objectives today
 )
 
 

@@ -1,7 +1,9 @@
 package com.example.superstoresimulator.domain
 
 import com.example.superstoresimulator.domain.Transactions.Transaction
+import com.example.superstoresimulator.domain.Transactions.TransactionEngine
 import com.example.superstoresimulator.domain.Transactions.TransactionLine
+import com.example.superstoresimulator.domain.inventory.InventoryState
 import org.junit.Test
 import org.junit.Assert.*
 import org.junit.Before

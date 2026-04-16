@@ -18,11 +18,14 @@ import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.items.ItemDao
-import com.example.superstoresimulator.ui.components.common.HistoryHeader
+import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.dialogs.TransactionDetailDialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.superstoresimulator.ui.viewmodels.ItemViewModel
 import com.example.superstoresimulator.ui.state.HistoryUIState
+import com.example.superstoresimulator.ui.theme.Secondary
+import com.example.superstoresimulator.ui.theme.TextWhite
+import com.example.superstoresimulator.ui.theme.LightBackground
 import java.util.Locale
 
 @Composable
@@ -73,12 +76,32 @@ private fun PaginatedHistoryList(
         state = listState,
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F8FF))
+            .background(LightBackground)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(bottom = 16.dp)
     ) {
-        stickyHeader { HistoryHeader(totalTaxCollected = totalTaxCollected) }
+        stickyHeader {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(LightBackground)
+                    .padding(bottom = 8.dp)
+            ) {
+                ScreenHeader(title = "Sales History")
+                
+                // Tax badge
+                Card(colors = CardDefaults.cardColors(containerColor = Secondary)) {
+                    Text(
+                        "Total Tax: $totalTaxCollected",
+                        color = TextWhite,
+                        modifier = Modifier.padding(8.dp),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
 
         if (sortedSalesHistory.isEmpty()) {
             item {

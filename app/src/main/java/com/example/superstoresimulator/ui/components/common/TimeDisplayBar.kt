@@ -22,7 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.superstoresimulator.domain.time.StoreState
+import com.example.superstoresimulator.domain.store.StoreState
 import com.example.superstoresimulator.ui.state.TimeUIState
 import com.example.superstoresimulator.ui.theme.DarkBackground
 import com.example.superstoresimulator.ui.theme.OpenGreen

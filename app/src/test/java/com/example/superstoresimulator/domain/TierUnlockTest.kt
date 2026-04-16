@@ -7,7 +7,7 @@ import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.items.ItemWithName
 import com.example.superstoresimulator.domain.items.MoneyData
-import com.example.superstoresimulator.domain.time.StoreState
+import com.example.superstoresimulator.domain.store.StoreState
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

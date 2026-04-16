@@ -6,7 +6,6 @@ import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemWithName
 import com.example.superstoresimulator.domain.traffic.TrafficManager
-import com.example.superstoresimulator.domain.time.StoreState
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

@@ -22,9 +22,11 @@ sealed interface GameEvent {
     data class ProcessRefundLine(val refundId: Int, val itemId: Int, val quantity: Int) : GameEvent
     data class SelectStaffType(val staffType: EntityType) : GameEvent
 
-    // Phase 1: Time system events
     data class SetGameSpeed(val multiplier: Float) : GameEvent
     data object ToggleStore : GameEvent
+
+    // Phase 1: Store sizing events
+    data object UpgradeStoreSize : GameEvent
 
     // Phase 2: Player role events
     data class SetPlayerRole(val role: PlayerRole) : GameEvent

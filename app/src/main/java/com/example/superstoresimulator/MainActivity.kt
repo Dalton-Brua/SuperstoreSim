@@ -16,10 +16,10 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.ui.unit.sp
@@ -49,6 +49,12 @@ import com.example.superstoresimulator.ui.screens.sales.SalesHistoryScreen
 import com.example.superstoresimulator.ui.screens.staff.StaffAndUnlocksScreen
 import com.example.superstoresimulator.ui.screens.staff.EntityTypeDetailScreen
 import com.example.superstoresimulator.ui.dialogs.EndOfDayReportDialog
+import com.example.superstoresimulator.ui.theme.NavBarBackground
+import com.example.superstoresimulator.ui.theme.NavBarSelectedIcon
+import com.example.superstoresimulator.ui.theme.NavBarSelectedText
+import com.example.superstoresimulator.ui.theme.NavBarIndicator
+import com.example.superstoresimulator.ui.theme.NavBarUnselectedIcon
+import com.example.superstoresimulator.ui.theme.NavBarUnselectedText
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -59,10 +65,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            SuperstoreSimulatorTheme {
+            SuperstoreSimulatorTheme(
+                dynamicColor = false  // Disable dynamic theming for consistent colors across all devices
+            ) {
                 // Instantiate ViewModel (Hilt handles dependency injection automatically)
                 val viewModel: GameViewModel = viewModel()
                 var currentScreen by remember { mutableStateOf(Screen.GAME) }
+                var selectedStaffTab by remember { mutableStateOf(0) }
 
                 // Collect UI state from ViewModel's StateFlow
                 val uiState by viewModel.uiState.collectAsState()
@@ -108,7 +117,13 @@ class MainActivity : ComponentActivity() {
                                 onSpeedChanged = { multiplier: Float -> viewModel.onEvent(GameEvent.SetGameSpeed(multiplier)) },
                                 onOpenStore = { viewModel.onEvent(GameEvent.ToggleStore) },
                                 onSetPlayerRole = { role: PlayerRole -> viewModel.onEvent(GameEvent.SetPlayerRole(role)) },
-                                onSkipDay = { viewModel.onEvent(GameEvent.SkipDay) }
+                                onSkipDay = { viewModel.onEvent(GameEvent.SkipDay) },
+                                onUpgradeStore = { viewModel.onEvent(GameEvent.UpgradeStoreSize) },
+                                onUnlockNextTier = { viewModel.onEvent(GameEvent.UnlockNextTier) },
+                                onNavigateToUnlocks = { 
+                                    currentScreen = Screen.STAFF
+                                    selectedStaffTab = 1  // 1 = Unlocks tab
+                                }
                             )
 
                             Screen.INVENTORY -> InventoryScreen(
@@ -128,6 +143,8 @@ class MainActivity : ComponentActivity() {
                                 staffState = state.staff,
                                 progression = state.progression,
                                 money = state.app.money,
+                                initialTab = selectedStaffTab,
+                                onTabChanged = { tab -> selectedStaffTab = tab },
                                 onSelectStaffType = { type ->
                                     viewModel.onEvent(GameEvent.SelectStaffType(type))
                                     currentScreen = Screen.STAFF_ENTITY_LIST
@@ -188,7 +205,7 @@ fun BottomNavBar(
     onSelect: (Screen) -> Unit,
     pendingRefundsCount: Int = 0
 ) {
-    NavigationBar(containerColor = Color.White) {
+    NavigationBar(containerColor = NavBarBackground) {
         NavigationBarItem(
             selected = current == Screen.GAME,
             onClick = { onSelect(Screen.GAME) },
@@ -220,35 +237,70 @@ fun BottomNavBar(
                     }
                 }
             },
-            label = { Text("Store") }
+            label = { Text("Store") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = NavBarSelectedIcon,
+                selectedTextColor = NavBarSelectedText,
+                indicatorColor = NavBarIndicator,
+                unselectedIconColor = NavBarUnselectedIcon,
+                unselectedTextColor = NavBarUnselectedText
+            )
         )
 
         NavigationBarItem(
             selected = current == Screen.INVENTORY,
             onClick = { onSelect(Screen.INVENTORY) },
             icon = { Icon(Icons.Default.Inbox, contentDescription = "Inventory") },
-            label = { Text("Inventory") }
+            label = { Text("Inventory") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = NavBarSelectedIcon,
+                selectedTextColor = NavBarSelectedText,
+                indicatorColor = NavBarIndicator,
+                unselectedIconColor = NavBarUnselectedIcon,
+                unselectedTextColor = NavBarUnselectedText
+            )
         )
 
         NavigationBarItem(
             selected = current == Screen.STAFF,
             onClick = { onSelect(Screen.STAFF) },
             icon = { Icon(Icons.Default.People, contentDescription = "Manage") },
-            label = { Text("Manage") }
+            label = { Text("Manage") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = NavBarSelectedIcon,
+                selectedTextColor = NavBarSelectedText,
+                indicatorColor = NavBarIndicator,
+                unselectedIconColor = NavBarUnselectedIcon,
+                unselectedTextColor = NavBarUnselectedText
+            )
         )
 
         NavigationBarItem(
             selected = current == Screen.HISTORY,
             onClick = { onSelect(Screen.HISTORY) },
             icon = { Icon(Icons.Default.History, contentDescription = "History") },
-            label = { Text("History") }
+            label = { Text("History") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = NavBarSelectedIcon,
+                selectedTextColor = NavBarSelectedText,
+                indicatorColor = NavBarIndicator,
+                unselectedIconColor = NavBarUnselectedIcon,
+                unselectedTextColor = NavBarUnselectedText
+            )
         )
 
         NavigationBarItem(
             selected = current == Screen.METRICS,
             onClick = { onSelect(Screen.METRICS) },
             icon = { Icon(Icons.Default.BarChart, contentDescription = "Metrics") },
-            label = { Text("Metrics") }
+            label = { Text("Metrics") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = NavBarSelectedIcon,
+                selectedTextColor = NavBarSelectedText,
+                indicatorColor = NavBarIndicator,
+                unselectedIconColor = NavBarUnselectedIcon,
+                unselectedTextColor = NavBarUnselectedText
+            )
         )
     }
 }

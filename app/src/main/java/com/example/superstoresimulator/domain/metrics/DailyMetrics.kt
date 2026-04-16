@@ -42,6 +42,10 @@ data class DailyMetrics(
     val taxCollected: Money = Money.ZERO,
     val transactionsCompleted: Int = 0,
 
+    // ── Operating Costs ──────────────────────────────────────────────────
+    val rentPaid: Money = Money.ZERO,       // Daily rent deducted
+    val wagesPaid: Money = Money.ZERO,      // Total staff wages for the day
+
     // ── Refunds ──────────────────────────────────────────────────────────
     val refundsProcessed: Int = 0,
     val refundAmount: Money = Money.ZERO,
@@ -74,9 +78,9 @@ data class DailyMetrics(
             itemsSold.toFloat() / transactionsCompleted
         else 0f
 
-    /** Net revenue after refunds. */
+    /** Net revenue after refunds, rent, and wages. */
     val netRevenue: Money
-        get() = revenue - refundAmount
+        get() = (revenue - refundAmount) - rentPaid - wagesPaid
 
     val dayOfWeekName: String
         get() = when (dayOfWeek) {
@@ -98,6 +102,9 @@ data class DailyMetricsAccumulator(
     val subtotal: Money = Money.ZERO,
     val taxCollected: Money = Money.ZERO,
     val transactionsCompleted: Int = 0,
+
+    val rentPaid: Money = Money.ZERO,
+    val wagesPaid: Money = Money.ZERO,
 
     val refundsProcessed: Int = 0,
     val refundAmount: Money = Money.ZERO,
@@ -124,6 +131,8 @@ data class DailyMetricsAccumulator(
         subtotal = subtotal,
         taxCollected = taxCollected,
         transactionsCompleted = transactionsCompleted,
+        rentPaid = rentPaid,
+        wagesPaid = wagesPaid,
         refundsProcessed = refundsProcessed,
         refundAmount = refundAmount,
         customersServed = customersServed,

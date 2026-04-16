@@ -1,7 +1,7 @@
 package com.example.superstoresimulator.ui.state.builders
 
 import com.example.superstoresimulator.domain.GameStateChange
-import com.example.superstoresimulator.domain.InventoryState
+import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.ui.state.GameUiState
 
 /**

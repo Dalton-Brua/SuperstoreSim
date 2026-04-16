@@ -1,5 +1,8 @@
 package com.example.superstoresimulator.domain.time
 
+import com.example.superstoresimulator.domain.store.StoreConfig
+import com.example.superstoresimulator.domain.store.StoreState
+
 /**
  * Manages game time progression and store state
  */

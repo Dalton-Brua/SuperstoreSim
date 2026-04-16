@@ -90,8 +90,6 @@ fun EndOfDayReportDialog(
                     StatRow(Icons.AutoMirrored.Filled.Undo, "Refunds Issued",
                         "${report.refundsProcessed} (${report.refundAmount})",
                         tint = Color(0xFFE74C3C))
-                    StatRow(Icons.Default.MoneyOff, "Net Revenue",
-                        report.netRevenue.toString(), highlight = true)
                 }
 
                 if (report.lostRevenue.cents > 0) {
@@ -103,6 +101,23 @@ fun EndOfDayReportDialog(
                         tint = Color(0xFFB91C1C)
                     )
                 }
+
+                Spacer(Modifier.height(12.dp))
+
+                // ── Operating Costs section ──────────────────────────────
+                SectionHeader("💸 Operating Costs")
+                StatRow(Icons.Default.Home, "Daily Rent", "-${report.rentPaid}", tint = Color(0xFFE74C3C))
+                StatRow(Icons.Default.People, "Staff Wages", "-${report.wagesPaid}", tint = Color(0xFFE74C3C))
+                
+                // Net revenue calculation
+                val netAfterCosts = report.netRevenue
+                StatRow(
+                    Icons.Default.AccountBalance,
+                    "Net Revenue",
+                    netAfterCosts.toString(),
+                    highlight = true,
+                    tint = if (netAfterCosts.cents >= 0) Color(0xFF27AE60) else Color(0xFFE74C3C)
+                )
 
                 Spacer(Modifier.height(12.dp))
 

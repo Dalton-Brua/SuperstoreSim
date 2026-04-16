@@ -1,7 +1,7 @@
 package com.example.superstoresimulator.domain.player
 
 import com.example.superstoresimulator.domain.GameState
-import com.example.superstoresimulator.domain.time.StoreConfig
+import com.example.superstoresimulator.domain.store.StoreConfig
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test

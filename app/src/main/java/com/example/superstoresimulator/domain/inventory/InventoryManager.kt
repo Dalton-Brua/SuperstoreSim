@@ -95,15 +95,16 @@ class InventoryManager(private val cache: ItemMetadataCache) {
      *
      * Guards (all return state unchanged on failure):
      *  - Item not in inventory or not in cache
-     *  - Adding a full case-pack would exceed [StoreConfig.backroomCapPerItem]
+     *  - Adding a full case-pack would exceed [StoreConfig.backroomCapPerItem] (in case packs)
      *  - Player cannot afford the case-pack cost
      */
     fun buyItemToBackroom(state: GameState, itemId: Int): GameState {
         val dyn = state.inventory[itemId] ?: return state
         val dbItem = cache.getItem(itemId) ?: return state
 
-        val cap = state.storeConfig.backroomCapPerItem
-        if (dyn.backroomStock + dbItem.casePack > cap) return state
+        val capInCasePacks = state.storeConfig.backroomCapPerItem
+        val currentCasePacksInBackroom = dyn.backroomStock / dbItem.casePack
+        if (currentCasePacksInBackroom + 1 > capInCasePacks) return state
 
         val casePackCost = dbItem.getCasePackCostAsMoney()
         if (state.money < casePackCost) return state
@@ -122,7 +123,7 @@ class InventoryManager(private val cache: ItemMetadataCache) {
      * Order [numCasePacks] case-packs of [itemId] into the backroom.
      *
      * Delivery is clamped to however many full case-packs fit within the remaining
-     * backroom space. The player is charged only for case-packs actually delivered.
+     * backroom space (measured in case packs). The player is charged only for case-packs actually delivered.
      *
      * Guards (all return state unchanged on failure):
      *  - Item not in inventory or cache, or [numCasePacks] ≤ 0
@@ -134,9 +135,10 @@ class InventoryManager(private val cache: ItemMetadataCache) {
         val dbItem = cache.getItem(itemId) ?: return state
         if (numCasePacks <= 0) return state
 
-        val cap = state.storeConfig.backroomCapPerItem
-        val availableSpace = cap - dyn.backroomStock
-        val actualCasePacks = minOf(numCasePacks, availableSpace / dbItem.casePack)
+        val capInCasePacks = state.storeConfig.backroomCapPerItem
+        val currentCasePacksInBackroom = dyn.backroomStock / dbItem.casePack
+        val availableCasePacks = capInCasePacks - currentCasePacksInBackroom
+        val actualCasePacks = minOf(numCasePacks, availableCasePacks)
         if (actualCasePacks <= 0) return state
 
         val totalCost = dbItem.getCasePackCostAsMoney() * actualCasePacks
@@ -160,9 +162,9 @@ class InventoryManager(private val cache: ItemMetadataCache) {
      *  1. Its tier ≤ [GameState.currentTier] (per-item tier gate)
      *  2. Its category matches [categoryFilter] (or filter is null = all categories)
      *  3. Its combined shelf + backroom stock ≤ [maxTotalQuantity]
-     *  4. Its backroom has room for at least one full case-pack
+     *  4. Its backroom has room for at least one full case-pack (measured in case packs)
      *
-     * Per-item delivery is clamped to the remaining backroom space.
+     * Per-item delivery is clamped to the remaining backroom space (in case packs).
      *
      * Volume discount tiers (applied to the total actual case-packs delivered):
      *  ≥ 20 cases  → 10% off
@@ -180,14 +182,15 @@ class InventoryManager(private val cache: ItemMetadataCache) {
     ): GameState {
         if (casePacksPerItem <= 0) return state
 
-        val cap = state.storeConfig.backroomCapPerItem
+        val capInCasePacks = state.storeConfig.backroomCapPerItem
 
         val matchingEntries = state.inventory.filter { (itemId, inv) ->
             val meta = cache.get(itemId) ?: return@filter false
             val tierOk = meta.tier.unlockAmount <= state.currentTier.unlockAmount
             val categoryOk = categoryFilter == null || meta.category == categoryFilter
             val qtyOk = inv.shelfStock + inv.backroomStock <= maxTotalQuantity
-            val capOk = (cap - inv.backroomStock) >= meta.casePack
+            val currentCasePacksInBackroom = inv.backroomStock / meta.casePack
+            val capOk = currentCasePacksInBackroom < capInCasePacks
             tierOk && categoryOk && qtyOk && capOk
         }
         if (matchingEntries.isEmpty()) return state
@@ -198,8 +201,9 @@ class InventoryManager(private val cache: ItemMetadataCache) {
 
         matchingEntries.forEach { (itemId, inv) ->
             val dbItem = cache.getItem(itemId) ?: return@forEach
-            val availableSpace = cap - inv.backroomStock
-            val actualCasePacks = minOf(casePacksPerItem, availableSpace / dbItem.casePack)
+            val currentCasePacksInBackroom = inv.backroomStock / dbItem.casePack
+            val availableCasePacks = capInCasePacks - currentCasePacksInBackroom
+            val actualCasePacks = minOf(casePacksPerItem, availableCasePacks)
             if (actualCasePacks <= 0) return@forEach
             itemsToAddMap[itemId] = dbItem.casePack * actualCasePacks
             totalCases += actualCasePacks

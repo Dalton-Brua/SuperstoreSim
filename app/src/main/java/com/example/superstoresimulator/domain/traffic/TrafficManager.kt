@@ -1,7 +1,7 @@
 package com.example.superstoresimulator.domain.traffic
 
 import com.example.superstoresimulator.domain.GameState
-import com.example.superstoresimulator.domain.time.StoreState
+import com.example.superstoresimulator.domain.store.StoreState
 import kotlin.random.Random
 
 /**
@@ -20,9 +20,14 @@ class TrafficManager {
     /**
      * Update customer traffic for this tick.
      *
-     * @param state        Current game state (provides time, storeState, gameSpeedMultiplier)
+     * @param state        Current game state (provides time, storeState, gameSpeedMultiplier, currentStoreSize)
      * @param deltaSeconds Real seconds elapsed since the last tick
      * @return             List of transaction requests — one per customer that fully "arrived"
+     *
+     * Traffic rate is affected by:
+     *  - Time-of-day pattern (baseCustomerRate)
+     *  - Game speed multiplier (faster time = more customers)
+     *  - Store size multiplier (larger stores attract more customers)
      *
      * Note: If a transaction is already active, the list may be empty even if customers
      * accumulated, because [generateRandomTransaction] is a no-op when active.
@@ -41,10 +46,13 @@ class TrafficManager {
         val pattern = TrafficSchedule.getPatternForTime(state.currentTime)
 
         // baseCustomerRate = customers per game-minute
-        // Divide by 60 to get per-game-second, then scale by game speed so
-        // higher speed multipliers produce proportionally more customers.
+        // Divide by 60 to get per-game-second, then scale by:
+        //  - game speed (faster time = more customers proportionally)
+        //  - store size (larger stores = more foot traffic)
         val customerRatePerSecond =
-            (pattern.baseCustomerRate / 60.0) * state.storeConfig.gameSpeedMultiplier
+            (pattern.baseCustomerRate / 60.0) * 
+            state.storeConfig.gameSpeedMultiplier * 
+            state.currentStoreSize.trafficMultiplier
 
         accumulatedCustomers += customerRatePerSecond * deltaSeconds
 

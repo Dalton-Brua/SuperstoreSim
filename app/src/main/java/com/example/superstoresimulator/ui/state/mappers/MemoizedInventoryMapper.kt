@@ -1,6 +1,6 @@
 package com.example.superstoresimulator.ui.state.mappers
 
-import com.example.superstoresimulator.domain.InventoryState
+import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.ItemMetadata
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
@@ -75,6 +75,10 @@ class MemoizedInventoryMapper(
             val dyn = domainInventory[itemId] ?: return@forEach
             val meta = metadataCache.get(itemId) ?: ItemMetadata.default(itemId)
             
+            // Calculate current case packs in backroom and check if one more would exceed cap
+            val currentCasePacksInBackroom = dyn.backroomStock / meta.casePack
+            val backroomFull = (currentCasePacksInBackroom + 1) > backroomCap
+            
             itemCache[itemId] = InventoryItemUI(
                 id = itemId,
                 name = meta.name,
@@ -86,7 +90,7 @@ class MemoizedInventoryMapper(
                 casePack = meta.casePack,
                 casePackCost = meta.casePackCost,
                 // True when there is no room for even one more full case pack
-                backroomFull = (dyn.backroomStock + meta.casePack) > backroomCap,
+                backroomFull = backroomFull,
             )
         }
         

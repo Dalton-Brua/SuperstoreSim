@@ -50,6 +50,8 @@ import com.example.superstoresimulator.ui.theme.Secondary
 import com.example.superstoresimulator.ui.theme.TextSecondary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
 import com.example.superstoresimulator.ui.theme.Destructive
+import com.example.superstoresimulator.ui.theme.ProgressBarTrack
+import com.example.superstoresimulator.ui.theme.ProgressBarIndicator
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -355,7 +357,12 @@ fun TransactionLineCard(
 
             // Progress bar
             val progress = if (line.quantity == 0) 0f else line.rungQty.toFloat() / line.quantity
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth(),
+                color = ProgressBarIndicator,
+                trackColor = ProgressBarTrack
+            )
 
             Spacer(Modifier.height(12.dp))
 

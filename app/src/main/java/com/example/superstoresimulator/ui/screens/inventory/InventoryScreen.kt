@@ -44,10 +44,9 @@ import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.ui.components.cards.InventoryItemCard
-import com.example.superstoresimulator.ui.components.common.SmallCashDisplay
+import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.dialogs.BulkOrderDialog
 import com.example.superstoresimulator.ui.state.InventoryUIState
-import java.util.Locale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 
@@ -154,15 +153,10 @@ fun InventoryScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Top
         ) {
-            Column {
-                Text(
-                    text = "Inventory",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1E40AF)
-                )
-                SmallCashDisplay(money)
-            }
+            ScreenHeader(
+                title = "Inventory",
+                money = money
+            )
 
             // Only show Bulk Order button if TIER_2 or above is unlocked
             if (currentTier.unlockAmount >= ItemUnlockTier.TIER_2.unlockAmount) {

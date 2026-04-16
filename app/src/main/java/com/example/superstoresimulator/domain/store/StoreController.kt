@@ -2,7 +2,6 @@ package com.example.superstoresimulator.domain.store
 
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.traffic.TrafficManager
-import com.example.superstoresimulator.domain.time.StoreState
 
 /**
  * Sub-system responsible for store administrative operations.
@@ -30,6 +29,28 @@ class StoreController {
      */
     fun updateStoreName(state: GameState, newName: String): GameState =
         state.copy(storeName = newName)
+
+    /**
+     * Upgrade the store to the next size, if possible.
+     *
+     * Guards:
+     *  - Returns the same state unchanged if already at max size (XL).
+     *  - Returns the same state unchanged if player doesn't have enough cash.
+     *
+     * On success: deducts [StoreSize.upgradeCost] and advances to next size.
+     */
+    fun upgradeStoreSize(state: GameState): GameState {
+        val nextSize = StoreSize.nextSize(state.currentStoreSize) ?: return state
+        val cost = nextSize.upgradeCost ?: return state
+        
+        if (state.money < cost) return state
+
+        return state.copy(
+            currentStoreSize = nextSize,
+            money = state.money - cost,
+            storeConfig = state.storeConfig.copy(backroomCapPerItem = nextSize.backroomCapPerItem)
+        )
+    }
 
     /**
      * Toggle whether the player has manually paused the passage of time.

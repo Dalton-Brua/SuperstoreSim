@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.ui.theme.Secondary
 import com.example.superstoresimulator.ui.theme.TextWhite
+import com.example.superstoresimulator.ui.theme.PrimaryDark
 
 @Composable
 fun HistoryHeader(
@@ -38,6 +39,7 @@ fun HistoryHeader(
                 "Sales History",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
+                color = PrimaryDark,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             Card(colors = CardDefaults.cardColors(containerColor = Secondary)) {

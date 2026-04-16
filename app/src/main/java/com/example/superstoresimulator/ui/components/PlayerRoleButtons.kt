@@ -30,7 +30,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.player.PlayerRole
-import com.example.superstoresimulator.domain.time.StoreState
 import com.example.superstoresimulator.ui.theme.DarkBackground
 import com.example.superstoresimulator.ui.theme.DarkSurface
 import com.example.superstoresimulator.ui.theme.LightGrey

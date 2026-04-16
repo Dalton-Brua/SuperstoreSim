@@ -41,6 +41,7 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.ui.state.ProgressionUIState
+import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.theme.LightBackground
 import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
@@ -62,17 +63,9 @@ fun UnlocksScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text(
-                text = "Store Progression",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold,
-                color = PrimaryDark
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = "Total revenue: ${progression.totalRevenue}",
-                fontSize = 14.sp,
-                color = Color(0xFF64748B)
+            ScreenHeader(
+                title = "Store Progression",
+                subtitle = "Total revenue: ${progression.totalRevenue}"
             )
             Spacer(Modifier.height(8.dp))
         }

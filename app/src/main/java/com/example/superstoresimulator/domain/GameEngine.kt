@@ -2,7 +2,9 @@ package com.example.superstoresimulator.domain
 
 import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Entities.EntityType
+import com.example.superstoresimulator.domain.Transactions.TransactionEngine
 import com.example.superstoresimulator.domain.inventory.InventoryManager
+import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
@@ -12,9 +14,11 @@ import com.example.superstoresimulator.domain.player.PlayerActionHandler
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.domain.progression.ProgressionManager
 import com.example.superstoresimulator.domain.staff.StaffManager
+import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreController
+import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.time.TimeManager
-import com.example.superstoresimulator.domain.time.StoreState
+import com.example.superstoresimulator.domain.store.StoreState
 import com.example.superstoresimulator.domain.traffic.TrafficManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,7 +42,10 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     var state = GameState(
         inventory = mutableMapOf(),
         currentTime = timeManager.currentTime,
-        storeState = timeManager.getStoreState()
+        storeState = timeManager.getStoreState(),
+        storeConfig = StoreConfig(
+            backroomCapPerItem = com.example.superstoresimulator.domain.store.StoreSize.MOM_AND_POP.backroomCapPerItem
+        )
     )
         internal set
 
@@ -203,6 +210,13 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     }
     fun updateStoreName(newName: String) {
         state = storeController.updateStoreName(state, newName)
+    }
+    fun upgradeStoreSize() {
+        val moneyBefore = state.money
+        state = storeController.upgradeStoreSize(state)
+        if (state.money != moneyBefore) {
+            _changes.value = GameStateChange.MoneyChanged(state.money)
+        }
     }
 
     // Game tick (mostly staff actions)

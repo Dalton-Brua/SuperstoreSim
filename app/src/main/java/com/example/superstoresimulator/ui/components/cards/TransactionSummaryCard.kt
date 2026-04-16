@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.ui.theme.PrimaryDark
 import com.example.superstoresimulator.ui.theme.TextSecondary
 import com.example.superstoresimulator.ui.theme.CardBlue
+import com.example.superstoresimulator.ui.theme.ProgressBarTrack
+import com.example.superstoresimulator.ui.theme.ProgressBarIndicator
 
 @Composable
 fun TransactionSummaryCard(
@@ -34,8 +36,12 @@ fun TransactionSummaryCard(
         Column(Modifier.padding(16.dp)) {
             Text("Transaction #$transactionId", fontWeight = FontWeight.Bold, color = PrimaryDark)
             val progress = if (totalRequired == 0) 0f else totalRung.toFloat() / totalRequired
-            Text("$totalRung/$totalRequired items")
-            LinearProgressIndicator(progress = { progress })
+            Text("$totalRung/$totalRequired items", color = PrimaryDark)
+            LinearProgressIndicator(
+                progress = { progress },
+                color = ProgressBarIndicator,
+                trackColor = ProgressBarTrack
+            )
             Text("Tap to view details", color = TextSecondary, fontSize = 12.sp)
         }
     }

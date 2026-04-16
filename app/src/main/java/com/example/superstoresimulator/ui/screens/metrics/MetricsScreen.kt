@@ -27,6 +27,7 @@ import com.example.superstoresimulator.ui.dialogs.EndOfDayReportDialog
 import com.example.superstoresimulator.ui.dialogs.OutOfStockReportDialog
 import com.example.superstoresimulator.ui.dialogs.SoldItemsReportDialog
 import com.example.superstoresimulator.ui.state.MetricsUIState
+import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.theme.*
 
 /**
@@ -63,7 +64,15 @@ fun MetricsScreen(
         modifier = modifier
             .fillMaxSize()
             .background(LightBackground)
+            .padding(horizontal = 16.dp)
     ) {
+        Spacer(Modifier.height(16.dp))
+        
+        ScreenHeader(
+            title = "Metrics",
+            subtitle = "Daily store performance reports"
+        )
+        
         // ── Search bar ────────────────────────────────────────────────────
         OutlinedTextField(
             value = searchQuery,

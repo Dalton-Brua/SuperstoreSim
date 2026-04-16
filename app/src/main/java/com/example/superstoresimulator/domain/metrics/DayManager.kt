@@ -1,6 +1,8 @@
 package com.example.superstoresimulator.domain.metrics
 
 import com.example.superstoresimulator.domain.GameState
+import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.store.StaffWageCalculator
 
 /**
  * Sub-system responsible for day-boundary management and the end-of-day report lifecycle.
@@ -55,9 +57,25 @@ class DayManager {
      *                  at the moment the rollover was detected).
      */
     fun rollOverDay(state: GameState, dayNumber: Int): GameState {
-        val snapshot = state.currentDayMetrics.toSnapshot(dayOfWeek = dayNumber % 7)
+        // Calculate operating costs
+        val rentCost = state.currentStoreSize.dailyRent
+        val wagesCost = StaffWageCalculator.calculateTotalWages(state.hiredEntityRegistry)
+
+        // Update metrics with operating costs
+        val metricsWithCosts = state.currentDayMetrics.copy(
+            rentPaid = rentCost,
+            wagesPaid = wagesCost,
+        )
+
+        // Snapshot metrics
+        val snapshot = metricsWithCosts.toSnapshot(dayOfWeek = dayNumber % 7)
+
+        // Deduct operating costs
+        val newCash = state.money - rentCost - wagesCost
+
         val wasAlreadyPaused = state.playerPausedTime
         return state.copy(
+            money = newCash,
             completedDayMetrics = state.completedDayMetrics + snapshot,
             currentDayMetrics = DailyMetricsAccumulator(dayNumber = dayNumber + 1),
             showEndOfDayReport = true,

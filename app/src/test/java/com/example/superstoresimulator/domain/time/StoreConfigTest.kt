@@ -1,5 +1,6 @@
 package com.example.superstoresimulator.domain.time
 
+import com.example.superstoresimulator.domain.store.StoreConfig
 import org.junit.Test
 import org.junit.Assert.*
 import org.junit.Before
