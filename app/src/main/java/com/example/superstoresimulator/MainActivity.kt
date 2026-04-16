@@ -108,17 +108,15 @@ class MainActivity : ComponentActivity() {
                 val pagerState = rememberPagerState(pageCount = { mainScreens.size })
                 val coroutineScope = rememberCoroutineScope()
                 
-                // Sync pager with currentScreen
-                LaunchedEffect(currentScreen) {
-                    val index = mainScreens.indexOf(currentScreen)
-                    if (index != -1 && pagerState.currentPage != index) {
-                        pagerState.animateScrollToPage(index)
+                // Flag to prevent sync loops during programmatic navigation
+                var isNavigatingProgrammatically by remember { mutableStateOf(false) }
+
+                // Sync currentScreen with pager (only when user swipes, not when nav button clicked)
+                LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
+                    if (!isNavigatingProgrammatically && !pagerState.isScrollInProgress) {
+                        // User finished swiping to a new page
+                        currentScreen = mainScreens[pagerState.currentPage]
                     }
-                }
-                
-                // Sync currentScreen with pager
-                LaunchedEffect(pagerState.currentPage) {
-                    currentScreen = mainScreens[pagerState.currentPage]
                 }
 
                 Box(modifier = Modifier.statusBarsPadding()) {
@@ -146,11 +144,14 @@ class MainActivity : ComponentActivity() {
                                         }
                                     } else {
                                         // Navigate to different screen
-                                        currentScreen = screen
-                                        val index = mainScreens.indexOf(screen)
-                                        if (index != -1) {
+                                        val targetIndex = mainScreens.indexOf(screen)
+                                        if (targetIndex != -1) {
+                                            isNavigatingProgrammatically = true
+                                            currentScreen = screen
                                             coroutineScope.launch {
-                                                pagerState.animateScrollToPage(index)
+                                                pagerState.animateScrollToPage(targetIndex)
+                                                // Clear flag after animation completes
+                                                isNavigatingProgrammatically = false
                                             }
                                         }
                                     }
