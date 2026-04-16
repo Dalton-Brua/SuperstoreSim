@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
                 val viewModel: GameViewModel = viewModel()
                 var currentScreen by remember { mutableStateOf(Screen.GAME) }
                 var selectedStaffTab by remember { mutableStateOf(0) }
+                var inventoryResetTrigger by remember { mutableStateOf(0) }
 
                 // Collect UI state from ViewModel's StateFlow
                 val uiState by viewModel.uiState.collectAsState()
@@ -126,11 +127,31 @@ class MainActivity : ComponentActivity() {
                             BottomNavBar(
                                 current = currentScreen,
                                 onSelect = { screen ->
-                                    currentScreen = screen
-                                    val index = mainScreens.indexOf(screen)
-                                    if (index != -1) {
-                                        coroutineScope.launch {
-                                            pagerState.animateScrollToPage(index)
+                                    // If clicking the current screen button, reset its state
+                                    if (currentScreen == screen) {
+                                        when (screen) {
+                                            Screen.INVENTORY -> {
+                                                // Reset inventory filters and trigger local state reset
+                                                viewModel.onEvent(GameEvent.SelectItemCategory(null))
+                                                viewModel.onEvent(GameEvent.FocusInventoryItem(null))
+                                                inventoryResetTrigger++  // Trigger reset of search bar and detail view
+                                            }
+                                            Screen.STAFF -> {
+                                                // Reset to Staff tab (tab 0)
+                                                selectedStaffTab = 0
+                                            }
+                                            else -> {
+                                                // Other screens don't need reset yet
+                                            }
+                                        }
+                                    } else {
+                                        // Navigate to different screen
+                                        currentScreen = screen
+                                        val index = mainScreens.indexOf(screen)
+                                        if (index != -1) {
+                                            coroutineScope.launch {
+                                                pagerState.animateScrollToPage(index)
+                                            }
                                         }
                                     }
                                 },
@@ -170,6 +191,7 @@ class MainActivity : ComponentActivity() {
                                 itemMetadataCache = viewModel.itemMetadataCache,
                                 currentTier = state.progression.currentTier,
                                 metricsData = state.metrics.completedDays,
+                                resetTrigger = inventoryResetTrigger,
                                 onBuyItem = { itemId -> viewModel.onEvent(GameEvent.BuyItem(itemId)) },
                                 onSelectCategory = { category -> viewModel.onEvent(GameEvent.SelectItemCategory(category)) },
                                 onBulkOrder = { maxQty, casePacks, category ->

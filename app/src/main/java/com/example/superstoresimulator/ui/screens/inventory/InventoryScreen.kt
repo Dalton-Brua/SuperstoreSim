@@ -54,6 +54,8 @@ import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.dialogs.BulkOrderDialog
 import com.example.superstoresimulator.ui.state.InventoryUIState
 import com.example.superstoresimulator.ui.state.InventoryItemUI
+import com.example.superstoresimulator.ui.theme.Primary
+import com.example.superstoresimulator.ui.theme.PrimaryDark
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -64,6 +66,7 @@ fun InventoryScreen(
     itemMetadataCache: ItemMetadataCache,
     currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
     metricsData: List<DailyMetrics> = emptyList(),
+    resetTrigger: Int = 0,  // Increment this to trigger a reset
     onBuyItem: (Int) -> Unit,
     onSelectCategory: (ItemCategory?) -> Unit,
     onBulkOrder: (maxTotalQuantity: Int, casePacksPerItem: Int, categoryFilter: ItemCategory?) -> Unit = { _, _, _ -> },
@@ -101,6 +104,14 @@ fun InventoryScreen(
             itemNames.value = itemMetadataCache.getAllItemNames()
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+    
+    // Reset local state when resetTrigger changes (triggered by clicking nav button on current screen)
+    LaunchedEffect(resetTrigger) {
+        if (resetTrigger > 0) {  // Only reset if trigger is positive (not initial value)
+            searchQuery.value = ""
+            selectedItemId = null
         }
     }
 
@@ -268,8 +279,9 @@ private fun InventoryListScreen(
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.White,
                 unfocusedContainerColor = Color.White,
-                focusedIndicatorColor = Color(0xFF1E40AF),
-                unfocusedIndicatorColor = Color(0xFFE2E8F0)
+                focusedTextColor = PrimaryDark,  // Dark slate for text
+                unfocusedTextColor = PrimaryDark,  // Dark slate for text
+                cursorColor = Primary  // Blue cursor
             )
         )
 
@@ -612,13 +624,28 @@ fun InventoryItemDetailScreen(
                         )
                         
                         // Purchase weight (if available)
-                        fullItem?.purchaseWeight?.let { weight ->
-                            // Calculate percentage relative to baseline (1.0 = 100%)
-                            val demandPercentage = (weight * 100).toInt()
+                        fullItem?.purchaseWeight?.let { baselineWeight ->
+                            // Calculate percentage relative to item's baseline weight
+                            // When events modify demand, they would change currentWeight
+                            val currentWeight = baselineWeight  // TODO: Apply event modifiers when implemented
+                            val demandPercentage = ((currentWeight / baselineWeight) * 100).toInt()
+                            
+                            // Green for normal/high demand (≥100%), yellow for low demand (<100%)
+                            val backgroundColor = if (demandPercentage >= 100) {
+                                Color(0xFFDCFCE7)  // Light green
+                            } else {
+                                Color(0xFFFEF3C7)  // Amber/yellow
+                            }
+                            val textColor = if (demandPercentage >= 100) {
+                                Color(0xFF166534)  // Dark green
+                            } else {
+                                Color(0xFF78350F)  // Dark amber
+                            }
+                            
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFFEF3C7)
+                                color = backgroundColor
                             ) {
                                 Row(
                                     modifier = Modifier.padding(12.dp),
@@ -627,13 +654,13 @@ fun InventoryItemDetailScreen(
                                     Text(
                                         "Customer Demand",
                                         fontSize = 12.sp,
-                                        color = Color(0xFF78350F)
+                                        color = textColor
                                     )
                                     Text(
                                         "$demandPercentage%",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF78350F)
+                                        color = textColor
                                     )
                                 }
                             }

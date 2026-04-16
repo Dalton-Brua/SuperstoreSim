@@ -178,16 +178,27 @@ class GameViewModel @Inject constructor(
             is GameEvent.FocusInventoryItem -> {
                 val itemId = event.itemId
                 viewModelScope.launch {
-                    // Convert integer itemId to database format "item_XXX"
-                    val dbItemId = "item_" + String.format(Locale.US, "%03d", itemId)
-                    val def = itemDao.getItemById(dbItemId)
-                    _uiState.update { state ->
-                        state?.copy(
-                            inventory = state.inventory.copy(
-                                selectedCategory = def?.category,
-                                focusedItemId = itemId
-                            )
-                        ) ?: return@update null
+                    if (itemId == null) {
+                        // Clear focus
+                        _uiState.update { state ->
+                            state?.copy(
+                                inventory = state.inventory.copy(
+                                    focusedItemId = null
+                                )
+                            ) ?: return@update null
+                        }
+                    } else {
+                        // Convert integer itemId to database format "item_XXX"
+                        val dbItemId = "item_" + String.format(Locale.US, "%03d", itemId)
+                        val def = itemDao.getItemById(dbItemId)
+                        _uiState.update { state ->
+                            state?.copy(
+                                inventory = state.inventory.copy(
+                                    selectedCategory = def?.category,
+                                    focusedItemId = itemId
+                                )
+                            ) ?: return@update null
+                        }
                     }
                 }
                 return // No need to update UI state from engine for this event, it's UI-focused

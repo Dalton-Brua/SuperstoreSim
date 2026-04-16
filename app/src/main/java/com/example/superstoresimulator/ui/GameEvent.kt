@@ -13,7 +13,7 @@ sealed interface GameEvent {
     data class StockItem(val itemId: Int) : GameEvent
     data class BuyItem(val itemId: Int) : GameEvent
     data class SelectItemCategory(val category: ItemCategory?) : GameEvent
-    data class FocusInventoryItem(val itemId: Int) : GameEvent
+    data class FocusInventoryItem(val itemId: Int?) : GameEvent
     data class HireStaff(val entityDef: EntityDef, val entityType: EntityType) : GameEvent
     data class UpgradeStaff(val entityId: Int) : GameEvent
     data class FireStaff(val entityId: Int) : GameEvent

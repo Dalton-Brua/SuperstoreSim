@@ -97,12 +97,17 @@ fun InventoryItemCard(
             Button(
                 onClick = onBuy,
                 modifier = Modifier.fillMaxWidth(),
-                colors = GameButtonStyles.primaryBlueColor(),
-                enabled = canAffordBuy && !item.backroomFull
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF1E40AF),  // Primary blue
+                    contentColor = Color.White,
+                    disabledContainerColor = Color(0xFFE2E8F0),  // Light grey
+                    disabledContentColor = Color(0xFF94A3B8)  // Grey text
+                ),
+                enabled = canAffordBuy && !item.backroomFull,
+                shape = GameButtonStyles.Shape
             ) {
                 Text(
                     if (item.backroomFull) "Backroom Full" else "Order (${item.casePackCost})",
-                    color = Color.White,
                     fontWeight = FontWeight.Bold
                 )
             }

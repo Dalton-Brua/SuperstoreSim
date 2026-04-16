@@ -100,7 +100,10 @@ fun MetricsScreen(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 unfocusedBorderColor = CardBlue,
-                focusedBorderColor = Primary
+                focusedBorderColor = Primary,
+                focusedTextColor = PrimaryDark,  // Dark blue for text
+                unfocusedTextColor = PrimaryDark,  // Dark blue for text
+                cursorColor = Primary  // Blue cursor
             )
         )
 
