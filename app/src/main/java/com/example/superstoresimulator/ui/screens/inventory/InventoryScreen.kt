@@ -70,6 +70,7 @@ fun InventoryScreen(
     onBuyItem: (Int) -> Unit,
     onSelectCategory: (ItemCategory?) -> Unit,
     onBulkOrder: (maxTotalQuantity: Int, casePacksPerItem: Int, categoryFilter: ItemCategory?) -> Unit = { _, _, _ -> },
+    onItemClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // State to hold item names from cache
@@ -84,15 +85,12 @@ fun InventoryScreen(
     // Dialog state
     var showBulkOrderDialog by remember { mutableStateOf(false) }
     
-    // Navigation state: null = list view, itemId = detail view
-    var selectedItemId by remember { mutableStateOf<Int?>(null) }
-    
-    // Debounce search query with 300ms delay
+    // Debounce search query with 200ms delay
     LaunchedEffect(searchQuery.value) {
         if (searchQuery.value.isEmpty()) {
             debouncedSearchQuery.value = ""
         } else {
-            delay(300)  // Wait 300ms before applying search
+            delay(200)  // Wait 200ms before applying search
             debouncedSearchQuery.value = searchQuery.value
         }
     }
@@ -111,7 +109,6 @@ fun InventoryScreen(
     LaunchedEffect(resetTrigger) {
         if (resetTrigger > 0) {  // Only reset if trigger is positive (not initial value)
             searchQuery.value = ""
-            selectedItemId = null
         }
     }
 
@@ -162,38 +159,22 @@ fun InventoryScreen(
         )
     }
 
-    // Navigation: Show detail view or list view
-    if (selectedItemId != null) {
-        val selectedItem = state.items.find { it.id == selectedItemId }
-        if (selectedItem != null) {
-            InventoryItemDetailScreen(
-                item = selectedItem.copy(name = itemNames.value[selectedItem.id] ?: selectedItem.name),
-                money = money,
-                itemMetadataCache = itemMetadataCache,
-                currentTier = currentTier,
-                metricsData = metricsData,
-                onBuyItem = onBuyItem,
-                onBack = { selectedItemId = null },
-                modifier = modifier
-            )
-        }
-    } else {
-        InventoryListScreen(
-            state = state,
-            money = money,
-            currentTier = currentTier,
-            searchQuery = searchQuery,
-            debouncedSearchQuery = debouncedSearchQuery,
-            itemNames = itemNames,
-            filteredItems = filteredItems,
-            listState = listState,
-            onBuyItem = onBuyItem,
-            onSelectCategory = onSelectCategory,
-            onItemClick = { selectedItemId = it },
-            onShowBulkOrderDialog = { showBulkOrderDialog = true },
-            modifier = modifier
-        )
-    }
+    // Always show list view (detail screen is handled at MainActivity level as overlay)
+    InventoryListScreen(
+        state = state,
+        money = money,
+        currentTier = currentTier,
+        searchQuery = searchQuery,
+        debouncedSearchQuery = debouncedSearchQuery,
+        itemNames = itemNames,
+        filteredItems = filteredItems,
+        listState = listState,
+        onBuyItem = onBuyItem,
+        onSelectCategory = onSelectCategory,
+        onItemClick = onItemClick,
+        onShowBulkOrderDialog = { showBulkOrderDialog = true },
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -364,7 +345,7 @@ fun CategoryChip(
 }
 
 @Composable
-fun InventoryItemDetailScreen(
+internal fun InventoryItemDetailScreen(
     item: InventoryItemUI,
     money: Money,
     itemMetadataCache: ItemMetadataCache,
@@ -394,25 +375,12 @@ fun InventoryItemDetailScreen(
             .statusBarsPadding()
             .padding(16.dp)
     ) {
-        // Header with back button
+        // Header with money display
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.End
         ) {
-            // Back button
-            Button(
-                onClick = onBack,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFE2E8F0),
-                    contentColor = Color(0xFF1E293B)
-                ),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Text("← Back", fontWeight = FontWeight.SemiBold)
-            }
-            
             // Money display
             Text(
                 text = money.toString(),
@@ -705,6 +673,21 @@ fun InventoryItemDetailScreen(
                     )
                 }
             }
+        }
+        
+        Spacer(Modifier.height(16.dp))
+        
+        // Back button at bottom
+        Button(
+            onClick = onBack,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF1E40AF),  // Primary blue
+                contentColor = Color.White
+            ),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Text("Back", fontWeight = FontWeight.Bold)
         }
     }
 }

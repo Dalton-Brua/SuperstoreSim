@@ -49,6 +49,7 @@ import com.example.superstoresimulator.ui.GameEvent
 import com.example.superstoresimulator.ui.viewmodels.GameViewModel
 import com.example.superstoresimulator.ui.screens.home.StoreHomeScreen
 import com.example.superstoresimulator.ui.screens.inventory.InventoryScreen
+import com.example.superstoresimulator.ui.screens.inventory.InventoryItemDetailScreen
 import com.example.superstoresimulator.ui.screens.metrics.MetricsScreen
 import com.example.superstoresimulator.ui.screens.sales.SalesHistoryScreen
 import com.example.superstoresimulator.ui.screens.staff.StaffAndUnlocksScreen
@@ -79,6 +80,7 @@ class MainActivity : ComponentActivity() {
                 var currentScreen by remember { mutableStateOf(Screen.GAME) }
                 var selectedStaffTab by remember { mutableStateOf(0) }
                 var inventoryResetTrigger by remember { mutableStateOf(0) }
+                var selectedInventoryItemId by remember { mutableStateOf<Int?>(null) }
 
                 // Collect UI state from ViewModel's StateFlow
                 val uiState by viewModel.uiState.collectAsState()
@@ -133,6 +135,7 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.onEvent(GameEvent.SelectItemCategory(null))
                                                 viewModel.onEvent(GameEvent.FocusInventoryItem(null))
                                                 inventoryResetTrigger++  // Trigger reset of search bar and detail view
+                                                selectedInventoryItemId = null  // Close detail screen if open
                                             }
                                             Screen.STAFF -> {
                                                 // Reset to Staff tab (tab 0)
@@ -216,6 +219,7 @@ class MainActivity : ComponentActivity() {
                                 onBulkOrder = { maxQty, casePacks, category ->
                                     viewModel.onEvent(GameEvent.BulkOrder(maxQty, casePacks, category))
                                 },
+                                onItemClick = { itemId -> selectedInventoryItemId = itemId },
                                 modifier = Modifier.padding(paddingValues)
                             )
 
@@ -277,6 +281,24 @@ class MainActivity : ComponentActivity() {
                                     currentScreen = Screen.STAFF
                                 }
                             )
+                        }
+                    }
+                    
+                    // Inventory Item Detail Screen as overlay (not part of pager)
+                    if (selectedInventoryItemId != null) {
+                        val selectedItem = state.inventory.items.find { it.id == selectedInventoryItemId }
+                        if (selectedItem != null) {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                InventoryItemDetailScreen(
+                                    item = selectedItem,
+                                    money = state.app.money,
+                                    itemMetadataCache = viewModel.itemMetadataCache,
+                                    currentTier = state.progression.currentTier,
+                                    metricsData = state.metrics.completedDays,
+                                    onBuyItem = { itemId -> viewModel.onEvent(GameEvent.BuyItem(itemId)) },
+                                    onBack = { selectedInventoryItemId = null }
+                                )
+                            }
                         }
                     }
 
