@@ -21,7 +21,14 @@ Compose receives GameUiState
 Screen updates
 ```
 
-**Key Files**: `domain/GameEngine.kt` | `ui/viewmodels/GameViewModel.kt` | `ui/state/GameUiState.kt`
+**Swipe Navigation** (April 16, 2026): Main screens use `HorizontalPager` for swipe-based navigation:
+- Five main screens: GAME, INVENTORY, STAFF, HISTORY, METRICS
+- Pager state synced bidirectionally with bottom nav bar and currentScreen
+- StaffAndUnlocksScreen also uses internal `HorizontalPager` with "Staff"/"Unlocks" tabs
+- Pattern: `LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress)` prevents sync loops
+- Use `isNavigatingProgrammatically` flag to prevent infinite sync loops when tapping nav buttons
+
+**Key Files**: `domain/GameEngine.kt` | `ui/viewmodels/GameViewModel.kt` | `ui/state/GameUiState.kt` | `MainActivity.kt` (pager implementation)
 ---
 ### **2. Immutable State with Copy Semantics**
 GameState is a data class. All updates use `.copy()`:
@@ -163,6 +170,7 @@ Emit change via _changes.emit(...)
 - ❌ Never call manager methods directly — GameEngine public methods orchestrate them
 - ❌ Never instantiate managers outside GameEngine — managers are created and owned by the engine
 - ❌ Never mutate manager state (accumulators like `staffManager.cashierProgress`) — only GameEngine writes
+- ❌ Never call private manager methods (e.g., `stockCasePackFromBackroom()`) from outside code — always route through GameEngine public methods
 - ✅ When reading GameEngine code, understand managers are pure: all state flows through GameState.copy()
 - ✅ Managers are testable in isolation by passing mocked GameState
 - ✅ Each manager knows ONE domain; never cross-call between managers
@@ -208,7 +216,13 @@ The `GameViewModel.onEvent()` method has four routing patterns:
 
 This pattern ensures performance: pure-UI events don't trigger expensive GameState→GameUiState transformations, while domain events properly rebuild UI state through the incremental builder.
 
-**See**: ui/viewmodels/GameViewModel.kt | ui/state/mappers/MemoizedInventoryMapper.kt | ui/state/builders/IncrementalUiStateBuilder.kt
+**Screen State Reset Pattern** (April 16, 2026):
+When tapping the current bottom nav screen button, local screen state resets:
+- **INVENTORY**: Clears category filter, focuses null item, increments `inventoryResetTrigger`, closes detail screen
+- **STAFF**: Resets to tab 0 (Staff tab)
+- Other screens: no reset behavior yet
+
+**See**: ui/viewmodels/GameViewModel.kt | ui/state/mappers/MemoizedInventoryMapper.kt | ui/state/builders/IncrementalUiStateBuilder.kt | MainActivity.kt (reset logic)
 ---
 ### **5. Time System (Decoupled from Real Time)**
 - **GameTime.kt**: Value class wrapping `totalMinutesElapsed` (immutable, single source of truth)
@@ -741,6 +755,8 @@ git merge feature/my-feature
 | `checkAndAdvanceTier()` missing | It was removed — tiers are manually purchased via `unlockNextTier()` |
 | Skip Day has no effect | Guard: `simulateRestOfDay()` is a no-op if `showEndOfDayReport` is already `true`; dismiss the current report first |
 | Bulk Order not available | `BulkOrderDialog` only appears when `currentTier >= TIER_2` |
+| Pager state sync loops | Use `isNavigatingProgrammatically` flag; check `!pagerState.isScrollInProgress` before syncing |
+| Calling private manager methods | Never call private methods like `stockCasePackFromBackroom()` — route through GameEngine public methods |
 ---
 ## 🗂️ File Organization
 
@@ -765,7 +781,7 @@ git merge feature/my-feature
 - traffic/ [TrafficManager.kt, TrafficPattern.kt — TrafficPattern, TrafficSchedule, TransactionRequest]
 
 **ui/** — User interface (Compose)
-- viewmodels/ [GameViewModel, ItemViewModel]
+- viewmodels/ [GameViewModel, ItemViewModel (used by SalesHistoryScreen for item name lookups)]
 - state/ [GameUiState (AppUIState, DashboardUIState, TransactionUIState, InventoryUIState, StaffUIState, HistoryUIState, TimeUIState, MetricsUIState, **ProgressionUIState**), mappers, builders]
 - screens/ [home/StoreHomeScreen, inventory/InventoryScreen, sales/SalesHistoryScreen, staff/StaffScreen (**StaffAndUnlocksScreen** composite with "Staff"/"Unlocks" tabs), staff/UnlocksScreen, **metrics/MetricsScreen**]
 - components/ [buttons/, cards/, common/, panels/, CustomerQueueIndicator.kt, PlayerRoleButtons.kt, PlayerRoleIndicator.kt]
