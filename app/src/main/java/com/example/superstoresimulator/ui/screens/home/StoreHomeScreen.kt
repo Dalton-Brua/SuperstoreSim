@@ -258,11 +258,11 @@ fun StoreHomeScreen (
         AnimatedVisibility(
             visible = settingsOpen,
             enter = slideInHorizontally(
-                initialOffsetX = { it },
+                initialOffsetX = { -it },
                 animationSpec = tween(300)
             ),
             exit = slideOutHorizontally(
-                targetOffsetX = { it },
+                targetOffsetX = { -it },
                 animationSpec = tween(300)
             )
         ) {
@@ -288,7 +288,9 @@ fun StoreHomeScreen (
                 fontSize = 18.sp,
                 color = PrimaryDark
             )
-            IconButton(onClick = { settingsOpen = !settingsOpen }) {
+            IconButton(
+                onClick = { settingsOpen = !settingsOpen },
+                colors = IconButtonDefaults.iconButtonColors(contentColor = PrimaryDark)) {
                 Icon(Icons.Default.Menu, "Menu")
             }
         }

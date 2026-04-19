@@ -150,7 +150,8 @@ fun StoreSizeCard(
                     Text(
                         text = "Upgrade to ${nextSize.displayName} (${nextSize.upgradeCost})",
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
                     )
                 }
                 

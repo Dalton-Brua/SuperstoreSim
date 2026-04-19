@@ -19,6 +19,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.ui.state.AppUIState
 import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.TextPrimary
 import com.example.superstoresimulator.ui.theme.TextSecondary
 
 @Composable
@@ -80,10 +82,15 @@ fun SettingsPanel(
 
             // Main content
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Store Name", fontWeight = FontWeight.Medium)
+                Text("Store Name", fontWeight = FontWeight.Medium, color = PrimaryDark)
                 OutlinedTextField(
                     value = draftName,
                     onValueChange = { draftName = it },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextSecondary,
+                        cursorColor = PrimaryDark
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     maxLines = 1

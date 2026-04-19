@@ -78,7 +78,7 @@ fun TierProgressCard(
                     Text(
                         text = if (nextTier == null) "All sections unlocked" else "Revenue: $totalRevenue",
                         fontSize = 12.sp,
-                        color = TextSecondary
+                        color = Color.White
                     )
                 }
             }
@@ -189,7 +189,8 @@ fun TierProgressCard(
                         Text(
                             text = "Unlock ${nextTier.displayName} (${availableTier.unlockCost})",
                             fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
                         )
                     }
                     
