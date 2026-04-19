@@ -69,6 +69,9 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     @Inject lateinit var itemDao: ItemDao
     
+    // Keep reference to ViewModel to save on lifecycle events
+    private var gameViewModel: GameViewModel? = null
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -77,6 +80,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 // Instantiate ViewModel (Hilt handles dependency injection automatically)
                 val viewModel: GameViewModel = viewModel()
+                gameViewModel = viewModel // Keep reference for lifecycle callbacks
                 var currentScreen by remember { mutableStateOf(Screen.GAME) }
                 var selectedStaffTab by remember { mutableStateOf(0) }
                 var inventoryResetTrigger by remember { mutableStateOf(0) }
@@ -204,7 +208,9 @@ class MainActivity : ComponentActivity() {
                                             isNavigatingProgrammatically = false
                                         }
                                     }
-                                }
+                                },
+                                onSave = { viewModel.onEvent(GameEvent.SaveGame) },
+                                onReset = { viewModel.onEvent(GameEvent.ResetGame) }
                             )
 
                             Screen.INVENTORY -> InventoryScreen(
@@ -312,6 +318,18 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+    
+    override fun onPause() {
+        super.onPause()
+        // Save game when app goes to background
+        gameViewModel?.saveGameState()
+    }
+    
+    override fun onStop() {
+        super.onStop()
+        // Additional save on stop as a safety measure
+        gameViewModel?.saveGameState()
     }
 }
 

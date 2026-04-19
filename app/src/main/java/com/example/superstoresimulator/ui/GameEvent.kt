@@ -49,4 +49,10 @@ sealed interface GameEvent {
         val casePacksPerItem: Int,      // number of case packs to order per matching item
         val categoryFilter: ItemCategory? = null,  // null = all accessible categories
     ) : GameEvent
+
+    // Save System: manually save the game state
+    data object SaveGame : GameEvent
+
+    // Reset System: reset the game to initial state
+    data object ResetGame : GameEvent
 }

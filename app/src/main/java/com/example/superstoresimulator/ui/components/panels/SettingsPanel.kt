@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -38,12 +39,15 @@ import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.PrimaryDark
 import com.example.superstoresimulator.ui.theme.TextPrimary
 import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.dialogs.ResetGameConfirmationDialog
 
 @Composable
 fun SettingsPanel(
     app: AppUIState,
     onStoreNameChange: (String) -> Unit,
     onClose: () -> Unit,
+    onSave: () -> Unit = {},
+    onReset: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Improved settings panel: local edit state, Save/Cancel, Reset, and read-only stats.
@@ -57,6 +61,9 @@ fun SettingsPanel(
     ) {
         // Local editable copy of the store name so changes can be reviewed before saving
         var draftName by remember { mutableStateOf(app.storeName) }
+        
+        // State for reset confirmation dialog
+        var showResetConfirmation by remember { mutableStateOf(false) }
 
         Column(modifier = Modifier.fillMaxSize()) {
             // Header
@@ -117,6 +124,30 @@ fun SettingsPanel(
 
                 // Quick read-only stats to give context to settings
                 HorizontalDivider()
+                
+                // Save Game and Reset Game buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onSave,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Save Game")
+                    }
+                    
+                    Button(
+                        onClick = { showResetConfirmation = true },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFE74C3C)
+                        )
+                    ) {
+                        Text("Reset Store", color = Color.White)
+                    }
+                }
+                
                 // A small hint / help text
                 Text(
                     "Tip: Changes to the store name are applied when you press Save. Use Reset to restore the default name.",
@@ -127,6 +158,17 @@ fun SettingsPanel(
             }
 
             Spacer(modifier = Modifier.weight(1f))
+        }
+        
+        // Show reset confirmation dialog
+        if (showResetConfirmation) {
+            ResetGameConfirmationDialog(
+                onConfirm = {
+                    onReset()
+                    onClose()  // Close settings panel after reset
+                },
+                onDismiss = { showResetConfirmation = false }
+            )
         }
     }
 }

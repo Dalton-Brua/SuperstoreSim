@@ -426,4 +426,27 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             _changes.value = GameStateChange.TierUnlocked(state.currentTier, previousTier)
         }
     }
+
+    /**
+     * Loads a previously saved GameState.
+     * Used for restoring saved games.
+     * Syncs/resets all manager internal state to match the loaded game state.
+     */
+    fun loadState(savedState: GameState) {
+        state = savedState
+        // Sync time manager to the loaded state's time
+        timeManager.syncTime(savedState.currentTime)
+        // Sync time manager config - set each property explicitly to ensure proper syncing
+        timeManager.config = savedState.storeConfig.copy()
+        // Also explicitly set the speed multiplier to ensure it's applied
+        timeManager.setSpeedMultiplier(savedState.storeConfig.gameSpeedMultiplier)
+        // Sync day manager to prevent double day rollover on first tick
+        dayManager.syncDay(savedState.currentTime.dayNumber)
+        // Reset staff manager accumulators (fractional work progress is transient)
+        staffManager.reset()
+        // Reset traffic manager (customers are transient, don't persist across saves)
+        trafficManager.reset()
+        // Clear any pending changes
+        _changes.value = null
+    }
 }

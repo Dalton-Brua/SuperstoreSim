@@ -45,6 +45,14 @@ class DayManager {
     }
 
     /**
+     * Sync the internal day counter to match a loaded game state.
+     * Used when restoring saved games to prevent double-triggering day rollover.
+     */
+    fun syncDay(dayNumber: Int) {
+        lastKnownDayNumber = dayNumber
+    }
+
+    /**
      * Snapshot today's [DailyMetricsAccumulator] into an immutable [DailyMetrics]
      * record, append it to [GameState.completedDayMetrics], start a fresh accumulator
      * for the new day, and surface the end-of-day report.

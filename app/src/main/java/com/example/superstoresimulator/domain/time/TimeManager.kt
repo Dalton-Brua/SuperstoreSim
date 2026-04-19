@@ -37,6 +37,15 @@ class TimeManager(
      */
     fun reset() {
         currentTime = GameTime(0)
+        accumulatedMilliseconds = 0L
+    }
+    
+    /**
+     * Sync time manager to a specific GameTime (used when loading saved games)
+     */
+    fun syncTime(gameTime: GameTime) {
+        currentTime = gameTime
+        accumulatedMilliseconds = 0L
     }
     
     /**

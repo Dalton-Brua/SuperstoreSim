@@ -178,6 +178,100 @@ Emit change via _changes.emit(...)
 **See**: `domain/progression/` | `domain/staff/` | `domain/store/` | `domain/inventory/` | `domain/player/` | `domain/metrics/`
 
 ---
+### **4. Save/Load System** ⭐ IMPLEMENTED (April 19, 2026)
+
+Complete persistence system for saving and loading game state using SharedPreferences and JSON serialization.
+
+**Architecture**:
+```
+App Lifecycle
+    ↓
+MainActivity.onPause() / onStop()
+    ↓
+GameViewModel.saveGameState()
+    ↓
+GameStateRepository.saveGameState(state)
+    ↓
+GameStateSerializer.serialize(state) → JSON string
+    ↓
+SharedPreferences.putString(json)
+```
+
+**Key Components**:
+1. **GameStateSerializer** (`domain/persistence/GameStateSerializer.kt`)
+   - Serializes entire GameState to JSON using org.json (built into Android)
+   - Deserializes JSON back to GameState
+   - Handles all nested objects: transactions, inventory, staff, metrics, etc.
+   - Compatible with API 24+ (no java.time.Instant dependencies)
+
+2. **GameStateRepository** (`domain/persistence/GameStateRepository.kt`)
+   - Manages SharedPreferences for save/load
+   - Methods: `saveGameState()`, `loadGameState()`, `hasSavedGame()`, `getLastSaveTime()`, `clearSave()`
+   - Returns null if save doesn't exist or deserialization fails
+
+3. **GameEngine.loadState()** (`domain/GameEngine.kt`)
+   - Replaces current engine state with loaded state
+   - Syncs TimeManager.currentTime and TimeManager.config to loaded values
+   - **Explicitly sets speed multiplier via setSpeedMultiplier()** ⭐ CRITICAL
+   - **Syncs DayManager.lastKnownDayNumber to prevent double day rollover** ⭐ CRITICAL
+   - Resets StaffManager and TrafficManager accumulators (transient data)
+   - Ensures game time continues from saved point, not from engine creation
+
+4. **GameViewModel Integration**
+   - Auto-loads saved game on app startup (in init block)
+   - Public `saveGameState()` method for manual/automatic saves
+   - `onCleared()` saves as fallback (may not be called if process killed)
+
+5. **MainActivity Lifecycle Hooks** ⭐ CRITICAL
+   - `onPause()` → saves game when app goes to background
+   - `onStop()` → additional save as safety measure
+   - This ensures saves happen even when app is swiped away from recents
+
+**Trigger Points**:
+- ✅ **Automatic on background**: MainActivity.onPause() / onStop()
+- ✅ **Automatic on close**: GameViewModel.onCleared() (fallback)
+- ✅ **Manual save button**: Settings panel → "Save Game" → GameEvent.SaveGame
+
+**Breaking Rules for AI Agents**:
+- ❌ Never rely solely on ViewModel.onCleared() — process may be killed before it's called
+- ❌ Never serialize with Instant.toEpochMilli() — requires API 26+ (min is 24)
+- ❌ Never add manager internal counters without syncing them in GameEngine.loadState()
+- ✅ Always save in MainActivity lifecycle callbacks (onPause/onStop)
+- ✅ Use viewModelScope.launch for save operations (non-blocking)
+- ✅ Serializer returns null on failure — always handle gracefully
+- ✅ When adding manager counters like `lastKnownDayNumber`, add sync/reset methods
+
+**Pattern — Adding New GameState Fields**:
+```kotlin
+// 1. Add field to GameState data class
+data class GameState(
+    // ...existing fields...
+    val newField: MyType = defaultValue
+)
+
+// 2. Update GameStateSerializer.serialize()
+fun serialize(state: GameState): String {
+    val json = JSONObject()
+    // ...existing serialization...
+    json.put("newField", serializeMyType(state.newField))
+}
+
+// 3. Update GameStateSerializer.deserialize()
+GameState(
+    // ...existing deserialization...
+    newField = deserializeMyType(json.getJSONObject("newField"))
+)
+
+// 4. Add helper methods if needed
+private fun serializeMyType(obj: MyType): JSONObject { ... }
+private fun deserializeMyType(json: JSONObject): MyType { ... }
+```
+
+**Save File Location**: `/data/data/com.example.superstoresimulator/shared_prefs/superstore_save_data.xml`
+
+**See**: `domain/persistence/GameStateSerializer.kt` | `domain/persistence/GameStateRepository.kt` | `MainActivity.kt` (lifecycle hooks) | `GameViewModel.kt` (auto-load/save)
+
+---
 ### **3. GameEngine: The Core State Machine (Facade)**
 - **Role**: Thin orchestrator — receives GameEvents, routes to appropriate managers, emits changes
 - **Single source of truth**: `var state: GameState`
@@ -576,6 +670,7 @@ onBulkOrder = { maxQty, casePacks, category ->
 - **Progression**: DismissTierUnlock, UnlockNextTier
 - **Skip Day**: SkipDay
 - **Bulk Order**: BulkOrder(maxTotalQuantity, casePacksPerItem, categoryFilter)
+- **Save System** ⭐ NEW (April 19, 2026): SaveGame
 
 **⚠️ Pure-UI events** (handled directly by ViewModel, no GameEngine call, no domain state rebuild):
 - `SelectItemCategory`, `FocusInventoryItem`, `SelectStaffType`
@@ -778,6 +873,7 @@ git merge feature/my-feature
 - **inventory/** ⭐ NEW [InventoryManager — stock/buy/bulk-order operations]
 - **player/** [PlayerRole.kt — enum: NONE, CASHIER, STOCKER] + **PlayerActionHandler** ⭐ NEW [player work ticks]
 - **metrics/** [DailyMetrics.kt — DailyMetrics (snapshot), DailyMetricsAccumulator (live)] + **DayManager** ⭐ NEW [day rollover, end-of-day report]
+- **persistence/** ⭐ NEW (April 19, 2026) [GameStateSerializer.kt — JSON serialization; GameStateRepository.kt — SharedPreferences persistence]
 - traffic/ [TrafficManager.kt, TrafficPattern.kt — TrafficPattern, TrafficSchedule, TransactionRequest]
 
 **ui/** — User interface (Compose)

@@ -11,6 +11,7 @@ import com.example.superstoresimulator.domain.Entities.EntityDef.Companion.FAST_
 import com.example.superstoresimulator.domain.Entities.EntityDef.Companion.STOCKER
 
 data class EntityType(
+    val key: String,  // Unique identifier for serialization
     val displayName: String,
     val description: String,
     val icon: ImageVector,
@@ -19,37 +20,41 @@ data class EntityType(
     ) {
     companion object {
         val NONE = EntityType(
-            "",
+            key = "NONE",
+            displayName = "",
             description = "",
-            Icons.Default.Person,
-            emptyList()
+            icon = Icons.Default.Person,
+            entities = emptyList()
         )
 
         val CASHIERS = EntityType(
-            "Cashiers",
+            key = "CASHIERS",
+            displayName = "Cashiers",
             description = "Rings up items",
-            Icons.Default.Person,
-            listOf(
+            icon = Icons.Default.Person,
+            entities = listOf(
                 EntityDef.CASHIER,
                 EntityDef.FAST_CASHIER,
             )
         )
 
         val STOCKERS = EntityType(
-            "Stockers",
+            key = "STOCKERS",
+            displayName = "Stockers",
             description = "Stocks items from the backroom",
-            Icons.Default.Build,
-            listOf(
+            icon = Icons.Default.Build,
+            entities = listOf(
                 EntityDef.STOCKER,
                 EntityDef.FAST_STOCKER,
             )
         )
 
         val CUSTOMER_SERVICE_REPRESENTATIVES = EntityType(
-            "Customer Service",
+            key = "CUSTOMER_SERVICE_REPRESENTATIVES",
+            displayName = "Customer Service",
             description = "Handles refunds",
-            Icons.Default.Person,
-            listOf(
+            icon = Icons.Default.Person,
+            entities = listOf(
                 EntityDef.CUSTOMER_SERVICE_REP,
             )
         )

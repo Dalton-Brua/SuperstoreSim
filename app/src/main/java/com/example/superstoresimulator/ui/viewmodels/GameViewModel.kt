@@ -31,12 +31,14 @@ import javax.inject.Inject
 import com.example.superstoresimulator.di.TickDelta
 import java.util.Locale
 import android.content.Context
+import com.example.superstoresimulator.domain.persistence.GameStateRepository
 
 @HiltViewModel
 class GameViewModel @Inject constructor(
     private val itemDao: ItemDao,
     @ApplicationContext private val context: Context,
-    @param:TickDelta private val tickDelta: Long = 16 // Milliseconds per tick
+    @param:TickDelta private val tickDelta: Long = 16, // Milliseconds per tick
+    private val gameStateRepository: GameStateRepository
 ) : ViewModel() {
 
     // Lazy initialization of GameEngine - will be created after data loading
@@ -56,9 +58,7 @@ class GameViewModel @Inject constructor(
     // Metadata cache + memoized inventory mapper
     val itemMetadataCache = ItemMetadataCache(itemDao)
     private val inventoryMapper = MemoizedInventoryMapper(itemMetadataCache)
-    
-    // ✅ Problem #4: Incremental UI state builder
-    // Reduces state reconstructions from 108,000 to ~1,200 per 30-min session
+
     private var incrementalBuilder: IncrementalUiStateBuilder? = null
 
     init {
@@ -69,8 +69,17 @@ class GameViewModel @Inject constructor(
             // Initialize metadata cache for fast inventory mapping
             itemMetadataCache.initialize()
             
+            // Try to load saved game state
+            val savedState = gameStateRepository.loadGameState()
+            
             // Now create GameEngine with the cached items (no additional database load)
             gameEngine = GameEngine(itemMetadataCache)
+            
+            // If we have a saved state, load it into the engine
+            if (savedState != null) {
+                gameEngine.loadState(savedState)
+            }
+            
             gameEngineInitialized = true
             
             // Update UI state with the initialized engine
@@ -146,6 +155,16 @@ class GameViewModel @Inject constructor(
                     casePacksPerItem = event.casePacksPerItem,
                     categoryFilter = event.categoryFilter,
                 )
+            }
+
+            GameEvent.SaveGame -> {
+                saveGameState()
+                return  // No UI state update needed
+            }
+
+            GameEvent.ResetGame -> {
+                resetGame()
+                return  // No UI state update needed - will reload fresh state
             }
 
             GameEvent.DismissTierUnlock -> {
@@ -401,6 +420,54 @@ class GameViewModel @Inject constructor(
                newDomainState.currentTier != oldDomainState.currentTier ||
                newDomainState.totalRevenue != oldDomainState.totalRevenue ||
                newDomainState.currentStoreSize != oldDomainState.currentStoreSize
+    }
+
+    /**
+     * Saves the current game state to persistent storage.
+     * Called automatically when the ViewModel is cleared (app closed/backgrounded).
+     * Can also be called manually via GameEvent.SaveGame.
+     */
+    fun saveGameState() {
+        if (!gameEngineInitialized) return
+        viewModelScope.launch {
+            val currentState = gameEngine.currentState()
+            gameStateRepository.saveGameState(currentState)
+        }
+    }
+
+    /**
+     * Resets the game to initial state by clearing saved data and reinitializing the engine.
+     * Called when user confirms reset from settings panel.
+     */
+    private fun resetGame() {
+        viewModelScope.launch {
+            // Clear saved game data
+            gameStateRepository.clearSave()
+            
+            // Reinitialize the game engine with fresh state
+            if (gameEngineInitialized) {
+                // Re-create the engine with fresh state
+                gameEngine = GameEngine(itemMetadataCache)
+                
+                // Reset domain state trackers
+                lastDomainState = null
+                lastUiState = null
+                
+                // Rebuild UI state from fresh engine state
+                val freshState = gameEngine.currentState()
+                val freshUiState = initialUiState(freshState)
+                _uiState.value = freshUiState
+                
+                // Reinitialize the incremental builder with the fresh state
+                incrementalBuilder = IncrementalUiStateBuilder(freshUiState)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        // Auto-save when the ViewModel is destroyed (app closed or process killed)
+        saveGameState()
     }
 }
 

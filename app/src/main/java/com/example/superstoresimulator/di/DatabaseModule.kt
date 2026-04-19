@@ -3,6 +3,7 @@ package com.example.superstoresimulator.di
 import android.content.Context
 import androidx.room.Room
 import com.example.superstoresimulator.domain.items.ItemDao
+import com.example.superstoresimulator.domain.persistence.GameStateRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -41,6 +42,12 @@ object DatabaseModule {
     @Singleton
     fun provideItemDao(database: AppDatabase): ItemDao {
         return database.itemDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideGameStateRepository(@ApplicationContext context: Context): GameStateRepository {
+        return GameStateRepository(context)
     }
 
     @Provides

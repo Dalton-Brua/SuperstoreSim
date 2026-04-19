@@ -117,6 +117,15 @@ class StaffManager {
     fun fireEntity(state: GameState, entityId: Int): GameState =
         state.copy(hiredEntityRegistry = state.hiredEntityRegistry.fireEntity(entityId))
 
+    /**
+     * Reset the internal fractional accumulators.
+     * Used when loading saved games to start with a clean slate.
+     */
+    fun reset() {
+        cashierProgress = 0f
+        stockerProgress = 0f
+    }
+
     // ── Constants ─────────────────────────────────────────────────────────────
 
     companion object {

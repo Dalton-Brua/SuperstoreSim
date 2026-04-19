@@ -2,9 +2,13 @@ package com.example.superstoresimulator.ui.screens.home
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -60,6 +64,8 @@ fun StoreHomeScreen (
     onUpgradeStore: () -> Unit = {},
     onUnlockNextTier: () -> Unit = {},
     onNavigateToUnlocks: () -> Unit = {},
+    onSave: () -> Unit = {},
+    onReset: () -> Unit = {},
 ) {
     var showTransactionDialog by remember { mutableStateOf(false) }
     var showPendingRefunds by remember { mutableStateOf(false) }
@@ -254,7 +260,26 @@ fun StoreHomeScreen (
             item { Spacer(Modifier.height(12.dp)) }
         }
 
-        // Settings panel drawer
+        // Settings panel drawer with overlay
+        // Background overlay - fades in/out
+        AnimatedVisibility(
+            visible = settingsOpen,
+            enter = fadeIn(animationSpec = tween(300)),
+            exit = fadeOut(animationSpec = tween(300))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable(
+                        onClick = { settingsOpen = false },
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    )
+            )
+        }
+        
+        // Settings panel - slides in/out from left
         AnimatedVisibility(
             visible = settingsOpen,
             enter = slideInHorizontally(
@@ -269,7 +294,9 @@ fun StoreHomeScreen (
             SettingsPanel(
                 app = state.app,
                 onStoreNameChange = onStoreNameChange,
-                onClose = { settingsOpen = false }
+                onClose = { settingsOpen = false },
+                onSave = onSave,
+                onReset = onReset
             )
         }
 
