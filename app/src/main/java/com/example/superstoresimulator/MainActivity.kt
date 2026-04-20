@@ -334,6 +334,7 @@ class MainActivity : ComponentActivity() {
                     // Fresh Bulk Order Dialog
                     if (showFreshBulkOrderDialog) {
                         FreshBulkOrderDialog(
+                            allItems = state.inventory.items,
                             money = state.app.money,
                             onConfirm = { maxQty, packsPer ->
                                 viewModel.onEvent(GameEvent.FreshBulkOrder(maxQty, packsPer))

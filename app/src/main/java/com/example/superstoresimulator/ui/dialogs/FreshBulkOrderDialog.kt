@@ -2,13 +2,16 @@ package com.example.superstoresimulator.ui.dialogs
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -23,7 +26,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,194 +36,466 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.window.Dialog
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.ui.state.InventoryItemUI
+import com.example.superstoresimulator.ui.theme.Destructive
+import com.example.superstoresimulator.ui.theme.Primary
+import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.Secondary
+import com.example.superstoresimulator.ui.theme.TextDark
+import com.example.superstoresimulator.ui.theme.TextSecondary
+import kotlin.math.roundToInt
+
+// ── Fresh discount tier definitions ────────────────────────────────────────────
+private data class FreshDiscountTier(val minCases: Int, val fraction: Double, val label: String)
+
+private val FRESH_DISCOUNT_TIERS = listOf(
+    FreshDiscountTier(50, 0.15, "15% off"),
+    FreshDiscountTier(30, 0.10, "10% off"),
+    FreshDiscountTier(15, 0.05, "5% off"),
+)
+
+private fun discountFractionForCases(totalCases: Int): Double =
+    FRESH_DISCOUNT_TIERS.firstOrNull { totalCases >= it.minCases }?.fraction ?: 0.0
+
+private fun nextDiscountHint(totalCases: Int): String? {
+    val next = FRESH_DISCOUNT_TIERS.reversed().firstOrNull { it.minCases > totalCases }
+        ?: return null
+    val needed = next.minCases - totalCases
+    return "Add $needed more case(s) to unlock ${next.label}"
+}
 
 @Composable
 fun FreshBulkOrderDialog(
+    allItems: List<InventoryItemUI>,
     money: Money,
     onConfirm: (maxTotalQuantity: Int, casePacksPerItem: Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var maxTotalQuantity by remember { mutableStateOf(50f) }
-    var casePacksPerItem by remember { mutableStateOf(2f) }
+    var maxTotalQuantity by remember { mutableStateOf(50) }
+    var casePacksPerItem by remember { mutableStateOf(2) }
+
+    // ── Computed order summary ─────────────────────────────────────────────────
+    val matchingItems = remember(allItems, maxTotalQuantity) {
+        allItems.filter { item ->
+            val totalQty = item.shelfStock + item.backroomStock
+            // Only include fresh items (those with shelfLifeDays) and those below the threshold
+            item.shelfLifeDays != null && totalQty <= maxTotalQuantity && !item.backroomFull
+        }
+    }
+
+    val totalCases = matchingItems.size * casePacksPerItem
+    val baseCost = remember(matchingItems, casePacksPerItem) {
+        matchingItems.fold(Money.ZERO) { acc, item -> acc + item.casePackCost * casePacksPerItem }
+    }
+    val discountFraction = discountFractionForCases(totalCases)
+    val finalCost = Money((baseCost.cents * (1.0 - discountFraction)).toLong())
+    val savings = baseCost - finalCost
+    val canAfford = money >= finalCost
+    val hasItems = matchingItems.isNotEmpty()
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = Color.White,
+        Card(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .padding(16.dp)
+                .fillMaxWidth()
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Column(
                 modifier = Modifier
+                    .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(20.dp)
             ) {
-                Row(
+                // ── Header ─────────────────────────────────────────────────────
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .background(PrimaryDark, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Default.LocalShipping,
-                        contentDescription = null,
-                        tint = Color(0xFF2563EB),
-                        modifier = Modifier.height(28.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Fresh Bulk Order",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1E293B)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Default.LocalShipping,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Fresh Bulk Order",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
+                    }
                 }
-
-                Text(
-                    "Order fresh items with volume discounts",
-                    fontSize = 13.sp,
-                    color = Color(0xFF64748B),
-                    modifier = Modifier.padding(bottom = 20.dp)
-                )
-
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp)
 
                 Spacer(Modifier.height(16.dp))
 
-                // Max Total Quantity Slider
-                Text(
-                    "Maximum Stock Threshold: ${maxTotalQuantity.toInt()} items",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF1E293B),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp)
-                )
+                // ── Section: Order Criteria ────────────────────────────────────
+                SectionLabel("Order Criteria")
+                Spacer(Modifier.height(10.dp))
 
+                // Max quantity threshold slider
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Stock threshold", fontSize = 12.sp, color = TextSecondary)
+                    Text(
+                        "≤ $maxTotalQuantity units",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = PrimaryDark
+                    )
+                }
                 Slider(
-                    value = maxTotalQuantity,
-                    onValueChange = { maxTotalQuantity = it },
+                    value = maxTotalQuantity.toFloat(),
+                    onValueChange = { maxTotalQuantity = it.roundToInt() },
                     valueRange = 10f..200f,
-                    steps = 9,
                     modifier = Modifier.fillMaxWidth(),
                     colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFF2563EB),
-                        activeTrackColor = Color(0xFF2563EB),
-                        inactiveTrackColor = Color(0xFFE2E8F0)
+                        thumbColor = PrimaryDark,
+                        activeTrackColor = Primary
                     )
                 )
-
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("10 units", fontSize = 10.sp, color = TextSecondary)
+                    Text("200 units", fontSize = 10.sp, color = TextSecondary)
+                }
                 Text(
-                    "Only order items with total stock below this amount",
+                    "Orders fresh items with shelf + backroom stock at or below this value",
                     fontSize = 11.sp,
-                    color = Color(0xFF64748B),
-                    style = androidx.compose.ui.text.TextStyle(
-                        textDecoration = TextDecoration.None
-                    ),
-                    modifier = Modifier.padding(bottom = 20.dp)
+                    color = TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
 
-                // Case Packs Per Item Slider
-                Text(
-                    "Case Packs Per Item: ${casePacksPerItem.toInt()}",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF1E293B),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp)
-                )
+                Spacer(Modifier.height(14.dp))
 
+                // Cases per item slider
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Cases per item", fontSize = 12.sp, color = TextSecondary)
+                    Text(
+                        "$casePacksPerItem case(s)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = PrimaryDark
+                    )
+                }
                 Slider(
-                    value = casePacksPerItem,
-                    onValueChange = { casePacksPerItem = it },
+                    value = casePacksPerItem.toFloat(),
+                    onValueChange = { casePacksPerItem = it.roundToInt() },
                     valueRange = 1f..10f,
-                    steps = 8,
                     modifier = Modifier.fillMaxWidth(),
                     colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFF2563EB),
-                        activeTrackColor = Color(0xFF2563EB),
-                        inactiveTrackColor = Color(0xFFE2E8F0)
+                        thumbColor = PrimaryDark,
+                        activeTrackColor = Primary
                     )
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("1 case", fontSize = 10.sp, color = TextSecondary)
+                    Text("10 cases", fontSize = 10.sp, color = TextSecondary)
+                }
 
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(14.dp))
+
+                // ── Section: Fresh Discount Tiers ──────────────────────────────
+                SectionLabel("Fresh Discount Tiers")
                 Spacer(Modifier.height(8.dp))
 
-                // Discount Tiers Info
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4F8)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
+                FRESH_DISCOUNT_TIERS.reversed().forEach { tier ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Fresh Discount Tiers",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E293B)
+                            "≥ ${tier.minCases} cases",
+                            fontSize = 12.sp,
+                            color = TextDark,
+                            fontWeight = FontWeight.Normal
                         )
-                        Spacer(Modifier.height(6.dp))
-                        Text("< 15 cases: 0%", fontSize = 10.sp, color = Color(0xFF64748B))
-                        Text("≥ 15 cases: 5% off", fontSize = 10.sp, color = Color(0xFF64748B))
-                        Text("≥ 30 cases: 10% off", fontSize = 10.sp, color = Color(0xFF64748B))
-                        Text("≥ 50 cases: 15% off", fontSize = 10.sp, color = Color(0xFF64748B))
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    Color(0xFFF1F5F9),
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                tier.label,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextSecondary
+                            )
+                        }
                     }
                 }
 
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp)
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "💡 Fresh discounts are lower than regular bulk orders due to perishability",
+                    fontSize = 11.sp,
+                    color = Primary,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+
+                // Next discount hint
+                val hint = nextDiscountHint(totalCases)
+                if (hint != null) {
+                    Text(
+                        "💡 $hint",
+                        fontSize = 11.sp,
+                        color = Primary
+                    )
+                } else if (totalCases >= 50) {
+                    Text(
+                        "🎉 Maximum fresh discount applied!",
+                        fontSize = 11.sp,
+                        color = Secondary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(14.dp))
+
+                // ── Section: Order Summary ─────────────────────────────────────
+                SectionLabel("Order Summary")
+                Spacer(Modifier.height(10.dp))
+
+                // Stats row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    SummaryStat("${matchingItems.size}", "items")
+                    SummaryStat("$totalCases", "total cases")
+                    SummaryStat(
+                        if (discountFraction > 0.0) "${(discountFraction * 100).toInt()}% OFF" else "—",
+                        "discount",
+                        valueColor = if (discountFraction > 0.0) Secondary else TextSecondary
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // Cost breakdown
+                if (discountFraction > 0.0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Base cost:", fontSize = 13.sp, color = TextSecondary)
+                        Text(
+                            baseCost.toString(),
+                            fontSize = 13.sp,
+                            color = TextSecondary,
+                            textDecoration = TextDecoration.LineThrough
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "You save:",
+                            fontSize = 13.sp,
+                            color = Secondary
+                        )
+                        Text(
+                            savings.toString(),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Secondary
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Total:",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryDark
+                    )
+                    Text(
+                        finalCost.toString(),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            !hasItems   -> TextSecondary
+                            !canAfford  -> Destructive
+                            else        -> if (discountFraction > 0.0) Secondary else PrimaryDark
+                        }
+                    )
+                }
+
+                if (!canAfford && hasItems) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Insufficient funds — you have $money",
+                        fontSize = 12.sp,
+                        color = Destructive
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(12.dp))
+
+                // ── Section: Matching Items Preview ────────────────────────────
+                SectionLabel("Matching Fresh Items (${matchingItems.size})")
+                Spacer(Modifier.height(8.dp))
+
+                if (matchingItems.isNotEmpty()) {
+                    matchingItems.take(6).forEach { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 3.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(item.name, fontSize = 12.sp, color = TextDark, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "${item.category.displayName} · ${item.casePack}/case · ${item.casePackCost}/case",
+                                    fontSize = 10.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    "${item.shelfStock + item.backroomStock} in stock",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary
+                                )
+                                Text(
+                                    "+${item.casePack * casePacksPerItem} units",
+                                    fontSize = 11.sp,
+                                    color = Primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                    if (matchingItems.size > 6) {
+                        Text(
+                            "…and ${matchingItems.size - 6} more fresh item(s)",
+                            fontSize = 11.sp,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "No fresh items match the current criteria.\nTry increasing the stock threshold.",
+                            fontSize = 13.sp,
+                            color = TextSecondary,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
 
                 Spacer(Modifier.height(20.dp))
 
-                // Action Buttons
+                // ── Action buttons ─────────────────────────────────────────────
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Button(
+                    OutlinedButton(
                         onClick = onDismiss,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color(0xFF2563EB)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Cancel")
+                        Text("Cancel", color = PrimaryDark, fontWeight = FontWeight.SemiBold)
                     }
-
                     Button(
                         onClick = {
-                            onConfirm(maxTotalQuantity.toInt(), casePacksPerItem.toInt())
+                            onConfirm(maxTotalQuantity, casePacksPerItem)
                             onDismiss()
                         },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF2563EB),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp)
+                        enabled = hasItems && canAfford,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryDark),
+                        shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Order Fresh Items", color = Color.White)
+                        Text(
+                            "Place Order",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+// ── Private helpers ────────────────────────────────────────────────────────────
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        fontWeight = FontWeight.Bold,
+        fontSize = 13.sp,
+        color = PrimaryDark
+    )
+}
+
+@Composable
+private fun SummaryStat(
+    value: String,
+    label: String,
+    valueColor: Color = PrimaryDark,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = valueColor)
+        Text(label, fontSize = 11.sp, color = TextSecondary)
     }
 }
 
