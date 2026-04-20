@@ -32,6 +32,7 @@ import com.example.superstoresimulator.di.TickDelta
 import java.util.Locale
 import android.content.Context
 import com.example.superstoresimulator.domain.persistence.GameStateRepository
+import com.example.superstoresimulator.domain.inventory.InventoryState
 
 @HiltViewModel
 class GameViewModel @Inject constructor(
@@ -100,6 +101,24 @@ class GameViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Read-only helper for UI overlays that need full inventory batch details.
+     * Returns null until the engine is initialized or when item is missing.
+     */
+    fun getInventoryStateForItem(itemId: Int): InventoryState? {
+        if (!gameEngineInitialized) return null
+        return gameEngine.currentState().inventory[itemId]
+    }
+    
+    /**
+     * Get the current GameState from the engine.
+     * Used by UI components that need fresh auto-order configuration and other domain state.
+     */
+    fun currentState(): GameState {
+        if (!gameEngineInitialized) return GameState()
+        return gameEngine.currentState()
     }
 
     fun onEvent(event: GameEvent) {
@@ -221,6 +240,28 @@ class GameViewModel @Inject constructor(
                     }
                 }
                 return // No need to update UI state from engine for this event, it's UI-focused
+            }
+
+            is GameEvent.FreshBulkOrder -> {
+                gameEngine.placeFreshBulkOrder(
+                    maxTotalQuantity = event.maxTotalQuantity,
+                    casePacksPerItem = event.casePacksPerItem,
+                )
+            }
+
+            is GameEvent.UpdateFreshAutoOrderConfig -> {
+                gameEngine.updateFreshAutoOrderConfig(
+                    event.enabled,
+                    event.minStockThreshold,
+                    event.casePacksPerItem,
+                )
+            }
+
+            is GameEvent.OrderIncompleteItem -> {
+                gameEngine.orderIncompleteItem(
+                    event.itemId,
+                    event.casePacksRequested,
+                )
             }
 
             GameEvent.Tick -> gameEngine.tick(tickDelta)

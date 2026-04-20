@@ -27,6 +27,8 @@ data class Item(
     val purchaseWeight: Float = 1.0f,
     /** Minimum tier required to see/buy this item in the store. Stored as the enum name string. */
     val tier: String = "TIER_1",
+    /** Number of days until item expires. Null = non-perishable (never expires). */
+    val shelfLifeDays: Int? = null,
 ) {
     /**
      * Get price as Money object

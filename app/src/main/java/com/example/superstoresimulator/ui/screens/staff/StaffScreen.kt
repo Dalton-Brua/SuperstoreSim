@@ -45,6 +45,7 @@ import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Entities.HiredEntity
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.state.ProgressionUIState
 import com.example.superstoresimulator.ui.state.StaffUIState
@@ -146,6 +147,7 @@ fun EntityTypeDetailScreen(
     state: StaffUIState,
     money: Money,
     type: EntityType,
+    currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
     onHire: (EntityDef) -> Unit,
     onFire: (Int) -> Unit,
     onUpgrade: (Int) -> Unit,
@@ -156,6 +158,10 @@ fun EntityTypeDetailScreen(
     if (type == EntityType.NONE || hireable == null) return
 
     val entities = state.registry.getByType(type)
+    
+    // Check if Fresh Handlers require tier gating
+    val isFreshHandlers = type.key == "FRESH_HANDLERS"
+    val canHireFreshHandlers = currentTier.unlockAmount >= ItemUnlockTier.TIER_2.unlockAmount
 
     Column(
         modifier = Modifier
@@ -172,10 +178,27 @@ fun EntityTypeDetailScreen(
         }
 
         Spacer(Modifier.height(12.dp))
+        
+        // Show tier requirement message for Fresh Handlers
+        if (isFreshHandlers && !canHireFreshHandlers) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2))
+            ) {
+                Text(
+                    text = "Unlock the Fresh tab (Tier 2) to hire Fresh Handlers",
+                    fontSize = 14.sp,
+                    color = Color(0xFFDC2626),
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+        }
 
         Button(
             onClick = { onHire(hireable) },
-            enabled = money >= hireable.cost,
+            enabled = money >= hireable.cost && (!isFreshHandlers || canHireFreshHandlers),
             colors = GameButtonStyles.primaryBlueColor(),
             shape = GameButtonStyles.Shape,
             border = GameButtonStyles.PrimaryBorder,

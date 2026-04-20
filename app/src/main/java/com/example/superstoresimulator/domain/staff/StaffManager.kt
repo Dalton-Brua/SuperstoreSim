@@ -37,6 +37,12 @@ class StaffManager {
      */
     private var stockerProgress: Float = 0f
 
+    /**
+     * Fractional fresh handler stocking accumulator.
+     * Accrues partial case-pack counts each tick; whole case-packs are returned to the caller.
+     */
+    private var freshHandlerProgress: Float = 0f
+
     // ── Tick-advance helpers ──────────────────────────────────────────────────
 
     /**
@@ -70,6 +76,23 @@ class StaffManager {
         stockerProgress += STOCKER_ACTIONS_PER_SECOND * stockerCount * delta.toFloat() * multiplier
         val whole = stockerProgress.toInt()
         stockerProgress -= whole
+        return whole
+    }
+
+    /**
+     * Advance the fresh handler stocking accumulator by one tick.
+     *
+     * Rate: 0.1 case-packs/second per hired fresh handler.
+     *
+     * Returns the number of whole stocking actions [GameEngine.tick] should perform
+     * this frame via `repeat(result) { stockRandomFreshItemFromBackroom() }`.  Returns 0
+     * immediately when [freshHandlerCount] is zero so no accumulation occurs.
+     */
+    fun advanceFreshHandlerProgress(freshHandlerCount: Int, delta: Double, multiplier: Float): Int {
+        if (freshHandlerCount <= 0) return 0
+        freshHandlerProgress += FRESH_HANDLER_ACTIONS_PER_SECOND * freshHandlerCount * delta.toFloat() * multiplier
+        val whole = freshHandlerProgress.toInt()
+        freshHandlerProgress -= whole
         return whole
     }
 
@@ -124,6 +147,7 @@ class StaffManager {
     fun reset() {
         cashierProgress = 0f
         stockerProgress = 0f
+        freshHandlerProgress = 0f
     }
 
     // ── Constants ─────────────────────────────────────────────────────────────
@@ -131,6 +155,7 @@ class StaffManager {
     companion object {
         const val CASHIER_ITEMS_PER_SECOND = 0.5f
         const val STOCKER_ACTIONS_PER_SECOND = 0.1f
+        const val FRESH_HANDLER_ACTIONS_PER_SECOND = 0.1f
     }
 }
 

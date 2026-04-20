@@ -71,6 +71,10 @@ data class InventoryItemUI(
      * would exceed the per-item backroom cap. The "Order" button is disabled when this is true.
      */
     val backroomFull: Boolean = false,
+    /** Number of days until item expires (null = non-perishable). */
+    val shelfLifeDays: Int? = null,
+    /** The closest expiration day among all batches (null if no stock or non-perishable). */
+    val closestExpirationDay: Int? = null,
 )
 
 

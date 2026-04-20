@@ -13,6 +13,34 @@ import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreState
 import java.util.Locale
 
+/**
+ * Configuration for fresh item auto-ordering behavior.
+ */
+data class FreshAutoOrderConfig(
+    val enabled: Boolean = true,
+    val minStockThreshold: Int = 5,      // Player sets minimum total stock (shelf + backroom)
+    val casePacksPerItem: Int = 1,       // How many case packs to order per item when triggered
+)
+
+/**
+ * Represents a fresh item order queued for processing at end-of-day.
+ */
+data class FreshOrderRequest(
+    val itemId: Int,
+    val casePacksRequested: Int,
+    val queuedOnDay: Int,
+)
+
+/**
+ * Represents a fresh item order that failed to complete (e.g., insufficient funds).
+ */
+data class IncompleteOrderRequest(
+    val itemId: Int,
+    val casePacksRequested: Int,
+    val requestedOnDay: Int,
+    val reason: String,
+)
+
 data class GameState(
 
     val storeName: String = "Grocery Store",
@@ -63,6 +91,11 @@ data class GameState(
     val pausedByEndOfDay: Boolean = false,
 
     val objectiveBonusEarned: Money = Money.ZERO,  // Bonus from completed objectives today
+
+    // Fresh item auto-ordering
+    val freshAutoOrderConfig: FreshAutoOrderConfig = FreshAutoOrderConfig(),
+    val queuedFreshOrders: List<FreshOrderRequest> = emptyList(),
+    val incompleteFreshOrders: List<IncompleteOrderRequest> = emptyList(),
 )
 
 

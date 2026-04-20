@@ -66,6 +66,10 @@ fun StoreHomeScreen (
     onNavigateToUnlocks: () -> Unit = {},
     onSave: () -> Unit = {},
     onReset: () -> Unit = {},
+    freshAutoOrderEnabled: Boolean = true,
+    freshMinStockThreshold: Int = 5,
+    freshCasePacksPerItem: Int = 1,
+    onFreshAutoOrderConfigChanged: (Boolean, Int, Int) -> Unit = { _, _, _ -> },
 ) {
     var showTransactionDialog by remember { mutableStateOf(false) }
     var showPendingRefunds by remember { mutableStateOf(false) }
@@ -296,7 +300,19 @@ fun StoreHomeScreen (
                 onStoreNameChange = onStoreNameChange,
                 onClose = { settingsOpen = false },
                 onSave = onSave,
-                onReset = onReset
+                onReset = onReset,
+                freshAutoOrderEnabled = freshAutoOrderEnabled,
+                freshMinStockThreshold = freshMinStockThreshold,
+                freshCasePacksPerItem = freshCasePacksPerItem,
+                onFreshAutoOrderEnableChanged = { enabled ->
+                    onFreshAutoOrderConfigChanged(enabled, freshMinStockThreshold, freshCasePacksPerItem)
+                },
+                onFreshMinStockThresholdChanged = { threshold ->
+                    onFreshAutoOrderConfigChanged(freshAutoOrderEnabled, threshold, freshCasePacksPerItem)
+                },
+                onFreshCasePacksPerItemChanged = { packs ->
+                    onFreshAutoOrderConfigChanged(freshAutoOrderEnabled, freshMinStockThreshold, packs)
+                }
             )
         }
 

@@ -53,5 +53,10 @@ sealed class GameStateChange {
         val newTier: ItemUnlockTier,
         val previousTier: ItemUnlockTier
     ) : GameStateChange()
+    
+    data class ItemsExpired(
+        val totalExpired: Int,
+        val wasteCost: Money
+    ) : GameStateChange()
 }
 

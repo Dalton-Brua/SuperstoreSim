@@ -12,6 +12,8 @@ import com.example.superstoresimulator.domain.Money
  * - FAST_CASHIER: $100
  * - STOCKER: $50
  * - FAST_STOCKER: $100
+ * - FRESH_HANDLER: $50
+ * - FAST_FRESH_HANDLER: $100
  * - CUSTOMER_SERVICE_REP: $75
  */
 object StaffWageCalculator {
@@ -21,7 +23,9 @@ object StaffWageCalculator {
         EntityDef.FAST_CASHIER.key to Money(10_000),        // $100/day
         EntityDef.STOCKER.key to Money(5_000),              // $50/day
         EntityDef.FAST_STOCKER.key to Money(10_000),        // $100/day
-        EntityDef.CUSTOMER_SERVICE_REP.key to Money(7_500),  // $75/day
+        EntityDef.FRESH_HANDLER.key to Money(5_000),        // $50/day
+        EntityDef.FAST_FRESH_HANDLER.key to Money(10_000),  // $100/day
+        //EntityDef.CUSTOMER_SERVICE_REP.key to Money(7_500),  // $75/day
     )
 
     /**

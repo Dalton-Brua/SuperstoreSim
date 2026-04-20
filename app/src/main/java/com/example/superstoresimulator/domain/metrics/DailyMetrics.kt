@@ -3,6 +3,42 @@ package com.example.superstoresimulator.domain.metrics
 import com.example.superstoresimulator.domain.Money
 
 /**
+ * One auto-ordered fresh item that was successfully completed at end-of-day.
+ */
+data class FreshOrderLineItem(
+    val itemId: Int,
+    val itemName: String,
+    val casePacksOrdered: Int,
+    val costPerCasePack: Money,
+    val totalCost: Money,
+)
+
+/**
+ * One auto-ordered fresh item that failed to complete (e.g., insufficient funds).
+ */
+data class IncompleteOrderLineItem(
+    val itemId: Int,
+    val itemName: String,
+    val casePacksRequested: Int,
+    val costPerCasePack: Money,
+    val totalCost: Money,
+    val reason: String,
+)
+
+/**
+ * One item that expired and was removed from inventory on this day.
+ * Aggregated per-day to drive the "Expired Items Report" (Shrinkage) on the Metrics screen.
+ */
+data class ExpiredItemEvent(
+    val itemId: Int,
+    val itemName: String,
+    /** How many units expired (shelf + backroom combined). */
+    val quantity: Int,
+    /** Value lost (at unit cost, not sale price — this is what was paid for the lost inventory). */
+    val valueLost: Money,
+)
+
+/**
  * One item that a customer wanted but could not be rung up due to zero shelf stock.
  * Aggregated per-day to drive the "Out-of-Stock Report" on the Metrics screen.
  */
@@ -65,6 +101,15 @@ data class DailyMetrics(
 
     // ── Per-item sales breakdown ──────────────────────────────────────────
     val soldItemEvents: List<SoldItemEvent> = emptyList(),
+
+    // ── Expiration & Shrinkage ────────────────────────────────────────────
+    val itemsExpired: Int = 0,           // units removed due to expiration
+    val expiredWasteCost: Money = Money.ZERO,  // value lost to expiration (at unit cost)
+    val expiredItemEvents: List<ExpiredItemEvent> = emptyList(),
+
+    // ── Fresh Item Auto-Ordering ──────────────────────────────────────────
+    val autoOrderedFreshItems: List<FreshOrderLineItem> = emptyList(),
+    val incompleteOrderedFreshItems: List<IncompleteOrderLineItem> = emptyList(),
 ) {
     /** Average value per completed transaction (ZERO if no transactions). */
     val averageTransactionValue: Money
@@ -78,9 +123,9 @@ data class DailyMetrics(
             itemsSold.toFloat() / transactionsCompleted
         else 0f
 
-    /** Net revenue after refunds, rent, and wages. */
+    /** Net revenue after refunds, rent, wages, and waste costs. */
     val netRevenue: Money
-        get() = (revenue - refundAmount) - rentPaid - wagesPaid
+        get() = (revenue - refundAmount) - rentPaid - wagesPaid - expiredWasteCost
 
     val dayOfWeekName: String
         get() = when (dayOfWeek) {
@@ -122,6 +167,15 @@ data class DailyMetricsAccumulator(
 
     // ── Per-item sales breakdown ──────────────────────────────────────────
     val soldItemEvents: List<SoldItemEvent> = emptyList(),
+
+    // ── Expiration & Shrinkage ────────────────────────────────────────────
+    val itemsExpired: Int = 0,
+    val expiredWasteCost: Money = Money.ZERO,
+    val expiredItemEvents: List<ExpiredItemEvent> = emptyList(),
+
+    // ── Fresh Item Auto-Ordering ──────────────────────────────────────────
+    val autoOrderedFreshItems: List<FreshOrderLineItem> = emptyList(),
+    val incompleteOrderedFreshItems: List<IncompleteOrderLineItem> = emptyList(),
 ) {
     /** Snapshot this accumulator into an immutable [DailyMetrics]. */
     fun toSnapshot(dayOfWeek: Int): DailyMetrics = DailyMetrics(
@@ -143,5 +197,10 @@ data class DailyMetricsAccumulator(
         itemsLostToOutOfStock = itemsLostToOutOfStock,
         outOfStockEvents = outOfStockEvents,
         soldItemEvents = soldItemEvents,
+        itemsExpired = itemsExpired,
+        expiredWasteCost = expiredWasteCost,
+        expiredItemEvents = expiredItemEvents,
+        autoOrderedFreshItems = autoOrderedFreshItems,
+        incompleteOrderedFreshItems = incompleteOrderedFreshItems,
     )
 }

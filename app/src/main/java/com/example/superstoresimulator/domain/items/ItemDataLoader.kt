@@ -45,6 +45,7 @@ object ItemDataLoader {
                         casePack = if (itemJson.has("casePack")) itemJson.getInt("casePack") else 1,
                         purchaseWeight = if (itemJson.has("purchaseWeight")) itemJson.getDouble("purchaseWeight").toFloat() else 1.0f,
                         tier = if (itemJson.has("tier")) itemJson.getString("tier") else "TIER_1",
+                        shelfLifeDays = if (itemJson.has("shelfLifeDays")) itemJson.getInt("shelfLifeDays") else null,
                     )
                     items.add(item)
                 }

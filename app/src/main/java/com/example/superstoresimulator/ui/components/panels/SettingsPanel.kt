@@ -21,6 +21,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,6 +52,12 @@ fun SettingsPanel(
     onClose: () -> Unit,
     onSave: () -> Unit = {},
     onReset: () -> Unit = {},
+    freshAutoOrderEnabled: Boolean = true,
+    freshMinStockThreshold: Int = 5,
+    freshCasePacksPerItem: Int = 1,
+    onFreshAutoOrderEnableChanged: (Boolean) -> Unit = {},
+    onFreshMinStockThresholdChanged: (Int) -> Unit = {},
+    onFreshCasePacksPerItemChanged: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Improved settings panel: local edit state, Save/Cancel, Reset, and read-only stats.
@@ -64,9 +74,14 @@ fun SettingsPanel(
         
         // State for reset confirmation dialog
         var showResetConfirmation by remember { mutableStateOf(false) }
+        
+        // Fresh auto-order settings
+        var freshEnabled by remember { mutableStateOf(freshAutoOrderEnabled) }
+        var freshMinStockThreshold by remember { mutableStateOf(freshMinStockThreshold.toFloat()) }
+        var freshCasePacksPerItem by remember { mutableStateOf(freshCasePacksPerItem.toFloat()) }
 
         Column(modifier = Modifier.fillMaxSize()) {
-            // Header
+        // Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -124,7 +139,104 @@ fun SettingsPanel(
 
                 // Quick read-only stats to give context to settings
                 HorizontalDivider()
-                
+
+                // Fresh Auto-Order Settings
+                Text(
+                    "Fresh Item Auto-Ordering",
+                    fontWeight = FontWeight.Medium,
+                    color = PrimaryDark,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+
+                // Enable/Disable Toggle
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Enable Auto-Ordering",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            "Fresh handlers auto-order when idle",
+                            fontSize = 10.sp,
+                            color = TextSecondary
+                        )
+                    }
+
+                    Switch(
+                        checked = freshEnabled,
+                        onCheckedChange = { newValue ->
+                            freshEnabled = newValue
+                            onFreshAutoOrderEnableChanged(newValue)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = PrimaryDark,
+                            checkedTrackColor = Color(0xFF93C5FD),
+                            uncheckedThumbColor = Color(0xFFE2E8F0),
+                            uncheckedTrackColor = Color(0xFFF1F5F9)
+                        )
+                    )
+                }
+
+                // Min Stock Threshold Slider
+                Text(
+                    "Min Stock: ${freshMinStockThreshold.toInt()} items",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary
+                )
+                Slider(
+                    value = freshMinStockThreshold,
+                    onValueChange = { newValue ->
+                        freshMinStockThreshold = newValue
+                        onFreshMinStockThresholdChanged(newValue.toInt())
+                    },
+                    valueRange = 1f..30f,
+                    steps = 28,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = SliderDefaults.colors(
+                        thumbColor = PrimaryDark,
+                        activeTrackColor = PrimaryDark,
+                        inactiveTrackColor = Color(0xFFE2E8F0)
+                    ),
+                    enabled = freshEnabled
+                )
+
+                // Case Packs Per Item Slider
+                Text(
+                    "Packs Per Order: ${freshCasePacksPerItem.toInt()}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+                Slider(
+                    value = freshCasePacksPerItem,
+                    onValueChange = { newValue ->
+                        freshCasePacksPerItem = newValue
+                        onFreshCasePacksPerItemChanged(newValue.toInt())
+                    },
+                    valueRange = 1f..10f,
+                    steps = 8,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = SliderDefaults.colors(
+                        thumbColor = PrimaryDark,
+                        activeTrackColor = PrimaryDark,
+                        inactiveTrackColor = Color(0xFFE2E8F0)
+                    ),
+                    enabled = freshEnabled
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
                 // Save Game and Reset Game buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -136,7 +248,7 @@ fun SettingsPanel(
                     ) {
                         Text("Save Game")
                     }
-                    
+
                     Button(
                         onClick = { showResetConfirmation = true },
                         modifier = Modifier.weight(1f),
@@ -147,7 +259,7 @@ fun SettingsPanel(
                         Text("Reset Store", color = Color.White)
                     }
                 }
-                
+
                 // A small hint / help text
                 Text(
                     "Tip: Changes to the store name are applied when you press Save. Use Reset to restore the default name.",
@@ -159,7 +271,7 @@ fun SettingsPanel(
 
             Spacer(modifier = Modifier.weight(1f))
         }
-        
+
         // Show reset confirmation dialog
         if (showResetConfirmation) {
             ResetGameConfirmationDialog(

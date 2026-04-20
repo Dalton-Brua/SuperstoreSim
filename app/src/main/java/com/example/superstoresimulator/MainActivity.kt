@@ -42,19 +42,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.superstoresimulator.domain.Entities.EntityType
+import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.Screen
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.ui.GameEvent
 import com.example.superstoresimulator.ui.viewmodels.GameViewModel
 import com.example.superstoresimulator.ui.screens.home.StoreHomeScreen
-import com.example.superstoresimulator.ui.screens.inventory.InventoryScreen
+import com.example.superstoresimulator.ui.screens.inventory.InventoryAndFreshScreen
 import com.example.superstoresimulator.ui.screens.inventory.InventoryItemDetailScreen
 import com.example.superstoresimulator.ui.screens.metrics.MetricsScreen
 import com.example.superstoresimulator.ui.screens.sales.SalesHistoryScreen
 import com.example.superstoresimulator.ui.screens.staff.StaffAndUnlocksScreen
 import com.example.superstoresimulator.ui.screens.staff.EntityTypeDetailScreen
 import com.example.superstoresimulator.ui.dialogs.EndOfDayReportDialog
+import com.example.superstoresimulator.ui.dialogs.FreshBulkOrderDialog
+import com.example.superstoresimulator.ui.dialogs.IncompleteOrdersDialog
 import com.example.superstoresimulator.ui.theme.NavBarBackground
 import com.example.superstoresimulator.ui.theme.NavBarSelectedIcon
 import com.example.superstoresimulator.ui.theme.NavBarSelectedText
@@ -85,6 +88,10 @@ class MainActivity : ComponentActivity() {
                 var selectedStaffTab by remember { mutableStateOf(0) }
                 var inventoryResetTrigger by remember { mutableStateOf(0) }
                 var selectedInventoryItemId by remember { mutableStateOf<Int?>(null) }
+                
+                // Fresh auto-order dialog states
+                var showFreshBulkOrderDialog by remember { mutableStateOf(false) }
+                var showIncompleteOrdersDialog by remember { mutableStateOf(false) }
 
                 // Collect UI state from ViewModel's StateFlow
                 val uiState by viewModel.uiState.collectAsState()
@@ -210,21 +217,31 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onSave = { viewModel.onEvent(GameEvent.SaveGame) },
-                                onReset = { viewModel.onEvent(GameEvent.ResetGame) }
+                                onReset = { viewModel.onEvent(GameEvent.ResetGame) },
+                                freshAutoOrderEnabled = viewModel.currentState().freshAutoOrderConfig.enabled,
+                                freshMinStockThreshold = viewModel.currentState().freshAutoOrderConfig.minStockThreshold,
+                                freshCasePacksPerItem = viewModel.currentState().freshAutoOrderConfig.casePacksPerItem,
+                                onFreshAutoOrderConfigChanged = { enabled, threshold, packs ->
+                                    viewModel.onEvent(GameEvent.UpdateFreshAutoOrderConfig(enabled, threshold, packs))
+                                }
                             )
 
-                            Screen.INVENTORY -> InventoryScreen(
+                            Screen.INVENTORY -> InventoryAndFreshScreen(
                                 state = state.inventory,
                                 money = state.app.money,
                                 itemMetadataCache = viewModel.itemMetadataCache,
                                 currentTier = state.progression.currentTier,
+                                currentDay = state.time?.currentTime?.dayNumber ?: 0,
                                 metricsData = state.metrics.completedDays,
                                 resetTrigger = inventoryResetTrigger,
+                                incompleteFreshOrdersCount = viewModel.currentState().incompleteFreshOrders.size,
                                 onBuyItem = { itemId -> viewModel.onEvent(GameEvent.BuyItem(itemId)) },
                                 onSelectCategory = { category -> viewModel.onEvent(GameEvent.SelectItemCategory(category)) },
                                 onBulkOrder = { maxQty, casePacks, category ->
                                     viewModel.onEvent(GameEvent.BulkOrder(maxQty, casePacks, category))
                                 },
+                                onFreshBulkOrder = { showFreshBulkOrderDialog = true },
+                                onViewIncompleteOrders = { showIncompleteOrdersDialog = true },
                                 onItemClick = { itemId -> selectedInventoryItemId = itemId },
                                 modifier = Modifier.padding(paddingValues)
                             )
@@ -278,6 +295,7 @@ class MainActivity : ComponentActivity() {
                                 state = state.staff,
                                 money = state.app.money,
                                 type = state.staff.selectedType,
+                                currentTier = state.progression.currentTier,
                                 onHire = { def ->
                                     viewModel.onEvent(GameEvent.HireStaff(def, state.staff.selectedType )) },
                                 onFire = { id -> viewModel.onEvent(GameEvent.FireStaff(id)) },
@@ -291,21 +309,73 @@ class MainActivity : ComponentActivity() {
                     }
                     
                     // Inventory Item Detail Screen as overlay (not part of pager)
-                    if (selectedInventoryItemId != null) {
-                        val selectedItem = state.inventory.items.find { it.id == selectedInventoryItemId }
+                    selectedInventoryItemId?.let { selectedId ->
+                        val selectedItem = state.inventory.items.find { it.id == selectedId }
                         if (selectedItem != null) {
+                            // Get batch data through ViewModel read-only helper
+                            val inventoryState = viewModel.getInventoryStateForItem(selectedId)
                             Box(modifier = Modifier.fillMaxSize()) {
                                 InventoryItemDetailScreen(
                                     item = selectedItem,
                                     money = state.app.money,
                                     itemMetadataCache = viewModel.itemMetadataCache,
                                     currentTier = state.progression.currentTier,
+                                    currentDay = state.time?.currentTime?.dayNumber ?: 0,
                                     metricsData = state.metrics.completedDays,
+                                    shelfBatches = inventoryState?.shelfBatches ?: emptyList(),
+                                    backroomBatches = inventoryState?.backroomBatches ?: emptyList(),
                                     onBuyItem = { itemId -> viewModel.onEvent(GameEvent.BuyItem(itemId)) },
                                     onBack = { selectedInventoryItemId = null }
                                 )
                             }
                         }
+                    }
+
+                    // Fresh Bulk Order Dialog
+                    if (showFreshBulkOrderDialog) {
+                        FreshBulkOrderDialog(
+                            money = state.app.money,
+                            onConfirm = { maxQty, packsPer ->
+                                viewModel.onEvent(GameEvent.FreshBulkOrder(maxQty, packsPer))
+                            },
+                            onDismiss = { showFreshBulkOrderDialog = false }
+                        )
+                    }
+
+                    // Incomplete Orders Dialog
+                    if (showIncompleteOrdersDialog) {
+                        val gameState = viewModel.currentState()
+                        // Build item names and costs maps
+                        val itemNames = gameState.incompleteFreshOrders.associate { order ->
+                            val item = viewModel.itemMetadataCache.getItem(order.itemId)
+                            order.itemId to (item?.name ?: "Item ${order.itemId}")
+                        }
+                        val itemCosts = gameState.incompleteFreshOrders.associate { order ->
+                            val item = viewModel.itemMetadataCache.getItem(order.itemId)
+                            order.itemId to (item?.getCasePackCostAsMoney() ?: Money.ZERO)
+                        }
+                        
+                        IncompleteOrdersDialog(
+                            incompleteOrders = gameState.incompleteFreshOrders,
+                            itemNames = itemNames,
+                            itemCosts = itemCosts,
+                            money = state.app.money,
+                            onOrderItem = { itemId: Int, packs: Int ->
+                                viewModel.onEvent(GameEvent.OrderIncompleteItem(itemId, packs))
+                            },
+                            onOrderAll = {
+                                // Order all affordable items
+                                val currentState = viewModel.currentState()
+                                currentState.incompleteFreshOrders.forEach { order ->
+                                    val item = viewModel.itemMetadataCache.getItem(order.itemId)
+                                    val totalCost = (item?.getCasePackCostAsMoney() ?: Money.ZERO) * order.casePacksRequested
+                                    if (currentState.money >= totalCost) {
+                                        viewModel.onEvent(GameEvent.OrderIncompleteItem(order.itemId, order.casePacksRequested))
+                                    }
+                                }
+                            },
+                            onDismiss = { showIncompleteOrdersDialog = false }
+                        )
                     }
 
                     // End-of-day report dialog — shown automatically at midnight

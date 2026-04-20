@@ -1,5 +1,6 @@
 package com.example.superstoresimulator.ui.screens.inventory
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocalShipping
@@ -27,6 +30,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -34,8 +41,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +54,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
@@ -54,9 +64,11 @@ import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.dialogs.BulkOrderDialog
 import com.example.superstoresimulator.ui.state.InventoryUIState
 import com.example.superstoresimulator.ui.state.InventoryItemUI
+import com.example.superstoresimulator.ui.theme.LightBackground
 import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Composable
@@ -204,11 +216,12 @@ private fun InventoryListScreen(
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
+            verticalAlignment = Alignment.CenterVertically
         ) {
             ScreenHeader(
                 title = "Inventory",
-                money = money
+                money = money,
+                modifier = Modifier.weight(1f)
             )
 
             // Only show Bulk Order button if TIER_2 or above is unlocked
@@ -217,8 +230,7 @@ private fun InventoryListScreen(
                     onClick = onShowBulkOrderDialog,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E40AF)),
                     shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    modifier = Modifier.padding(top = 4.dp)
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
                     Icon(
                         Icons.Default.LocalShipping,
@@ -293,6 +305,10 @@ fun InventoryCategoryBar(
     selected: ItemCategory?,
     onSelect: (ItemCategory?) -> Unit
 ) {
+    // Filter out fresh-related categories (only show in Fresh tab)
+    val freshCategories = setOf(ItemCategory.DAIRY, ItemCategory.BAKERY, ItemCategory.PRODUCE, ItemCategory.MEAT, ItemCategory.FROZEN)
+    val inventoryCategories = categories.filter { it !in freshCategories }
+    
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
@@ -309,7 +325,7 @@ fun InventoryCategoryBar(
             )
         }
 
-        items(categories) { category ->
+        items(inventoryCategories) { category ->
             CategoryChip(
                 label = category.displayName,
                 isSelected = selected == category,
@@ -350,7 +366,10 @@ internal fun InventoryItemDetailScreen(
     money: Money,
     itemMetadataCache: ItemMetadataCache,
     currentTier: ItemUnlockTier,
+    currentDay: Int,
     metricsData: List<DailyMetrics>,
+    shelfBatches: List<ItemBatch> = emptyList(),
+    backroomBatches: List<ItemBatch> = emptyList(),
     onBuyItem: (Int) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
@@ -526,6 +545,284 @@ internal fun InventoryItemDetailScreen(
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1E40AF)
+                            )
+                        }
+                    }
+                }
+            }
+            
+            // Detailed Batch Information (only for perishable items with batches)
+            if (item.shelfLifeDays != null && (shelfBatches.isNotEmpty() || backroomBatches.isNotEmpty())) {
+                val allBatches = (shelfBatches.map { it to "Shelf" } + backroomBatches.map { it to "Backroom" })
+                    .sortedBy { it.first.expirationDay } // Sort by expiration (oldest first)
+                
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(Color.White),
+                        elevation = CardDefaults.cardElevation(2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "Batch Details",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1E293B)
+                            )
+                            
+                            Text(
+                                text = "${allBatches.size} batch${if (allBatches.size != 1) "es" else ""} in stock",
+                                fontSize = 13.sp,
+                                color = Color(0xFF64748B)
+                            )
+                            
+                            // List all batches
+                            allBatches.forEach { (batch, location) ->
+                                val daysUntilExpiration = batch.expirationDay - currentDay
+                                val freshnessPercent = if (item.shelfLifeDays > 0) {
+                                    val daysRemaining = kotlin.math.max(0, daysUntilExpiration)
+                                    ((daysRemaining.toFloat() / item.shelfLifeDays) * 100).toInt().coerceIn(0, 100)
+                                } else 100
+                                
+                                val freshnessColor = when {
+                                    freshnessPercent <= 10 -> Color(0xFFDC2626) // Critical - Red
+                                    freshnessPercent <= 25 -> Color(0xFFEA580C) // Warning - Orange
+                                    freshnessPercent <= 50 -> Color(0xFFFBBF24) // Caution - Yellow
+                                    else -> Color(0xFF22C55E) // Good - Green
+                                }
+                                
+                                val valueAtRisk = item.unitCost * batch.quantity
+                                
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    tonalElevation = 1.dp
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        // Header row: location and quantity
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = if (location == "Shelf") Color(0xFF3B82F6) else Color(0xFF8B5CF6)
+                                                ) {
+                                                    Text(
+                                                        text = location,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.White,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                                
+                                                Text(
+                                                    text = "${batch.quantity} units",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color(0xFF1E293B)
+                                                )
+                                            }
+                                            
+                                            Text(
+                                                text = "$freshnessPercent%",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = freshnessColor
+                                            )
+                                        }
+                                        
+                                        // Expiration info
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = when {
+                                                    daysUntilExpiration <= 0 -> "⚠️ Expired"
+                                                    daysUntilExpiration == 1 -> "⚠️ Expires tomorrow"
+                                                    daysUntilExpiration <= 3 -> "⚠️ Expires in $daysUntilExpiration days"
+                                                    else -> "Expires in $daysUntilExpiration days"
+                                                },
+                                                fontSize = 12.sp,
+                                                color = if (daysUntilExpiration <= 3) Color(0xFFDC2626) else Color(0xFF64748B),
+                                                fontWeight = if (daysUntilExpiration <= 3) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                            
+                                            Text(
+                                                text = "Received day ${batch.receivedDay}",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF94A3B8)
+                                            )
+                                        }
+                                        
+                                        // Progress bar
+                                        androidx.compose.material3.LinearProgressIndicator(
+                                            progress = { freshnessPercent / 100f },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(6.dp),
+                                            color = freshnessColor,
+                                            trackColor = Color(0xFFE2E8F0),
+                                        )
+                                        
+                                        // Value at risk
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = when {
+                                                daysUntilExpiration <= 1 -> Color(0xFFFEE2E2) // Light red
+                                                daysUntilExpiration <= 3 -> Color(0xFFFED7AA) // Light orange
+                                                else -> Color(0xFFF1F5F9)
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(8.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "Value at risk:",
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF64748B)
+                                                )
+                                                Text(
+                                                    text = valueAtRisk.toString(),
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = when {
+                                                        daysUntilExpiration <= 1 -> Color(0xFFDC2626)
+                                                        daysUntilExpiration <= 3 -> Color(0xFFEA580C)
+                                                        else -> Color(0xFF1E293B)
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Total value at risk summary
+                            val totalValueAtRisk = allBatches.sumOf { (batch, _) ->
+                                (item.unitCost * batch.quantity).cents
+                            }
+                            
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFDEEBFF)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Total Value in Stock",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF1E40AF)
+                                    )
+                                    Text(
+                                        text = Money(totalValueAtRisk).toString(),
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1E40AF)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (item.shelfLifeDays != null && item.closestExpirationDay != null) {
+                // Fallback to simple indicator if no batch data available
+                item {
+                    val daysUntilExpiration = item.closestExpirationDay - currentDay
+                    val freshnessPercent = if (item.shelfLifeDays > 0) {
+                        val daysRemaining = kotlin.math.max(0, daysUntilExpiration)
+                        ((daysRemaining.toFloat() / item.shelfLifeDays) * 100).toInt().coerceIn(0, 100)
+                    } else 100
+                    
+                    val freshnessColor = when {
+                        freshnessPercent <= 10 -> Color(0xFFDC2626) // Critical - Red
+                        freshnessPercent <= 25 -> Color(0xFFEA580C) // Warning - Orange
+                        freshnessPercent <= 50 -> Color(0xFFFBBF24) // Caution - Yellow
+                        else -> Color(0xFF22C55E) // Good - Green
+                    }
+                    
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(Color.White),
+                        elevation = CardDefaults.cardElevation(2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "Freshness",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1E293B)
+                            )
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = when {
+                                        daysUntilExpiration <= 0 -> "⚠️ Expired"
+                                        daysUntilExpiration == 1 -> "⚠️ Expires tomorrow"
+                                        daysUntilExpiration <= 3 -> "⚠️ Expires in $daysUntilExpiration days"
+                                        else -> "Expires in $daysUntilExpiration days"
+                                    },
+                                    fontSize = 14.sp,
+                                    color = if (daysUntilExpiration <= 3) Color(0xFFDC2626) else Color(0xFF64748B),
+                                    fontWeight = if (daysUntilExpiration <= 3) FontWeight.Bold else FontWeight.Normal
+                                )
+                                
+                                Text(
+                                    text = "$freshnessPercent% fresh",
+                                    fontSize = 14.sp,
+                                    color = freshnessColor,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            
+                            // Freshness progress bar
+                            androidx.compose.material3.LinearProgressIndicator(
+                                progress = { freshnessPercent / 100f },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(10.dp),
+                                color = freshnessColor,
+                                trackColor = Color(0xFFE2E8F0),
+                            )
+                            
+                            // Shelf life info
+                            Text(
+                                text = "Shelf life: ${item.shelfLifeDays} days",
+                                fontSize = 12.sp,
+                                color = Color(0xFF64748B)
                             )
                         }
                     }
@@ -925,3 +1222,145 @@ private fun calculateSalesStats(
     )
 }
 
+/**
+ * Wrapper screen that adds tabs to Inventory screen (Inventory / Fresh).
+ * Fresh tab only appears when perishable items are unlocked (TIER_2+).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun InventoryAndFreshScreen(
+    state: InventoryUIState,
+    money: Money,
+    itemMetadataCache: ItemMetadataCache,
+    currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
+    currentDay: Int,
+    metricsData: List<DailyMetrics> = emptyList(),
+    resetTrigger: Int = 0,
+    initialTab: Int = 0,
+    incompleteFreshOrdersCount: Int = 0,
+    onTabChanged: (Int) -> Unit = {},
+    onBuyItem: (Int) -> Unit,
+    onSelectCategory: (ItemCategory?) -> Unit,
+    onBulkOrder: (maxTotalQuantity: Int, casePacksPerItem: Int, categoryFilter: ItemCategory?) -> Unit = { _, _, _ -> },
+    onFreshBulkOrder: () -> Unit = {},
+    onViewIncompleteOrders: () -> Unit = {},
+    onItemClick: (Int) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    // Only show Fresh tab if TIER_2 or above (first perishables unlock)
+    val showFreshTab = currentTier.unlockAmount >= ItemUnlockTier.TIER_2.unlockAmount
+    
+    // If Fresh tab is not available, just show the inventory screen directly
+    if (!showFreshTab) {
+        InventoryScreen(
+            state = state,
+            money = money,
+            itemMetadataCache = itemMetadataCache,
+            currentTier = currentTier,
+            metricsData = metricsData,
+            resetTrigger = resetTrigger,
+            onBuyItem = onBuyItem,
+            onSelectCategory = onSelectCategory,
+            onBulkOrder = onBulkOrder,
+            onItemClick = onItemClick,
+            modifier = modifier
+        )
+        return
+    }
+    
+    val tabs = listOf("Inventory", "Fresh")
+    
+    // Pager state for tab navigation
+    val pagerState = rememberPagerState(
+        pageCount = { 2 },
+        initialPage = initialTab
+    )
+    val coroutineScope = rememberCoroutineScope()
+    
+    // Track selected tab
+    var selectedTab by remember { mutableIntStateOf(initialTab) }
+    
+    // Update selectedTab when initialTab changes from outside
+    LaunchedEffect(initialTab) {
+        if (selectedTab != initialTab) {
+            selectedTab = initialTab
+            if (pagerState.currentPage != initialTab) {
+                pagerState.animateScrollToPage(initialTab)
+            }
+        }
+    }
+    
+    // Update selectedTab when user swipes to a different page
+    LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
+        if (!pagerState.isScrollInProgress) {
+            // User finished swiping to a new page
+            if (selectedTab != pagerState.currentPage) {
+                selectedTab = pagerState.currentPage
+                onTabChanged(pagerState.currentPage)
+            }
+        }
+    }
+
+    Column(modifier = modifier
+        .fillMaxSize()
+        .background(LightBackground)
+        .statusBarsPadding()
+    ) {
+        TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = Color.White,
+            contentColor = PrimaryDark,
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                    color = Primary
+                )
+            }
+        ) {
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = { 
+                        selectedTab = index
+                        onTabChanged(index)
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(index)
+                        }
+                    },
+                    text = { Text(title, fontWeight = FontWeight.SemiBold) },
+                    selectedContentColor = Primary,
+                    unselectedContentColor = Color(0xFF64748B)
+                )
+            }
+        }
+
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            when (page) {
+                0 -> InventoryScreen(
+                    state = state,
+                    money = money,
+                    itemMetadataCache = itemMetadataCache,
+                    currentTier = currentTier,
+                    metricsData = metricsData,
+                    resetTrigger = resetTrigger,
+                    onBuyItem = onBuyItem,
+                    onSelectCategory = onSelectCategory,
+                    onBulkOrder = onBulkOrder,
+                    onItemClick = onItemClick
+                )
+                1 -> FreshScreen(
+                    items = state.items,
+                    money = money,
+                    currentDay = currentDay,
+                    incompleteFreshOrdersCount = incompleteFreshOrdersCount,
+                    onItemClick = onItemClick,
+                    onFreshBulkOrder = onFreshBulkOrder,
+                    onViewIncompleteOrders = onViewIncompleteOrders
+                )
+            }
+        }
+    }
+}

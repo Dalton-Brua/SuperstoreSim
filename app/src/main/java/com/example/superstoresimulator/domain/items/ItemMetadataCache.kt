@@ -53,6 +53,7 @@ class ItemMetadataCache(private val itemDao: ItemDao) {
                 casePackCost = item.getCasePackCostAsMoney(),
                 purchaseWeight = item.purchaseWeight,
                 tier = runCatching { ItemUnlockTier.valueOf(item.tier) }.getOrDefault(ItemUnlockTier.TIER_1),
+                shelfLifeDays = item.shelfLifeDays,
             )
             fullItems[itemId] = item
             names[itemId] = item.name

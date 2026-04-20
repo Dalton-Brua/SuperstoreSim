@@ -3,6 +3,7 @@ package com.example.superstoresimulator.domain
 import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Transactions.TransactionEngine
+import com.example.superstoresimulator.domain.expiration.SpoilageManager
 import com.example.superstoresimulator.domain.inventory.InventoryManager
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.Item
@@ -25,15 +26,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
-    private val txEngine = TransactionEngine(itemMetadataCache = itemMetadataCache)
+    private val txEngine = TransactionEngine(cache = itemMetadataCache)
     private val timeManager = TimeManager()
-    private val trafficManager = TrafficManager()  // Phase 2: autonomous customer generation
+    private val trafficManager = TrafficManager()
     private val progressionManager = ProgressionManager()
     private val storeController = StoreController()
     private val dayManager = DayManager()
     private val staffManager = StaffManager()
     private val playerActionHandler = PlayerActionHandler()
     private val inventoryManager = InventoryManager(itemMetadataCache)
+    private val spoilageManager = SpoilageManager(itemMetadataCache)
 
     // Emit incremental changes instead of full state reconstructions
     private val _changes = MutableStateFlow<GameStateChange?>(null)
@@ -45,7 +47,12 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         storeState = timeManager.getStoreState(),
         storeConfig = StoreConfig(
             backroomCapPerItem = com.example.superstoresimulator.domain.store.StoreSize.MOM_AND_POP.backroomCapPerItem
-        )
+        ),
+        // Testing: Start with $1,000,000 for easy testing
+        money = Money.fromDollars(1_000_000.0),
+        // Testing: Unlock all tiers immediately
+        currentTier = ItemUnlockTier.TIER_GM,
+        totalRevenue = Money.fromDollars(200_000.0), // Well above TIER_GM unlock threshold
     )
         internal set
 
@@ -55,9 +62,31 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         if (allDbItems.isNotEmpty()) {
             val inventory = mutableMapOf<Int, InventoryState>()
             allDbItems.forEach { (itemId, dbItem) ->
+                val metadata = itemMetadataCache.get(itemId)
+                val currentDay = state.currentTime.dayNumber
+                
+                // Create initial batches for shelf and backroom
+                val expirationDay = if (metadata?.isPerishable == true) {
+                    currentDay + (metadata.shelfLifeDays ?: 0)
+                } else {
+                    Int.MAX_VALUE
+                }
+                
+                val shelfBatch = com.example.superstoresimulator.domain.inventory.ItemBatch(
+                    receivedDay = currentDay,
+                    quantity = 10,
+                    expirationDay = expirationDay
+                )
+                
+                val backroomBatch = com.example.superstoresimulator.domain.inventory.ItemBatch(
+                    receivedDay = currentDay,
+                    quantity = 10,
+                    expirationDay = expirationDay
+                )
+                
                 inventory[itemId] = InventoryState(
-                    shelfStock = 10,  // Start with 10 items on shelf
-                    backroomStock = 10  // Start with 10 items in backroom
+                    shelfBatches = listOf(shelfBatch),
+                    backroomBatches = listOf(backroomBatch)
                 )
             }
             state = state.copy(inventory = inventory)
@@ -83,6 +112,10 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
 
     private fun stockRandomItemFromBackroom() {
         state = inventoryManager.stockRandomItemFromBackroom(state)
+    }
+
+    private fun stockRandomFreshItemFromBackroom() {
+        state = inventoryManager.stockRandomFreshItemFromBackroom(state)
     }
 
     fun buyItemToBackroom(itemId: Int) {
@@ -226,9 +259,14 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             timeManager.update(deltaMilliseconds)
             state = state.copy(currentTime = timeManager.currentTime)
 
+            // Phase 1.5: Process item expiration (remove expired batches)
+            state = spoilageManager.processExpiration(state)
+
             // Phase 3: Detect day rollover (midnight)
             val newDayNumber = state.currentTime.dayNumber
             if (newDayNumber != dayManager.lastKnownDayNumber) {
+                // Process queued fresh orders before day rollover
+                state = processQueuedFreshOrders()
                 state = dayManager.rollOverDay(state, dayManager.lastKnownDayNumber)
                 dayManager.advanceDay(newDayNumber)
             }
@@ -274,6 +312,15 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             val stockers = state.hiredEntityRegistry.countByEntity(EntityDef.STOCKER)
             val wholeStockActions = staffManager.advanceStockerProgress(stockers, delta, multiplier)
             repeat(wholeStockActions) { stockRandomItemFromBackroom() }
+
+            val freshHandlers = state.hiredEntityRegistry.countByEntity(EntityDef.FRESH_HANDLER)
+            val wholeFreshActions = staffManager.advanceFreshHandlerProgress(freshHandlers, delta, multiplier)
+            repeat(wholeFreshActions) { stockRandomFreshItemFromBackroom() }
+            
+            // If fresh handlers are idle (no fresh items to stock), attempt auto-ordering
+            if (wholeFreshActions <= 0 && freshHandlers > 0) {
+                attemptFreshHandlerAutoOrder()
+            }
 
             // Phase 2: Process player work (mutually exclusive roles)
             when (state.playerRole) {
@@ -424,6 +471,143 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         state = progressionManager.unlockNextTier(state)
         if (state.currentTier != previousTier) {
             _changes.value = GameStateChange.TierUnlocked(state.currentTier, previousTier)
+        }
+    }
+
+    // ── Fresh Item Auto-Ordering ──────────────────────────────────────────
+
+    /**
+     * Process all queued fresh orders at end-of-day.
+     * Successful orders are added to inventory and metrics.
+     * Failed orders (insufficient funds) are tracked as incomplete orders.
+     */
+    private fun processQueuedFreshOrders(): GameState {
+        if (state.queuedFreshOrders.isEmpty()) return state
+        
+        var newState = state
+        val completedOrders = mutableListOf<com.example.superstoresimulator.domain.metrics.FreshOrderLineItem>()
+        val incompleteOrders = mutableListOf<com.example.superstoresimulator.domain.metrics.IncompleteOrderLineItem>()
+        var newIncompleteRequests = newState.incompleteFreshOrders
+        
+        for (order in state.queuedFreshOrders) {
+            val item = itemMetadataCache.getItem(order.itemId) ?: continue
+            val totalCost = item.getCasePackCostAsMoney() * order.casePacksRequested
+            
+            if (newState.money >= totalCost) {
+                // Order succeeds
+                newState = inventoryManager.buyItemCasePacks(newState, order.itemId, order.casePacksRequested)
+                
+                completedOrders.add(
+                    com.example.superstoresimulator.domain.metrics.FreshOrderLineItem(
+                        itemId = order.itemId,
+                        itemName = item.name,
+                        casePacksOrdered = order.casePacksRequested,
+                        costPerCasePack = item.getCasePackCostAsMoney(),
+                        totalCost = totalCost,
+                    )
+                )
+            } else {
+                // Order fails - insufficient funds
+                incompleteOrders.add(
+                    com.example.superstoresimulator.domain.metrics.IncompleteOrderLineItem(
+                        itemId = order.itemId,
+                        itemName = item.name,
+                        casePacksRequested = order.casePacksRequested,
+                        costPerCasePack = item.getCasePackCostAsMoney(),
+                        totalCost = totalCost,
+                        reason = "Insufficient funds",
+                    )
+                )
+                
+                // Add to incomplete orders
+                newIncompleteRequests = newIncompleteRequests + com.example.superstoresimulator.domain.IncompleteOrderRequest(
+                    itemId = order.itemId,
+                    casePacksRequested = order.casePacksRequested,
+                    requestedOnDay = state.currentTime.dayNumber,
+                    reason = "Insufficient funds",
+                )
+            }
+        }
+        
+        // Update metrics with completed and incomplete orders
+        val updatedMetrics = newState.currentDayMetrics.copy(
+            autoOrderedFreshItems = completedOrders,
+            incompleteOrderedFreshItems = incompleteOrders,
+        )
+        
+        // Clear the queued orders and update metrics + incomplete requests
+        return newState.copy(
+            queuedFreshOrders = emptyList(),
+            incompleteFreshOrders = newIncompleteRequests,
+            currentDayMetrics = updatedMetrics,
+        )
+    }
+
+    /**
+     * Place a fresh bulk order with lower discount tiers.
+     */
+    fun placeFreshBulkOrder(maxTotalQuantity: Int, casePacksPerItem: Int) {
+        state = inventoryManager.placeFreshBulkOrder(state, maxTotalQuantity, casePacksPerItem, state.currentTier)
+        state.inventory.values.firstOrNull()?.let {
+            _changes.value = GameStateChange.InventoryUpdated(-1, it)
+        }
+    }
+
+    /**
+     * Update fresh item auto-ordering configuration.
+     */
+    fun updateFreshAutoOrderConfig(enabled: Boolean, threshold: Int, casePacks: Int) {
+        state = state.copy(
+            freshAutoOrderConfig = FreshAutoOrderConfig(
+                enabled = enabled,
+                minStockThreshold = threshold,
+                casePacksPerItem = casePacks
+            )
+        )
+    }
+
+    /**
+     * Attempt to auto-order fresh items that fall below the threshold when fresh handlers are idle.
+     * Called during tick when fresh handlers have nothing to stock.
+     * Only queues each item once per day to prevent duplicate orders.
+     */
+    private fun attemptFreshHandlerAutoOrder() {
+        if (!state.freshAutoOrderConfig.enabled) return
+        
+        // Get set of items already queued to avoid duplicates
+        val alreadyQueued = state.queuedFreshOrders.map { it.itemId }.toSet()
+        
+        for ((itemId, _) in state.inventory) {
+            // Skip if already queued for ordering today
+            if (itemId in alreadyQueued) continue
+            
+            if (inventoryManager.shouldAutoOrderFreshItem(state, itemId, state.freshAutoOrderConfig)) {
+                state = inventoryManager.queueFreshOrder(
+                    state,
+                    itemId,
+                    state.freshAutoOrderConfig.casePacksPerItem
+                )
+            }
+        }
+    }
+
+    /**
+     * Manually order an incomplete fresh item.
+     * Deducts cost from money if affordable.
+     */
+    fun orderIncompleteItem(itemId: Int, casePacksRequested: Int) {
+        val item = itemMetadataCache.getItem(itemId) ?: return
+        val totalCost = item.getCasePackCostAsMoney() * casePacksRequested
+        
+        if (state.money >= totalCost) {
+            state = inventoryManager.buyItemCasePacks(state, itemId, casePacksRequested)
+            // Remove from incomplete orders
+            state = state.copy(
+                incompleteFreshOrders = state.incompleteFreshOrders.filter { it.itemId != itemId }
+            )
+            state.inventory[itemId]?.let {
+                _changes.value = GameStateChange.InventoryUpdated(itemId, it)
+            }
         }
     }
 

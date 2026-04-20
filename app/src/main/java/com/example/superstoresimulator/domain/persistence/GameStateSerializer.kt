@@ -17,6 +17,7 @@ import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.domain.metrics.DailyMetricsAccumulator
 import com.example.superstoresimulator.domain.metrics.OutOfStockEvent
 import com.example.superstoresimulator.domain.metrics.SoldItemEvent
+import com.example.superstoresimulator.domain.metrics.ExpiredItemEvent
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreSize
@@ -293,8 +294,27 @@ object GameStateSerializer {
 
     private fun serializeInventoryState(invState: InventoryState): JSONObject {
         return JSONObject().apply {
-            put("shelfStock", invState.shelfStock)
-            put("backroomStock", invState.backroomStock)
+            // Serialize shelf batches
+            val shelfBatchesArray = JSONArray()
+            invState.shelfBatches.forEach { batch ->
+                shelfBatchesArray.put(serializeBatch(batch))
+            }
+            put("shelfBatches", shelfBatchesArray)
+            
+            // Serialize backroom batches
+            val backroomBatchesArray = JSONArray()
+            invState.backroomBatches.forEach { batch ->
+                backroomBatchesArray.put(serializeBatch(batch))
+            }
+            put("backroomBatches", backroomBatchesArray)
+        }
+    }
+    
+    private fun serializeBatch(batch: com.example.superstoresimulator.domain.inventory.ItemBatch): JSONObject {
+        return JSONObject().apply {
+            put("receivedDay", batch.receivedDay)
+            put("quantity", batch.quantity)
+            put("expirationDay", batch.expirationDay)
         }
     }
 
@@ -303,12 +323,39 @@ object GameStateSerializer {
         json.keys().forEach { key ->
             val itemId = key.toInt()
             val invJson = json.getJSONObject(key)
+            
+            // Deserialize shelf batches
+            val shelfBatches = mutableListOf<com.example.superstoresimulator.domain.inventory.ItemBatch>()
+            if (invJson.has("shelfBatches")) {
+                val shelfBatchesArray = invJson.getJSONArray("shelfBatches")
+                for (i in 0 until shelfBatchesArray.length()) {
+                    shelfBatches.add(deserializeBatch(shelfBatchesArray.getJSONObject(i)))
+                }
+            }
+            
+            // Deserialize backroom batches
+            val backroomBatches = mutableListOf<com.example.superstoresimulator.domain.inventory.ItemBatch>()
+            if (invJson.has("backroomBatches")) {
+                val backroomBatchesArray = invJson.getJSONArray("backroomBatches")
+                for (i in 0 until backroomBatchesArray.length()) {
+                    backroomBatches.add(deserializeBatch(backroomBatchesArray.getJSONObject(i)))
+                }
+            }
+            
             map[itemId] = InventoryState(
-                shelfStock = invJson.getInt("shelfStock"),
-                backroomStock = invJson.getInt("backroomStock")
+                shelfBatches = shelfBatches,
+                backroomBatches = backroomBatches
             )
         }
         return map
+    }
+    
+    private fun deserializeBatch(json: JSONObject): com.example.superstoresimulator.domain.inventory.ItemBatch {
+        return com.example.superstoresimulator.domain.inventory.ItemBatch(
+            receivedDay = json.getInt("receivedDay"),
+            quantity = json.getInt("quantity"),
+            expirationDay = json.getInt("expirationDay")
+        )
     }
 
     private fun serializeHiredEntityRegistry(registry: HiredEntityRegistry): JSONObject {
@@ -393,6 +440,16 @@ object GameStateSerializer {
                 soldArray.put(serializeSoldItemEvent(event))
             }
             put("soldItemEvents", soldArray)
+            
+            // Expiration fields
+            put("itemsExpired", acc.itemsExpired)
+            put("expiredWasteCost", acc.expiredWasteCost.cents)
+            
+            val expiredArray = JSONArray()
+            acc.expiredItemEvents.forEach { event ->
+                expiredArray.put(serializeExpiredItemEvent(event))
+            }
+            put("expiredItemEvents", expiredArray)
         }
     }
 
@@ -407,6 +464,14 @@ object GameStateSerializer {
         val soldArray = json.getJSONArray("soldItemEvents")
         for (i in 0 until soldArray.length()) {
             soldEvents.add(deserializeSoldItemEvent(soldArray.getJSONObject(i)))
+        }
+        
+        val expiredEvents = mutableListOf<ExpiredItemEvent>()
+        if (json.has("expiredItemEvents")) {
+            val expiredArray = json.getJSONArray("expiredItemEvents")
+            for (i in 0 until expiredArray.length()) {
+                expiredEvents.add(deserializeExpiredItemEvent(expiredArray.getJSONObject(i)))
+            }
         }
         
         return DailyMetricsAccumulator(
@@ -426,7 +491,10 @@ object GameStateSerializer {
             lostRevenue = Money(json.getLong("lostRevenue")),
             itemsLostToOutOfStock = json.getInt("itemsLostToOutOfStock"),
             outOfStockEvents = oosEvents,
-            soldItemEvents = soldEvents
+            soldItemEvents = soldEvents,
+            itemsExpired = if (json.has("itemsExpired")) json.getInt("itemsExpired") else 0,
+            expiredWasteCost = if (json.has("expiredWasteCost")) Money(json.getLong("expiredWasteCost")) else Money.ZERO,
+            expiredItemEvents = expiredEvents
         )
     }
 
@@ -460,6 +528,16 @@ object GameStateSerializer {
                 soldArray.put(serializeSoldItemEvent(event))
             }
             put("soldItemEvents", soldArray)
+            
+            // Expiration fields
+            put("itemsExpired", metrics.itemsExpired)
+            put("expiredWasteCost", metrics.expiredWasteCost.cents)
+            
+            val expiredArray = JSONArray()
+            metrics.expiredItemEvents.forEach { event ->
+                expiredArray.put(serializeExpiredItemEvent(event))
+            }
+            put("expiredItemEvents", expiredArray)
         }
     }
 
@@ -474,6 +552,14 @@ object GameStateSerializer {
         val soldArray = json.getJSONArray("soldItemEvents")
         for (i in 0 until soldArray.length()) {
             soldEvents.add(deserializeSoldItemEvent(soldArray.getJSONObject(i)))
+        }
+        
+        val expiredEvents = mutableListOf<ExpiredItemEvent>()
+        if (json.has("expiredItemEvents")) {
+            val expiredArray = json.getJSONArray("expiredItemEvents")
+            for (i in 0 until expiredArray.length()) {
+                expiredEvents.add(deserializeExpiredItemEvent(expiredArray.getJSONObject(i)))
+            }
         }
         
         return DailyMetrics(
@@ -494,7 +580,10 @@ object GameStateSerializer {
             lostRevenue = Money(json.getLong("lostRevenue")),
             itemsLostToOutOfStock = json.getInt("itemsLostToOutOfStock"),
             outOfStockEvents = oosEvents,
-            soldItemEvents = soldEvents
+            soldItemEvents = soldEvents,
+            itemsExpired = if (json.has("itemsExpired")) json.getInt("itemsExpired") else 0,
+            expiredWasteCost = if (json.has("expiredWasteCost")) Money(json.getLong("expiredWasteCost")) else Money.ZERO,
+            expiredItemEvents = expiredEvents
         )
     }
 
@@ -539,6 +628,24 @@ object GameStateSerializer {
             itemName = json.getString("itemName"),
             quantitySold = json.getInt("quantitySold"),
             revenue = Money(json.getLong("revenue"))
+        )
+    }
+    
+    private fun serializeExpiredItemEvent(event: ExpiredItemEvent): JSONObject {
+        return JSONObject().apply {
+            put("itemId", event.itemId)
+            put("itemName", event.itemName)
+            put("quantity", event.quantity)
+            put("valueLost", event.valueLost.cents)
+        }
+    }
+
+    private fun deserializeExpiredItemEvent(json: JSONObject): ExpiredItemEvent {
+        return ExpiredItemEvent(
+            itemId = json.getInt("itemId"),
+            itemName = json.getString("itemName"),
+            quantity = json.getInt("quantity"),
+            valueLost = Money(json.getLong("valueLost"))
         )
     }
 }

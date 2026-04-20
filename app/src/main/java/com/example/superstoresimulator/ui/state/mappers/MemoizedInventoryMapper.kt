@@ -79,6 +79,12 @@ class MemoizedInventoryMapper(
             val currentCasePacksInBackroom = dyn.backroomStock / meta.casePack
             val backroomFull = (currentCasePacksInBackroom + 1) > backroomCap
             
+            // Find the closest expiration date among all batches
+            val allBatches = dyn.shelfBatches + dyn.backroomBatches
+            val closestExpiration = if (allBatches.isNotEmpty()) {
+                allBatches.minOfOrNull { it.expirationDay }
+            } else null
+            
             itemCache[itemId] = InventoryItemUI(
                 id = itemId,
                 name = meta.name,
@@ -91,6 +97,8 @@ class MemoizedInventoryMapper(
                 casePackCost = meta.casePackCost,
                 // True when there is no room for even one more full case pack
                 backroomFull = backroomFull,
+                shelfLifeDays = meta.shelfLifeDays,
+                closestExpirationDay = closestExpiration,
             )
         }
         

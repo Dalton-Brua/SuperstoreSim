@@ -33,7 +33,6 @@ fun ScreenHeader(
 ) {
     Column(
         modifier = modifier
-            .fillMaxWidth()
             .padding(bottom = 8.dp)
     ) {
         Text(

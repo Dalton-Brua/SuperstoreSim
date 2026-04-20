@@ -50,6 +50,25 @@ sealed interface GameEvent {
         val categoryFilter: ItemCategory? = null,  // null = all accessible categories
     ) : GameEvent
 
+    // Fresh Bulk Order: purchase case packs for fresh items only with lower discounts
+    data class FreshBulkOrder(
+        val maxTotalQuantity: Int,
+        val casePacksPerItem: Int,
+    ) : GameEvent
+
+    // Fresh Auto-Order Config: update the auto-ordering settings
+    data class UpdateFreshAutoOrderConfig(
+        val enabled: Boolean,
+        val minStockThreshold: Int,
+        val casePacksPerItem: Int,
+    ) : GameEvent
+
+    // Fresh Auto-Order: manually order an incomplete fresh item from the dialog
+    data class OrderIncompleteItem(
+        val itemId: Int,
+        val casePacksRequested: Int,
+    ) : GameEvent
+
     // Save System: manually save the game state
     data object SaveGame : GameEvent
 

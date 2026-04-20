@@ -6,6 +6,7 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.RefundLine
 import com.example.superstoresimulator.domain.RefundRequest
 import com.example.superstoresimulator.domain.inventory.InventoryState
+import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import java.time.Instant
@@ -15,13 +16,13 @@ class TransactionEngine(
     private val salesTaxRate: Double = 0.0825,
     private val refundChance: Double = 0.00,
     private val random: Random = Random.Default,
-    private val itemMetadataCache: ItemMetadataCache? = null,
+    private val cache: ItemMetadataCache? = null,
 ) {
 
     fun startNewTransaction(state: GameState): GameState {
         val currentTierAmount = state.currentTier.unlockAmount
         val availableItemIds = state.inventory.keys.filter { itemId ->
-            val itemTier = itemMetadataCache?.get(itemId)?.tier ?: ItemUnlockTier.TIER_1
+            val itemTier = cache?.get(itemId)?.tier ?: ItemUnlockTier.TIER_1
             itemTier.unlockAmount <= currentTierAmount
         }
         if (availableItemIds.isEmpty()) {
@@ -37,7 +38,7 @@ class TransactionEngine(
             val itemId = chosen[index]
 
             val qty = (1..3).random(random)
-            val unitPrice = itemMetadataCache?.get(itemId)?.price ?: Money.Companion.fromDollars(9.99)
+            val unitPrice = cache?.get(itemId)?.price ?: Money.Companion.fromDollars(9.99)
 
             lines += TransactionLine(
                 itemId = itemId,
@@ -79,7 +80,7 @@ class TransactionEngine(
 
         val currentTierAmount = state.currentTier.unlockAmount
         val availableItemIds = state.inventory.keys.filter { itemId ->
-            val itemTier = itemMetadataCache?.get(itemId)?.tier ?: ItemUnlockTier.TIER_1
+            val itemTier = cache?.get(itemId)?.tier ?: ItemUnlockTier.TIER_1
             itemTier.unlockAmount <= currentTierAmount
         }
         if (availableItemIds.isEmpty()) return state
@@ -90,7 +91,7 @@ class TransactionEngine(
 
         for (itemId in chosen) {
             val qty = (1..3).random(random)
-            val unitPrice = itemMetadataCache?.get(itemId)?.price ?: Money.Companion.fromDollars(9.99)
+            val unitPrice = cache?.get(itemId)?.price ?: Money.Companion.fromDollars(9.99)
             lines += TransactionLine(
                 itemId = itemId,
                 quantity = qty,
@@ -164,8 +165,20 @@ class TransactionEngine(
         inventory: Map<Int, InventoryState>,
         itemId: Int
     ): Map<Int, InventoryState> {
-        val dyn = inventory[itemId] ?: return inventory
-        val updated = dyn.copy(shelfStock = dyn.shelfStock - 1)
+        val inv = inventory[itemId] ?: return inventory
+        
+        // Consume from oldest shelf batch (FIFO)
+        val oldestBatch = inv.oldestShelfBatch() ?: return inventory
+        
+        val updatedShelfBatches = inv.shelfBatches.mapNotNull { batch ->
+            if (batch.receivedDay == oldestBatch.receivedDay && batch.expirationDay == oldestBatch.expirationDay) {
+                if (batch.quantity > 1) batch.copy(quantity = batch.quantity - 1) else null
+            } else {
+                batch
+            }
+        }
+        
+        val updated = inv.copy(shelfBatches = updatedShelfBatches)
         return inventory + (itemId to updated)
     }
 
@@ -230,12 +243,12 @@ class TransactionEngine(
      * (e.g., in unit tests that do not supply a cache).
      */
     private fun weightedSample(pool: List<Int>, count: Int): List<Int> {
-        if (itemMetadataCache == null) return pool.shuffled(random).take(count)
+        if (cache == null) return pool.shuffled(random).take(count)
 
         // Build a mutable list of (itemId, weight) pairs; weight floored at 0.01
         // so items with weight=0 are effectively never chosen but don't break math.
         val weighted = pool.map { id ->
-            id to (itemMetadataCache.get(id)?.purchaseWeight ?: 1.0f).coerceAtLeast(0.01f)
+            id to (cache.get(id)?.purchaseWeight ?: 1.0f).coerceAtLeast(0.01f)
         }.toMutableList()
 
         val result = mutableListOf<Int>()
@@ -314,10 +327,26 @@ class TransactionEngine(
             val qtyToRefund = (1..line.rungQty).random(random)
             val itemId = line.itemId
 
-            val dyn = updatedInventory[itemId]
-            if (dyn != null) {
-                updatedInventory = updatedInventory + (itemId to dyn.copy(
-                    shelfStock = dyn.shelfStock + qtyToRefund
+            val inv = updatedInventory[itemId]
+            if (inv != null) {
+                // Refunded items are added as a new batch with current day as receivedDay
+                val currentDay = state.currentTime.dayNumber
+                val metadata = cache?.get(itemId)
+                val expirationDay = if (metadata?.isPerishable == true) {
+                    currentDay + (metadata.shelfLifeDays ?: 0)
+                } else {
+                    Int.MAX_VALUE
+                }
+                
+                val newBatch = ItemBatch(
+                    receivedDay = currentDay,
+                    quantity = qtyToRefund,
+                    expirationDay = expirationDay
+                )
+                
+                val updatedShelfBatches = inv.mergeBatches(inv.shelfBatches + newBatch)
+                updatedInventory = updatedInventory + (itemId to inv.copy(
+                    shelfBatches = updatedShelfBatches
                 ))
             }
 
@@ -413,12 +442,31 @@ class TransactionEngine(
         val qtyToProcess = qty.coerceAtMost(line.quantity)
         if (qtyToProcess <= 0) return state
 
-        val dyn = state.inventory[itemId]
+        val inv = state.inventory[itemId]
         val updatedInventory =
-            if (dyn != null) state.inventory + (itemId to dyn.copy(
-                shelfStock = dyn.shelfStock + qtyToProcess
-            ))
-            else state.inventory
+            if (inv != null) {
+                // Refunded items are added as a new batch with current day as receivedDay
+                val currentDay = state.currentTime.dayNumber
+                val metadata = cache?.get(itemId)
+                val expirationDay = if (metadata?.isPerishable == true) {
+                    currentDay + (metadata.shelfLifeDays ?: 0)
+                } else {
+                    Int.MAX_VALUE
+                }
+                
+                val newBatch = ItemBatch(
+                    receivedDay = currentDay,
+                    quantity = qtyToProcess,
+                    expirationDay = expirationDay
+                )
+                
+                val updatedShelfBatches = inv.mergeBatches(inv.shelfBatches + newBatch)
+                state.inventory + (itemId to inv.copy(
+                    shelfBatches = updatedShelfBatches
+                ))
+            } else {
+                state.inventory
+            }
 
         val lineRefundSubtotal = line.unitPrice * qtyToProcess
         val lineRefundTax = lineRefundSubtotal * salesTaxRate

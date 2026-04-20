@@ -18,7 +18,12 @@ data class ItemMetadata(
     val purchaseWeight: Float = 1.0f,
     /** Minimum tier required to see/buy this item in the store. */
     val tier: ItemUnlockTier = ItemUnlockTier.TIER_1,
+    /** Number of days until item expires. Null = non-perishable (never expires). */
+    val shelfLifeDays: Int? = null,
 ) {
+    /** Returns true if this item is perishable (has an expiration date). */
+    val isPerishable: Boolean get() = shelfLifeDays != null
+    
     companion object {
         fun default(itemId: Int): ItemMetadata {
             return ItemMetadata(
@@ -31,6 +36,7 @@ data class ItemMetadata(
                 casePackCost = Money.fromDollars(5.00),
                 purchaseWeight = 1.0f,
                 tier = ItemUnlockTier.TIER_1,
+                shelfLifeDays = null,
             )
         }
     }

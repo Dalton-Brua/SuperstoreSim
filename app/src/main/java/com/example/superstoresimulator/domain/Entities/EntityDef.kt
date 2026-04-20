@@ -63,6 +63,25 @@ data class EntityDef(
             nextUpgrade = FAST_STOCKER
         )
 
+        val FAST_FRESH_HANDLER = EntityDef(
+            key = "fast_fresh_handler",
+            displayName = "Fast Fresh Handler",
+            cost = Money(10000),
+            description = "Better training increases your fresh handler's speed.",
+            icon = Icons.Default.Build,
+            nextUpgrade = null
+        )
+
+        val FRESH_HANDLER = EntityDef(
+            key = "fresh_handler",
+            displayName = "Fresh Handler",
+            cost = Money(1500),
+            description = "Hires a fresh handler to restock perishable items.",
+            icon = Icons.Default.Build,
+            nextUpgrade = FAST_FRESH_HANDLER
+        )
+
+        /*
         val CUSTOMER_SERVICE_REP = EntityDef(
             key = "customer_service_rep",
             displayName = "Customer Service Rep",
@@ -70,13 +89,16 @@ data class EntityDef(
             description = "Hires a customer service rep to handle refunds.",
             icon = Icons.Default.Person
         )
+        */
 
         val allEntities: List<EntityDef> = listOf(
             CASHIER,
             FAST_CASHIER,
             STOCKER,
             FAST_STOCKER,
-            CUSTOMER_SERVICE_REP,
+            FRESH_HANDLER,
+            FAST_FRESH_HANDLER,
+            //CUSTOMER_SERVICE_REP,
         )
 
     }

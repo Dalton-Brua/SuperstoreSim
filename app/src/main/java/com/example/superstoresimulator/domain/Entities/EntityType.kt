@@ -4,11 +4,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.example.superstoresimulator.domain.Entities.EntityDef.Companion.CASHIER
-import com.example.superstoresimulator.domain.Entities.EntityDef.Companion.CUSTOMER_SERVICE_REP
-import com.example.superstoresimulator.domain.Entities.EntityDef.Companion.FAST_CASHIER
-import com.example.superstoresimulator.domain.Entities.EntityDef.Companion.FAST_STOCKER
-import com.example.superstoresimulator.domain.Entities.EntityDef.Companion.STOCKER
+import com.example.superstoresimulator.domain.Entities.EntityDef
+
 
 data class EntityType(
     val key: String,  // Unique identifier for serialization
@@ -41,7 +38,7 @@ data class EntityType(
         val STOCKERS = EntityType(
             key = "STOCKERS",
             displayName = "Stockers",
-            description = "Stocks items from the backroom",
+            description = "Stocks items",
             icon = Icons.Default.Build,
             entities = listOf(
                 EntityDef.STOCKER,
@@ -49,7 +46,18 @@ data class EntityType(
             )
         )
 
-        val CUSTOMER_SERVICE_REPRESENTATIVES = EntityType(
+        val FRESH_HANDLERS = EntityType(
+            key = "FRESH_HANDLERS",
+            displayName = "Fresh Handlers",
+            description = "Stocks perishable items",
+            icon = Icons.Default.Build,
+            entities = listOf(
+                EntityDef.FRESH_HANDLER,
+                EntityDef.FAST_FRESH_HANDLER,
+            )
+        )
+
+        /*val CUSTOMER_SERVICE_REPRESENTATIVES = EntityType(
             key = "CUSTOMER_SERVICE_REPRESENTATIVES",
             displayName = "Customer Service",
             description = "Handles refunds",
@@ -58,10 +66,12 @@ data class EntityType(
                 EntityDef.CUSTOMER_SERVICE_REP,
             )
         )
+         */
         val allEntityTypes: List<EntityType> = listOf(
             CASHIERS,
             STOCKERS,
-            CUSTOMER_SERVICE_REPRESENTATIVES,
+            FRESH_HANDLERS,
+            //CUSTOMER_SERVICE_REPRESENTATIVES,
         )
     }
 }

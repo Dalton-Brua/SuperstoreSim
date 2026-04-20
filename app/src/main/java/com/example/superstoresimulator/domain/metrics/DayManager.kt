@@ -65,12 +65,31 @@ class DayManager {
      *                  at the moment the rollover was detected).
      */
     fun rollOverDay(state: GameState, dayNumber: Int): GameState {
+        // First, process queued fresh orders before calculating costs
+        var processedState = state
+        
+        // Process queued orders separately - will be called from GameEngine which has access to inventory manager
+        // For now, just clear the queue and mark incomplete orders
+        if (state.queuedFreshOrders.isNotEmpty()) {
+            val incompleteOrders = mutableListOf<com.example.superstoresimulator.domain.IncompleteOrderRequest>()
+            for (order in state.queuedFreshOrders) {
+                incompleteOrders.add(
+                    com.example.superstoresimulator.domain.IncompleteOrderRequest(
+                        itemId = order.itemId,
+                        casePacksRequested = order.casePacksRequested,
+                        requestedOnDay = state.currentTime.dayNumber,
+                        reason = "Will be processed in GameEngine",
+                    )
+                )
+            }
+        }
+        
         // Calculate operating costs
-        val rentCost = state.currentStoreSize.dailyRent
-        val wagesCost = StaffWageCalculator.calculateTotalWages(state.hiredEntityRegistry)
+        val rentCost = processedState.currentStoreSize.dailyRent
+        val wagesCost = StaffWageCalculator.calculateTotalWages(processedState.hiredEntityRegistry)
 
         // Update metrics with operating costs
-        val metricsWithCosts = state.currentDayMetrics.copy(
+        val metricsWithCosts = processedState.currentDayMetrics.copy(
             rentPaid = rentCost,
             wagesPaid = wagesCost,
         )
@@ -79,19 +98,21 @@ class DayManager {
         val snapshot = metricsWithCosts.toSnapshot(dayOfWeek = dayNumber % 7)
 
         // Deduct operating costs
-        val newCash = state.money - rentCost - wagesCost
+        val newCash = processedState.money - rentCost - wagesCost
 
-        val wasAlreadyPaused = state.playerPausedTime
-        return state.copy(
+        val wasAlreadyPaused = processedState.playerPausedTime
+        return processedState.copy(
             money = newCash,
-            completedDayMetrics = state.completedDayMetrics + snapshot,
+            completedDayMetrics = processedState.completedDayMetrics + snapshot,
             currentDayMetrics = DailyMetricsAccumulator(dayNumber = dayNumber + 1),
             showEndOfDayReport = true,
             lastEndOfDayReport = snapshot,
             playerPausedTime = true,
             pausedByEndOfDay = !wasAlreadyPaused,
+            queuedFreshOrders = emptyList(), // Clear queue after day rollover
         )
     }
+
 
     /**
      * Clear the end-of-day report flag and restore the correct time-running state.
