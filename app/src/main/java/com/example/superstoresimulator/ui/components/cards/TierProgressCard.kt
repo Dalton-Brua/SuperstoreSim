@@ -41,7 +41,6 @@ fun TierProgressCard(
     modifier: Modifier = Modifier
 ) {
     val canUnlock = availableTier != null && 
-                    availableTier.unlockCost != null && 
                     playerMoney >= availableTier.unlockCost
     
     Card(

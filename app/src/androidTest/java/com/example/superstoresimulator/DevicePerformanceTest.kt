@@ -9,6 +9,7 @@ import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.GameEngine
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.inventory.InventoryState
+import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemDao
@@ -173,7 +174,12 @@ class DevicePerformanceTest {
      */
     @Test
     fun testDeviceBaseline() {
-        val inventory = (1..10).associate { it to InventoryState(10, 10) }
+        val inventory = (1..10).associate {
+            it to InventoryState(
+                shelfBatches = listOf(ItemBatch(receivedDay = 0, quantity = 10, expirationDay = Int.MAX_VALUE)),
+                backroomBatches = listOf(ItemBatch(receivedDay = 0, quantity = 10, expirationDay = Int.MAX_VALUE))
+            )
+        }
         gameEngine.state = gameEngine.state.copy(inventory = inventory)
         
         // Warm-up: Let JIT compiler optimize
@@ -208,7 +214,10 @@ class DevicePerformanceTest {
     fun testDeviceRealisticLoad() {
         val inventory = testItems.associate { item ->
             val itemId = item.id.removePrefix("item_").toInt()
-            itemId to InventoryState(shelfStock = 10, backroomStock = 10)
+            itemId to InventoryState(
+                shelfBatches = listOf(ItemBatch(receivedDay = 0, quantity = 10, expirationDay = Int.MAX_VALUE)),
+                backroomBatches = listOf(ItemBatch(receivedDay = 0, quantity = 10, expirationDay = Int.MAX_VALUE))
+            )
         }
         
         val staffRegistry = createStaffRegistry(cashierCount = 5, stockerCount = 5)
@@ -255,7 +264,10 @@ class DevicePerformanceTest {
     fun testDeviceMaximumLoad() {
         val inventory = testItems.associate { item ->
             val itemId = item.id.removePrefix("item_").toInt()
-            itemId to InventoryState(shelfStock = 50, backroomStock = 50)
+            itemId to InventoryState(
+                shelfBatches = listOf(ItemBatch(receivedDay = 0, quantity = 50, expirationDay = Int.MAX_VALUE)),
+                backroomBatches = listOf(ItemBatch(receivedDay = 0, quantity = 50, expirationDay = Int.MAX_VALUE))
+            )
         }
         
         val staffRegistry = createStaffRegistry(cashierCount = 25, stockerCount = 25)
@@ -295,7 +307,12 @@ class DevicePerformanceTest {
      */
     @Test
     fun testDeviceTransactionProcessing() {
-        val inventory = (1..10).associate { it to InventoryState(100, 100) }
+        val inventory = (1..10).associate { 
+            it to InventoryState(
+                shelfBatches = listOf(ItemBatch(receivedDay = 0, quantity = 100, expirationDay = Int.MAX_VALUE)),
+                backroomBatches = listOf(ItemBatch(receivedDay = 0, quantity = 100, expirationDay = Int.MAX_VALUE))
+            )
+        }
         gameEngine.state = gameEngine.state.copy(
             inventory = inventory,
             money = Money(100_000_00)
@@ -344,7 +361,10 @@ class DevicePerformanceTest {
     fun testDeviceMemoryStability() {
         val inventory = testItems.take(100).associate { item ->
             val itemId = item.id.removePrefix("item_").toInt()
-            itemId to InventoryState(10, 10)
+            itemId to InventoryState(
+                shelfBatches = listOf(ItemBatch(receivedDay = 0, quantity = 10, expirationDay = Int.MAX_VALUE)),
+                backroomBatches = listOf(ItemBatch(receivedDay = 0, quantity = 10, expirationDay = Int.MAX_VALUE))
+            )
         }
         
         val staffRegistry = createStaffRegistry(cashierCount = 10, stockerCount = 10)
@@ -416,4 +436,3 @@ class DevicePerformanceTest {
         assertTrue(true)
     }
 }
-

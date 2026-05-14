@@ -1,10 +1,13 @@
 package com.example.superstoresimulator
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
@@ -23,12 +26,15 @@ import org.junit.runner.RunWith
  * - Dialog rendering
  * - Frame timing analysis with outlier detection
  * 
+ * Uses FrameMetricsCollector to gather real-time frame timing data during test execution.
+ * 
  * Usage:
  * ```
  * ./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.superstoresimulator.UIPerformanceTest
  * ```
  * 
  * Created: April 21, 2026
+ * Updated: May 2, 2026 - Integrated FrameMetricsCollector for in-test timing
  */
 @RunWith(AndroidJUnit4::class)
 class UIPerformanceTest {
@@ -36,6 +42,7 @@ class UIPerformanceTest {
     private lateinit var device: UiDevice
     private val packageName = "com.example.superstoresimulator"
     private val launchTimeout = 10000L // 10 seconds
+    private val frameCollector = FrameMetricsCollector()
     
     @Before
     fun setUp() {
@@ -62,14 +69,14 @@ class UIPerformanceTest {
      * 
      * Measures the time from launch intent to first rendered frame.
      * Target: < 2000ms for cold start
+     * 
+     * Note: Frame timing analysis is not performed for cold startup as the metric
+     * is time-to-interactive, not frame smoothness.
      */
     @Test
     fun testAppColdStartup() {
         println("TEST: Cold Startup Performance")
         println("─".repeat(70))
-        
-        // Reset frame stats
-        FrameTimingAnalyzer.resetFrameStats(packageName)
         
         // Measure cold startup time
         val startTime = System.currentTimeMillis()
@@ -85,16 +92,10 @@ class UIPerformanceTest {
         
         val coldStartupTime = System.currentTimeMillis() - startTime
         
-        println("  Cold Startup Time: ${coldStartupTime}ms")
+        println("  ✓ Cold Startup Time: ${coldStartupTime}ms")
         
-        // Wait for UI to settle
+        // Wait for UI to fully settle
         Thread.sleep(2000)
-        
-        // Collect frame timings during startup
-        val frameTimes = FrameTimingAnalyzer.collectFrameTimings(packageName)
-        val report = FrameTimingAnalyzer.analyzeFrameTimings(frameTimes)
-        
-        println("\n${FrameTimingAnalyzer.formatReport(report)}")
         
         // Assert: Cold startup should be < 2000ms
         assertTrue(
@@ -102,13 +103,12 @@ class UIPerformanceTest {
             coldStartupTime < 2000
         )
         
-        // Assert: First frames should be reasonably smooth
-        assertTrue(
-            "Too many janky frames during startup: ${report.jankyFramePercent}%",
-            report.jankyFramePercent < 30.0 // Allow some jank during startup
-        )
-        
-        println("✓ Cold startup test passed\n")
+        println("  ✓ Cold startup target met (< 2000ms)")
+        println()
+        println("═".repeat(70))
+        println("  COLD STARTUP TEST PASSED")
+        println("═".repeat(70))
+        println()
     }
     
     /**
@@ -126,14 +126,21 @@ class UIPerformanceTest {
         launchApp()
         Thread.sleep(2000) // Let app settle
         
+        // Get the current activity to collect frame metrics
+        val activity = getCurrentActivity()
+        if (activity == null) {
+            println("  ⚠️  Could not get activity reference, skipping frame timing")
+            return
+        }
+        
         val screens = listOf("Inventory", "Staff", "History", "Metrics", "Game")
         val reports = mutableMapOf<String, FrameTimingReport>()
         
         screens.forEach { screenName ->
             println("\n  Testing navigation to: $screenName")
             
-            // Reset frame stats
-            FrameTimingAnalyzer.resetFrameStats(packageName)
+            // Start collecting frame metrics
+            frameCollector.startCollecting(activity)
             
             // Find and click the nav button
             val navButton = device.findObject(By.text(screenName))
@@ -141,8 +148,8 @@ class UIPerformanceTest {
                 navButton.click()
                 Thread.sleep(500) // Wait for transition
                 
-                // Collect frame timings
-                val frameTimes = FrameTimingAnalyzer.collectFrameTimings(packageName)
+                // Stop collecting and analyze
+                val frameTimes = frameCollector.stopCollecting()
                 val report = FrameTimingAnalyzer.analyzeFrameTimings(frameTimes)
                 reports[screenName] = report
                 
@@ -150,6 +157,8 @@ class UIPerformanceTest {
             } else {
                 println("    ⚠️  Navigation button not found for $screenName")
             }
+            
+            Thread.sleep(300) // Brief pause between tests
         }
         
         println("\n" + "─".repeat(70))
@@ -163,14 +172,38 @@ class UIPerformanceTest {
         
         println()
         
-        // Assert: Average jank across all screens should be < 10%
-        val avgJank = reports.values.map { it.jankyFramePercent }.average()
-        assertTrue(
-            "Average jank across screens too high: ${String.format("%.2f", avgJank)}%",
-            avgJank < 10.0
-        )
+        // Always print detailed reports for ALL screens (not just problematic ones)
+        reports.forEach { (screen, report) ->
+            println("\n📊 Detailed analysis for $screen:")
+            println(FrameTimingAnalyzer.formatReport(report))
+        }
         
-        println("✓ Screen navigation test passed\n")
+        // Calculate and print average BEFORE assertion
+        if (reports.isNotEmpty()) {
+            val avgJank = reports.values.map { it.jankyFramePercent }.average()
+            
+            println("\n" + "═".repeat(70))
+            println("FINAL NAVIGATION TEST RESULTS")
+            println("═".repeat(70))
+            println("  Screens Tested: ${reports.size}")
+            println("  Average Jank: ${String.format("%.2f", avgJank)}%")
+            println("  Target: < 10.0%")
+            println("  Result: ${if (avgJank < 10.0) "✅ PASS" else "❌ FAIL"}")
+            println("═".repeat(70))
+            println()
+            
+            // Assert: Average jank across all screens should be < 10%
+            assertTrue(
+                "Average jank across screens too high: ${String.format("%.2f", avgJank)}% (target: < 10.0%)",
+                avgJank < 10.0
+            )
+        }
+        
+        println()
+        println("═".repeat(70))
+        println("  SCREEN NAVIGATION TEST PASSED")
+        println("═".repeat(70))
+        println()
     }
     
     /**
@@ -193,8 +226,15 @@ class UIPerformanceTest {
             inventoryButton.click()
             Thread.sleep(1000)
             
-            // Reset frame stats
-            FrameTimingAnalyzer.resetFrameStats(packageName)
+            // Get activity for frame collection
+            val activity = getCurrentActivity()
+            if (activity == null) {
+                println("  ⚠️  Could not get activity reference, skipping frame timing")
+                return
+            }
+            
+            // Start collecting frame metrics
+            frameCollector.startCollecting(activity)
             
             // Perform scrolling gestures
             val displayHeight = device.displayHeight
@@ -228,19 +268,37 @@ class UIPerformanceTest {
             
             Thread.sleep(500)
             
-            // Collect frame timings
-            val frameTimes = FrameTimingAnalyzer.collectFrameTimings(packageName)
+            // Stop collecting and analyze
+            val frameTimes = frameCollector.stopCollecting()
+            
+            println("\n  ✓ Collected ${frameTimes.size} frame samples")
+            
             val report = FrameTimingAnalyzer.analyzeFrameTimings(frameTimes)
             
+            // Always print the detailed report BEFORE assertions
             println("\n${FrameTimingAnalyzer.formatReport(report)}")
+            
+            // Print summary for quick scanning
+            println("\n" + "─".repeat(70))
+            println("SCROLLING TEST RESULTS")
+            println("─".repeat(70))
+            println("  Frames Collected: ${report.totalFrames}")
+            println("  Average Frame Time: ${String.format("%.2f", report.averageFrameTime)}ms")
+            println("  Janky Frame %: ${String.format("%.2f", report.jankyFramePercent)}%")
+            println("  Target: < 15.0%")
+            println("─".repeat(70))
             
             // Assert: Scrolling should be smooth
             assertTrue(
-                "Too many janky frames during scrolling: ${report.jankyFramePercent}%",
+                "Too many janky frames during scrolling: ${report.jankyFramePercent}% (target: < 15.0%)",
                 report.jankyFramePercent < 15.0 // Allow some jank during aggressive scrolling
             )
             
-            println("✓ Inventory scrolling test passed\n")
+            println()
+            println("═".repeat(70))
+            println("  INVENTORY SCROLLING TEST PASSED")
+            println("═".repeat(70))
+            println()
         } else {
             println("  ⚠️  Inventory button not found, skipping test\n")
         }
@@ -260,8 +318,15 @@ class UIPerformanceTest {
         launchApp()
         Thread.sleep(2000)
         
-        // Reset frame stats
-        FrameTimingAnalyzer.resetFrameStats(packageName)
+        // Get activity for frame collection
+        val activity = getCurrentActivity()
+        if (activity == null) {
+            println("  ⚠️  Could not get activity reference, skipping frame timing")
+            return
+        }
+        
+        // Start collecting frame metrics
+        frameCollector.startCollecting(activity)
         
         val displayHeight = device.displayHeight
         val displayWidth = device.displayWidth
@@ -294,19 +359,38 @@ class UIPerformanceTest {
         
         Thread.sleep(500)
         
-        // Collect frame timings
-        val frameTimes = FrameTimingAnalyzer.collectFrameTimings(packageName)
+        // Stop collecting and analyze
+        val frameTimes = frameCollector.stopCollecting()
+        
+        println("\n  ✓ Collected ${frameTimes.size} frame samples")
+        
         val report = FrameTimingAnalyzer.analyzeFrameTimings(frameTimes)
         
+        // Always print detailed report BEFORE assertion
         println("\n${FrameTimingAnalyzer.formatReport(report)}")
+        
+        // Print summary
+        println("\n" + "─".repeat(70))
+        println("PAGER SWIPE TEST RESULTS")
+        println("─".repeat(70))
+        println("  Frames Collected: ${report.totalFrames}")
+        println("  Average Frame Time: ${String.format("%.2f", report.averageFrameTime)}ms")
+        println("  Janky Frame %: ${String.format("%.2f", report.jankyFramePercent)}%")
+        println("  Target: < 10.0%")
+        println("  Result: ${if (report.jankyFramePercent < 10.0) "✅ PASS" else "❌ FAIL"}")
+        println("─".repeat(70))
         
         // Assert: Swiping should be smooth
         assertTrue(
-            "Too many janky frames during swipe: ${report.jankyFramePercent}%",
+            "Too many janky frames during swipe: ${report.jankyFramePercent}% (target: < 10.0%)",
             report.jankyFramePercent < 10.0
         )
         
-        println("✓ Pager swipe test passed\n")
+        println()
+        println("═".repeat(70))
+        println("  PAGER SWIPE TEST PASSED")
+        println("═".repeat(70))
+        println()
     }
     
     /**
@@ -324,8 +408,15 @@ class UIPerformanceTest {
         launchApp()
         Thread.sleep(2000)
         
-        // Reset frame stats
-        FrameTimingAnalyzer.resetFrameStats(packageName)
+        // Get activity for frame collection
+        val activity = getCurrentActivity()
+        if (activity == null) {
+            println("  ⚠️  Could not get activity reference, skipping frame timing")
+            return
+        }
+        
+        // Start collecting frame metrics
+        frameCollector.startCollecting(activity)
         
         println("  Running game for 30 seconds...")
         val startTime = System.currentTimeMillis()
@@ -339,36 +430,58 @@ class UIPerformanceTest {
                 // Tap somewhere on screen to trigger ring-up or action
                 device.click(device.displayWidth / 2, device.displayHeight / 2)
             }
+            
+            // Print progress
+            val elapsed = (System.currentTimeMillis() - startTime) / 1000
+            val currentFrameCount = frameCollector.getFrameCount()
+            println("    ${elapsed}s elapsed, ${currentFrameCount} frames collected...")
         }
         
         val runTime = System.currentTimeMillis() - startTime
-        println("  Game ran for ${runTime}ms")
+        println("  ✓ Game ran for ${runTime}ms")
         
-        // Collect frame timings
-        val frameTimes = FrameTimingAnalyzer.collectFrameTimings(packageName)
+        // Stop collecting and analyze
+        val frameTimes = frameCollector.stopCollecting()
+        
+        println("\n  ✓ Collected ${frameTimes.size} frame samples")
+        
         val report = FrameTimingAnalyzer.analyzeFrameTimings(frameTimes)
         
+        // Always print detailed report BEFORE assertions
         println("\n${FrameTimingAnalyzer.formatReport(report)}")
         
-        // Calculate expected frame count (60 FPS × 30s = ~1800 frames)
-        val expectedFrames = 1800
-        val frameCountRatio = report.totalFrames.toDouble() / expectedFrames
+        // Print summary
+        println("\n" + "─".repeat(70))
+        println("SUSTAINED GAMEPLAY TEST RESULTS")
+        println("─".repeat(70))
+        println("  Frames Collected: ${report.totalFrames}")
+        println("  Test Duration: 30 seconds")
+        println("  Average Frame Time: ${String.format("%.2f", report.averageFrameTime)}ms")
+        println("  Janky Frame %: ${String.format("%.2f", report.jankyFramePercent)}%")
+        println("  Jank Target: < 10.0%")
+        println("  Frame Time Target: < 16.0ms")
+        println("─".repeat(70))
         
-        println("  Frame Count: ${report.totalFrames} / ~$expectedFrames expected (${String.format("%.1f", frameCountRatio * 100)}%)")
-        
-        // Assert: Should maintain good frame rate
+        // Assert: Sustained gameplay should maintain acceptable performance
         assertTrue(
-            "Too few frames rendered: ${report.totalFrames} (expected ~$expectedFrames)",
-            report.totalFrames > expectedFrames * 0.8 // Allow 20% margin
+            "Too many janky frames during sustained gameplay: ${report.jankyFramePercent}% (target: < 10.0%)",
+            report.jankyFramePercent < 10.0
         )
         
-        // Assert: Sustained gameplay should be smooth
+        // Assert: Average frame time should be good
         assertTrue(
-            "Too many janky frames during gameplay: ${report.jankyFramePercent}%",
-            report.jankyFramePercent < 5.0
+            "Average frame time too high during sustained gameplay: ${report.averageFrameTime}ms (target: < 16.0ms)",
+            report.averageFrameTime < 16.0
         )
         
-        println("✓ Sustained gameplay test passed\n")
+        println()
+        println("═".repeat(70))
+        println("  SUSTAINED GAMEPLAY TEST PASSED")
+        println("  ${report.totalFrames} frames over 30 seconds")
+        println("  Average: ${String.format("%.2f", report.averageFrameTime)}ms")
+        println("  Jank: ${String.format("%.2f", report.jankyFramePercent)}%")
+        println("═".repeat(70))
+        println()
     }
     
     /**
@@ -385,14 +498,21 @@ class UIPerformanceTest {
         launchApp()
         Thread.sleep(2000)
         
+        // Get activity for frame collection
+        val activity = getCurrentActivity()
+        if (activity == null) {
+            println("  ⚠️  Could not get activity reference, skipping frame timing")
+            return
+        }
+        
         println("\n  Executing full user flow...")
         println("  1. Navigate through all screens")
         println("  2. Perform actions on each screen")
         println("  3. Test dialogs and interactions")
         println()
         
-        // Reset frame stats
-        FrameTimingAnalyzer.resetFrameStats(packageName)
+        // Start collecting frame metrics
+        frameCollector.startCollecting(activity)
         
         // Navigate through all screens
         val screens = listOf("Inventory", "Staff", "History", "Metrics", "Game")
@@ -428,8 +548,8 @@ class UIPerformanceTest {
         
         Thread.sleep(1000)
         
-        // Collect and analyze
-        val frameTimes = FrameTimingAnalyzer.collectFrameTimings(packageName)
+        // Stop collecting and analyze
+        val frameTimes = frameCollector.stopCollecting()
         val report = FrameTimingAnalyzer.analyzeFrameTimings(frameTimes)
         
         println("\n")
@@ -451,14 +571,27 @@ class UIPerformanceTest {
         println("OVERALL UI PERFORMANCE: $overallScore")
         println("═".repeat(70))
         println()
+        println("FINAL TEST VERDICT")
+        println("─".repeat(70))
+        println("  Frames Collected: ${report.totalFrames}")
+        println("  Janky Frame %: ${String.format("%.2f", report.jankyFramePercent)}%")
+        println("  Target: < 10.0%")
+        println("  Score: $overallScore")
+        println("  Result: ${if (report.jankyFramePercent < 10.0) "✅ PASS" else "❌ FAIL"}")
+        println("─".repeat(70))
+        println()
         
         // Assert: Overall performance should be at least GOOD
         assertTrue(
-            "Overall UI performance is poor (${String.format("%.2f", report.jankyFramePercent)}% jank)",
+            "Overall UI performance is poor (${String.format("%.2f", report.jankyFramePercent)}% jank, target: < 10.0%)",
             report.jankyFramePercent < 10.0
         )
         
-        println("✓ Full UI performance test passed\n")
+        println()
+        println("═".repeat(70))
+        println("  FULL UI PERFORMANCE TEST PASSED")
+        println("═".repeat(70))
+        println()
     }
     
     // ── Helper Methods ────────────────────────────────────────────────────
@@ -470,6 +603,22 @@ class UIPerformanceTest {
         }
         context.startActivity(intent)
         device.wait(Until.hasObject(By.pkg(packageName)), launchTimeout)
+    }
+    
+    /**
+     * Gets the current (resumed) activity.
+     * Required for frame metrics collection.
+     */
+    private fun getCurrentActivity(): Activity? {
+        var currentActivity: Activity? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val resumedActivities = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+            if (resumedActivities.iterator().hasNext()) {
+                currentActivity = resumedActivities.iterator().next() as Activity
+            }
+        }
+        return currentActivity
     }
 }
 

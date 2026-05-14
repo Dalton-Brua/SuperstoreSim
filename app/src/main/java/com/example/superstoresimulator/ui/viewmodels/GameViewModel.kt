@@ -37,7 +37,7 @@ import com.example.superstoresimulator.domain.inventory.InventoryState
 @HiltViewModel
 class GameViewModel @Inject constructor(
     private val itemDao: ItemDao,
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     @param:TickDelta private val tickDelta: Long = 16, // Milliseconds per tick
     private val gameStateRepository: GameStateRepository
 ) : ViewModel() {

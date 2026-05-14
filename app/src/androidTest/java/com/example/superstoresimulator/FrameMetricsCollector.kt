@@ -6,7 +6,6 @@ import android.os.Looper
 import android.util.Log
 import android.view.FrameMetrics
 import android.view.Window
-import androidx.test.core.app.ActivityScenario
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**

@@ -31,8 +31,8 @@ object DatabaseModule {
             AppDatabase::class.java,
             "superstore-database-v6"
         )
-            .fallbackToDestructiveMigration()
-            .fallbackToDestructiveMigrationOnDowngrade()
+            .fallbackToDestructiveMigration(dropAllTables = true)
+            .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
             .build()
         
         return database
