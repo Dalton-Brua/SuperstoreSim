@@ -50,7 +50,6 @@ import com.example.superstoresimulator.ui.theme.TextSecondary
 @Composable
 fun StoreHomeScreen (
     state: GameUiState,
-    onRingUpItem: (Int) -> Unit,
     onViewItem: (Int) -> Unit,
     onStoreNameChange: (String) -> Unit,
     itemDao: ItemDao,
@@ -344,7 +343,6 @@ fun StoreHomeScreen (
                 transactionLines = state.transactions.current.lines,
                 itemDao = itemDao,
                 onDismiss = { showTransactionDialog = false },
-                onRingUpItem = onRingUpItem,
                 onViewItem = { itemId ->
                     onViewItem(itemId)
                     onNavigateToInventory()

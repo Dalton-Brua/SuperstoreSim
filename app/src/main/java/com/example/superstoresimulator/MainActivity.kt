@@ -4,6 +4,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -138,6 +141,11 @@ class MainActivity : ComponentActivity() {
                             BottomNavBar(
                                 current = currentScreen,
                                 onSelect = { screen ->
+                                    // Disable navigation when overlay screens are open
+                                    if (currentScreen == Screen.STAFF_ENTITY_LIST || selectedInventoryItemId != null) {
+                                        return@BottomNavBar
+                                    }
+                                    
                                     // If clicking the current screen button, reset its state
                                     if (currentScreen == screen) {
                                         when (screen) {
@@ -176,7 +184,8 @@ class MainActivity : ComponentActivity() {
                     ) { paddingValues ->
                         HorizontalPager(
                             state = pagerState,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            userScrollEnabled = currentScreen !in listOf(Screen.STAFF_ENTITY_LIST) && selectedInventoryItemId == null
                         ) { page ->
                             when (mainScreens[page]) {
                             Screen.GAME -> StoreHomeScreen(
@@ -184,7 +193,6 @@ class MainActivity : ComponentActivity() {
                                 onStoreNameChange = { viewModel.onEvent(GameEvent.ChangeStoreName(it)) },
                                 onProcessRefundLine = { refundId: Int, itemId: Int, qty: Int -> viewModel.onEvent(GameEvent.ProcessRefundLine(refundId, itemId, qty)) },
                                 onViewItem = { itemId: Int -> viewModel.onEvent(GameEvent.FocusInventoryItem(itemId)) },
-                                onRingUpItem = { itemId: Int -> viewModel.onEvent(GameEvent.RingUpItem(itemId)) },
                                 itemDao = itemDao,
                                 onNavigateToInventory = { 
                                     val targetIndex = mainScreens.indexOf(Screen.INVENTORY)
@@ -290,7 +298,16 @@ class MainActivity : ComponentActivity() {
                 
                     // Staff Entity Detail Screen as overlay (not part of pager)
                     if (currentScreen == Screen.STAFF_ENTITY_LIST) {
-                        Box(modifier = Modifier.fillMaxSize()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable(
+                                    enabled = true,
+                                    onClick = { /* Consume all clicks to prevent interaction with underlying content */ },
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                )
+                        ) {
                             EntityTypeDetailScreen(
                                 state = state.staff,
                                 money = state.app.money,
@@ -314,7 +331,16 @@ class MainActivity : ComponentActivity() {
                         if (selectedItem != null) {
                             // Get batch data through ViewModel read-only helper
                             val inventoryState = viewModel.getInventoryStateForItem(selectedId)
-                            Box(modifier = Modifier.fillMaxSize()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable(
+                                        enabled = true,
+                                        onClick = { /* Consume all clicks to prevent interaction with underlying content */ },
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    )
+                            ) {
                                 InventoryItemDetailScreen(
                                     item = selectedItem,
                                     money = state.app.money,

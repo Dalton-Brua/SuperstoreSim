@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,7 +35,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +50,7 @@ import com.example.superstoresimulator.ui.theme.PrimaryDark
 import com.example.superstoresimulator.ui.theme.Destructive
 import com.example.superstoresimulator.ui.theme.ProgressBarTrack
 import com.example.superstoresimulator.ui.theme.ProgressBarIndicator
+import com.example.superstoresimulator.ui.theme.CardWhite
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,7 +58,6 @@ fun TransactionDetailDialog(
     transactionLines: List<TransactionLine>,
     itemDao: ItemDao,
     onDismiss: () -> Unit,
-    onRingUpItem: (Int) -> Unit,
     onViewItem: (Int) -> Unit,
 ) {
     // State to hold item name mappings
@@ -150,7 +148,6 @@ fun TransactionDetailDialog(
                             TransactionLineCard(
                                 line = line,
                                 itemName = itemNames.value[line.itemId] ?: "Item ${line.itemId}",
-                                onRingUp = { onRingUpItem(line.itemId) },
                                 onViewItem = { onViewItem(line.itemId) },
                             )
 
@@ -166,25 +163,24 @@ fun TransactionDetailDialog(
                             TransactionLineCard(
                                 line = line,
                                 itemName = itemNames.value[line.itemId] ?: "Item ${line.itemId}",
-                                onRingUp = { onRingUpItem(line.itemId) },
                                 onViewItem = { onViewItem(line.itemId) },
                             )
                         }
                     }
 
                     // Progress summary
-                    HorizontalDivider(color = Color(0xFFE2E8F0))
+                    HorizontalDivider(color = ProgressBarTrack)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp)
-                            .background(Color.White),
+                            .background(CardWhite),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val totalRequired = transactionLines.sumOf { it.quantity }
                         val totalRung = transactionLines.sumOf { it.rungQty }
-                        Text("$totalRung / $totalRequired complete", color = Color(0xFF1E40AF), fontWeight = FontWeight.Bold)
+                        Text("$totalRung / $totalRequired complete", color = PrimaryDark, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -281,9 +277,17 @@ fun TransactionDetailDialog(
                                 colors = CardDefaults.cardColors(containerColor = LightBackground)
                             ) {
                                 Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(itemNames.value[line.itemId] ?: "Item ${line.itemId}", fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                    Text(
+                                        text = itemNames.value[line.itemId] ?: "Item ${line.itemId}",
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.weight(1f),
+                                        color = PrimaryDark
+                                    )
                                     Column(horizontalAlignment = Alignment.End) {
-                                        Text("${line.quantity} × ${line.unitPrice}")
+                                        Text(
+                                            text = "${line.quantity} × ${line.unitPrice}",
+                                            color = PrimaryDark
+                                        )
                                         Text("Line total: ${line.lineTotal}", color = TextSecondary, fontSize = 12.sp)
                                     }
                                 }
@@ -292,11 +296,16 @@ fun TransactionDetailDialog(
                     }
 
                     // Summary
-                    HorizontalDivider()
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Subtotal: ${transaction.subtotal}")
-                        Text("Tax: ${transaction.tax}")
-                        Text("Total: ${transaction.totalEarned}", fontWeight = FontWeight.Bold)
+                    HorizontalDivider(color = ProgressBarTrack)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(CardWhite)
+                            .padding(16.dp)
+                    ) {
+                        Text("Subtotal: ${transaction.subtotal}", color = PrimaryDark)
+                        Text("Tax: ${transaction.tax}", color = PrimaryDark)
+                        Text("Total: ${transaction.totalEarned}", fontWeight = FontWeight.Bold, color = PrimaryDark)
                     }
                 }
             }
@@ -308,7 +317,6 @@ fun TransactionDetailDialog(
 fun TransactionLineCard(
     line: TransactionLine,
     itemName: String,
-    onRingUp: () -> Unit,
     onViewItem: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -366,28 +374,14 @@ fun TransactionLineCard(
 
             Spacer(Modifier.height(12.dp))
 
-            // Action buttons
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+            // Action button
+            OutlinedButton(
+                onClick = { onViewItem() },
+                modifier = Modifier.fillMaxWidth(),
+                colors = GameButtonStyles.outlinedPrimaryColors(),
+                shape = RoundedCornerShape(20.dp)
             ) {
-                Button(
-                    onClick = { onRingUp() },
-                    modifier = Modifier.weight(1f),
-                    colors = GameButtonStyles.primaryBlueColor(),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Text("Ring Up", fontWeight = FontWeight.Bold)
-                }
-
-                OutlinedButton(
-                    onClick = { onViewItem() },
-                    modifier = Modifier.weight(1f),
-                    colors = GameButtonStyles.outlinedPrimaryColors(),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Text("View Item", fontWeight = FontWeight.Medium)
-                }
+                Text("View Item", fontWeight = FontWeight.Medium)
             }
         }
     }
