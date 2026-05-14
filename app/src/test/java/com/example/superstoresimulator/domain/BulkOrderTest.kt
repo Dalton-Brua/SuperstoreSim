@@ -96,6 +96,15 @@ class BulkOrderTest {
         tier = tier
     )
 
+    /** Helper to create a batch with the given quantity (non-perishable for testing). */
+    private fun batch(qty: Int, day: Int = 1): List<com.example.superstoresimulator.domain.inventory.ItemBatch> =
+        if (qty > 0) listOf(com.example.superstoresimulator.domain.inventory.ItemBatch(receivedDay = day, quantity = qty, expirationDay = Int.MAX_VALUE))
+        else emptyList()
+
+    /** Helper to create InventoryState from integer quantities. */
+    private fun inv(shelfStock: Int, backroomStock: Int): InventoryState =
+        InventoryState(shelfBatches = batch(shelfStock), backroomBatches = batch(backroomStock))
+
     private fun newEngine(items: List<Item>): GameEngine {
         val cache = ItemMetadataCache(FakeItemDao(items))
         runBlocking { cache.initialize() }
@@ -547,10 +556,7 @@ class BulkOrderTest {
         // Set different caps per-item by manually pinning item 1's backroom to cap
         setBackroomCap(engine, 50)
         engine.state = engine.state.copy(
-            inventory = engine.state.inventory + (1 to InventoryState(
-                shelfStock = 10,
-                backroomStock = 50
-            ))
+            inventory = engine.state.inventory + (1 to inv(10, 50))
         )
 
         engine.placeBulkOrder(maxTotalQuantity = 100, casePacksPerItem = 2, categoryFilter = null)

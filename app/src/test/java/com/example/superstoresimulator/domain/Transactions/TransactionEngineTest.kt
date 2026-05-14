@@ -18,6 +18,15 @@ class TransactionEngineTest {
     private lateinit var engine: TransactionEngine
     private lateinit var baseState: GameState
 
+    /** Helper to create a batch with the given quantity (non-perishable for testing). */
+    private fun batch(qty: Int, day: Int = 1): List<com.example.superstoresimulator.domain.inventory.ItemBatch> =
+        if (qty > 0) listOf(com.example.superstoresimulator.domain.inventory.ItemBatch(receivedDay = day, quantity = qty, expirationDay = Int.MAX_VALUE))
+        else emptyList()
+
+    /** Helper to create InventoryState from integer quantities. */
+    private fun inv(shelfStock: Int, backroomStock: Int): InventoryState =
+        InventoryState(shelfBatches = batch(shelfStock), backroomBatches = batch(backroomStock))
+
     @Before
     fun setUp() {
         engine = TransactionEngine(
@@ -29,7 +38,7 @@ class TransactionEngineTest {
         // Create base state with inventory
         val inventory = mutableMapOf<Int, InventoryState>()
         for (i in 1..10) {
-            inventory[i] = InventoryState(shelfStock = 50, backroomStock = 100)
+            inventory[i] = inv(50, 100)
         }
 
         baseState = GameState(
@@ -155,10 +164,7 @@ class TransactionEngineTest {
         val rungQtyBefore = state.currentTransaction.lines[0].rungQty  // 0
 
         // Force shelf stock to 0 for this item
-        state = state.copy(inventory = state.inventory + (itemId to InventoryState(
-            shelfStock = 0,
-            backroomStock = 100
-        )))
+        state = state.copy(inventory = state.inventory + (itemId to inv(0, 100)))
 
         state = engine.ringUpSingleItem(state, itemId)
 
@@ -584,4 +590,5 @@ class TransactionEngineTest {
         assertTrue("Total shelf stock should decrease", finalTotalStock < initialTotalStock)
     }
 }
+
 

@@ -27,7 +27,9 @@ import org.junit.Test
  *   FAST_CASHIER.cost         = 10_000 ¢ ($100.00)
  *   STOCKER.cost              = 1_500 ¢  ($15.00)
  *   FAST_STOCKER.cost         = 10_000 ¢ ($100.00)
- *   CUSTOMER_SERVICE_REP.cost = 5_000 ¢  ($50.00)
+ *   FRESH_HANDLER.cost        = 1_500 ¢  ($15.00)
+ *   FAST_FRESH_HANDLER.cost   = 10_000 ¢ ($100.00)
+ *   (CUSTOMER_SERVICE_REP was removed)
  *
  * NON-VACUOUSNESS PRINCIPLE:
  * Every money assertion uses a concrete expected value derived by independent
@@ -333,6 +335,10 @@ class UpgradeEntityTest {
             Money(18_500), gameEngine.currentState().money)
     }
 
+    /*
+     * Test disabled: CUSTOMER_SERVICE_REP entity has been removed from the game.
+     * This test is preserved for reference but commented out.
+     *
     @Test
     fun testCustomerServiceRepHasNoUpgradePath() {
         // CUSTOMER_SERVICE_REP has nextUpgrade = null from the moment it is hired
@@ -355,6 +361,7 @@ class UpgradeEntityTest {
         assertEquals("Balance must be exactly 5_000¢ — upgrade of CSR must not deduct money",
             Money(5_000), gameEngine.currentState().money)
     }
+    */
 
     // ════════════════════════════════════════════════════════════════════════
     // 5. ENTITY PROPERTIES PRESERVED THROUGH UPGRADE

@@ -131,6 +131,15 @@ class InventoryManagerTest {
         manager = InventoryManager(cache)
     }
 
+    /** Helper to create a batch with the given quantity (non-perishable for testing). */
+    private fun batch(qty: Int, day: Int = 1): List<ItemBatch> =
+        if (qty > 0) listOf(ItemBatch(receivedDay = day, quantity = qty, expirationDay = Int.MAX_VALUE))
+        else emptyList()
+
+    /** Helper to create InventoryState from integer quantities. */
+    private fun inv(shelfStock: Int, backroomStock: Int): InventoryState =
+        InventoryState(shelfBatches = batch(shelfStock), backroomBatches = batch(backroomStock))
+
     /** Builds a [GameState] with explicit per-item [InventoryState] values. */
     private fun stateWith(
         vararg items: Pair<Int, InventoryState>,
@@ -148,7 +157,7 @@ class InventoryManagerTest {
 
     @Test
     fun stockItemFromBackroomMovesOneUnitFromShelfToBackroom() {
-        val state = stateWith(1 to InventoryState(shelfStock = 5, backroomStock = 8))
+        val state = stateWith(1 to inv(5, 8))
         val result = manager.stockItemFromBackroom(state, itemId = 1)
         assertEquals(6, result.inventory[1]!!.shelfStock)
         assertEquals(7, result.inventory[1]!!.backroomStock)
@@ -156,21 +165,21 @@ class InventoryManagerTest {
 
     @Test
     fun `stockItemFromBackroom increments itemsStocked metric by 1`() {
-        val state = stateWith(1 to InventoryState(shelfStock = 0, backroomStock = 5))
+        val state = stateWith(1 to inv(0, 5))
         val result = manager.stockItemFromBackroom(state, itemId = 1)
         assertEquals(1, result.currentDayMetrics.itemsStocked)
     }
 
     @Test
     fun `stockItemFromBackroom is no-op when backroom is empty`() {
-        val state = stateWith(1 to InventoryState(shelfStock = 10, backroomStock = 0))
+        val state = stateWith(1 to inv(10, 0))
         val result = manager.stockItemFromBackroom(state, itemId = 1)
         assertEquals(state, result)
     }
 
     @Test
     fun `stockItemFromBackroom is no-op when itemId not in inventory`() {
-        val state = stateWith(1 to InventoryState(shelfStock = 5, backroomStock = 5))
+        val state = stateWith(1 to inv(5, 5))
         val result = manager.stockItemFromBackroom(state, itemId = 99)
         assertEquals(state, result)
     }
@@ -180,8 +189,8 @@ class InventoryManagerTest {
     @Test
     fun `stockRandomItemFromBackroom is no-op when all backrooms are empty`() {
         val state = stateWith(
-            1 to InventoryState(shelfStock = 10, backroomStock = 0),
-            2 to InventoryState(shelfStock = 5,  backroomStock = 0),
+            1 to inv(10, 0),
+            2 to inv(5, 0),
         )
         val result = manager.stockRandomItemFromBackroom(state)
         assertEquals(state, result)
@@ -191,8 +200,8 @@ class InventoryManagerTest {
     fun `stockRandomItemFromBackroom picks the item with the lowest shelf stock`() {
         // Item 1 has lower shelf stock → must be chosen
         val state = stateWith(
-            1 to InventoryState(shelfStock = 2,  backroomStock = 10),
-            2 to InventoryState(shelfStock = 10, backroomStock = 10),
+            1 to inv(2, 10),
+            2 to inv(10, 10),
         )
         val result = manager.stockRandomItemFromBackroom(state)
         // Item 1 shelf should increase; item 2 shelf should be unchanged
@@ -203,7 +212,7 @@ class InventoryManagerTest {
     @Test
     fun `stockRandomItemFromBackroom stocks a full case-pack not just one unit`() {
         // Item 1 casePack = 6; backroom has 10 → should move 6 to shelf
-        val state = stateWith(1 to InventoryState(shelfStock = 0, backroomStock = 10))
+        val state = stateWith(1 to inv(0, 10))
         val result = manager.stockRandomItemFromBackroom(state)
         assertEquals(6, result.inventory[1]!!.shelfStock)
         assertEquals(4, result.inventory[1]!!.backroomStock)
@@ -211,7 +220,7 @@ class InventoryManagerTest {
 
     @Test
     fun `stockRandomItemFromBackroom increments itemsStocked by casePack amount`() {
-        val state = stateWith(1 to InventoryState(shelfStock = 0, backroomStock = 10))
+        val state = stateWith(1 to inv(0, 10))
         val result = manager.stockRandomItemFromBackroom(state)
         assertEquals(6, result.currentDayMetrics.itemsStocked) // casePack = 6
     }
@@ -220,7 +229,7 @@ class InventoryManagerTest {
 
     @Test
     fun `buyItemToBackroom adds one case-pack to backroom and deducts cost`() {
-        val state = stateWith(1 to InventoryState(shelfStock = 0, backroomStock = 0))
+        val state = stateWith(1 to inv(0, 0))
         val result = manager.buyItemToBackroom(state, itemId = 1)
         assertEquals(6, result.inventory[1]!!.backroomStock) // casePack = 6
         assertEquals(state.money - item1CasePackCost, result.money)
@@ -228,7 +237,7 @@ class InventoryManagerTest {
 
     @Test
     fun `buyItemToBackroom increments itemsOrdered metric`() {
-        val state = stateWith(1 to InventoryState(shelfStock = 0, backroomStock = 0))
+        val state = stateWith(1 to inv(0, 0))
         val result = manager.buyItemToBackroom(state, itemId = 1)
         assertEquals(6, result.currentDayMetrics.itemsOrdered)
     }
@@ -237,7 +246,7 @@ class InventoryManagerTest {
     fun `buyItemToBackroom is no-op when adding a case-pack would exceed cap`() {
         // Cap = 50; backroom already at 46; casePack = 6 → 46+6 = 52 > 50
         val state = stateWith(
-            1 to InventoryState(shelfStock = 0, backroomStock = 46),
+            1 to inv(0, 46),
             backroomCap = 50,
         )
         val result = manager.buyItemToBackroom(state, itemId = 1)
@@ -248,7 +257,7 @@ class InventoryManagerTest {
     fun `buyItemToBackroom is no-op when money is insufficient`() {
         // item1CasePackCost = 3_000 ¢; give player only 2_999 ¢
         val state = stateWith(
-            1 to InventoryState(shelfStock = 0, backroomStock = 0),
+            1 to inv(0, 0),
             money = Money(2_999L),
         )
         val result = manager.buyItemToBackroom(state, itemId = 1)
@@ -260,7 +269,7 @@ class InventoryManagerTest {
     @Test
     fun `buyItemCasePacks adds correct units for requested case-packs`() {
         // 2 case-packs × casePack 6 = 12 units
-        val state = stateWith(1 to InventoryState(shelfStock = 0, backroomStock = 0))
+        val state = stateWith(1 to inv(0, 0))
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 2)
         assertEquals(12, result.inventory[1]!!.backroomStock)
         assertEquals(state.money - item1CasePackCost * 2, result.money)
@@ -270,7 +279,7 @@ class InventoryManagerTest {
     fun `buyItemCasePacks clamps delivery to fit backroom cap`() {
         // Cap = 50; current backroom = 44; space = 6 = exactly 1 case-pack; request 3
         val state = stateWith(
-            1 to InventoryState(shelfStock = 0, backroomStock = 44),
+            1 to inv(0, 44),
             backroomCap = 50,
         )
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 3)
@@ -281,7 +290,7 @@ class InventoryManagerTest {
 
     @Test
     fun `buyItemCasePacks is no-op when numCasePacks is zero`() {
-        val state = stateWith(1 to InventoryState(shelfStock = 0, backroomStock = 0))
+        val state = stateWith(1 to inv(0, 0))
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 0)
         assertEquals(state, result)
     }
@@ -289,7 +298,7 @@ class InventoryManagerTest {
     @Test
     fun `buyItemCasePacks is no-op when backroom is already full`() {
         val state = stateWith(
-            1 to InventoryState(shelfStock = 0, backroomStock = 50),
+            1 to inv(0, 50),
             backroomCap = 50,
         )
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 1)
@@ -300,7 +309,7 @@ class InventoryManagerTest {
     fun `buyItemCasePacks is no-op when money is insufficient`() {
         // 3 case-packs cost 9_000 ¢; give player only 8_999 ¢
         val state = stateWith(
-            1 to InventoryState(shelfStock = 0, backroomStock = 0),
+            1 to inv(0, 0),
             money = Money(8_999L),
         )
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 3)
@@ -311,7 +320,7 @@ class InventoryManagerTest {
 
     @Test
     fun `placeBulkOrder is no-op when casePacksPerItem is zero`() {
-        val state = stateWith(1 to InventoryState(shelfStock = 0, backroomStock = 0))
+        val state = stateWith(1 to inv(0, 0))
         val result = manager.placeBulkOrder(state, maxTotalQuantity = 100, casePacksPerItem = 0, categoryFilter = null)
         assertEquals(state, result)
     }
@@ -320,8 +329,8 @@ class InventoryManagerTest {
     fun `placeBulkOrder orders all items below the stock threshold`() {
         // Both items have total stock = 0; threshold = 100 → both qualify
         val state = stateWith(
-            1 to InventoryState(shelfStock = 0, backroomStock = 0),
-            2 to InventoryState(shelfStock = 0, backroomStock = 0),
+            1 to inv(0, 0),
+            2 to inv(0, 0),
         )
         val result = manager.placeBulkOrder(state, maxTotalQuantity = 100, casePacksPerItem = 1, categoryFilter = null)
         assertTrue(result.inventory[1]!!.backroomStock > 0)
@@ -332,8 +341,8 @@ class InventoryManagerTest {
     fun `placeBulkOrder skips items whose combined stock exceeds maxTotalQuantity`() {
         // Item 1 total = 20 (above threshold = 15); item 2 total = 0 (below)
         val state = stateWith(
-            1 to InventoryState(shelfStock = 10, backroomStock = 10),
-            2 to InventoryState(shelfStock = 0,  backroomStock = 0),
+            1 to inv(10, 10),
+            2 to inv(0, 0),
         )
         val result = manager.placeBulkOrder(state, maxTotalQuantity = 15, casePacksPerItem = 1, categoryFilter = null)
         // Item 1 unchanged; item 2 received 1 case-pack
@@ -345,8 +354,8 @@ class InventoryManagerTest {
     fun `placeBulkOrder skips tier-gated items above the current tier`() {
         // Item 3 requires TIER_2; player is at TIER_1
         val state = stateWith(
-            1 to InventoryState(shelfStock = 0, backroomStock = 0),
-            3 to InventoryState(shelfStock = 0, backroomStock = 0),
+            1 to inv(0, 0),
+            3 to inv(0, 0),
             currentTier = ItemUnlockTier.TIER_1,
         )
         val result = manager.placeBulkOrder(state, maxTotalQuantity = 100, casePacksPerItem = 1, categoryFilter = null)
@@ -357,8 +366,8 @@ class InventoryManagerTest {
     @Test
     fun `placeBulkOrder applies category filter`() {
         val state = stateWith(
-            1 to InventoryState(shelfStock = 0, backroomStock = 0), // GROCERY
-            2 to InventoryState(shelfStock = 0, backroomStock = 0), // SNACKS
+            1 to inv(0, 0), // GROCERY
+            2 to inv(0, 0), // SNACKS
         )
         // Only GROCERY should be ordered
         val result = manager.placeBulkOrder(
@@ -383,7 +392,7 @@ class InventoryManagerTest {
         runBlocking { cache.initialize() }
         val mgr = InventoryManager(cache)
 
-        val inventory = (1..20).associate { id -> id to InventoryState(shelfStock = 0, backroomStock = 0) }
+        val inventory = (1..20).associate { id -> id to inv(0, 0) }
         val startMoney = Money(500_000L)
         val state = GameState(inventory = inventory, money = startMoney, currentTier = ItemUnlockTier.TIER_1)
 
@@ -398,7 +407,7 @@ class InventoryManagerTest {
     @Test
     fun `placeBulkOrder is no-op when player cannot afford the discounted total`() {
         val state = stateWith(
-            1 to InventoryState(shelfStock = 0, backroomStock = 0),
+            1 to inv(0, 0),
             money = Money(1L),   // essentially broke
         )
         val result = manager.placeBulkOrder(state, maxTotalQuantity = 100, casePacksPerItem = 1, categoryFilter = null)
@@ -508,3 +517,4 @@ class InventoryManagerTest {
         assertEquals("Backroom should not change", initialBackroom, finalBackroom)
     }
 }
+

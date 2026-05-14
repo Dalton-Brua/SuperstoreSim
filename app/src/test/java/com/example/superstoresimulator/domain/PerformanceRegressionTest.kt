@@ -54,6 +54,17 @@ class PerformanceRegressionTest {
             items.filter { it.id in itemIds }
     }
 
+    // ── helper functions ──────────────────────────────────────────────────────
+
+    /** Helper to create a batch with the given quantity (non-perishable for testing). */
+    private fun batch(qty: Int, day: Int = 1): List<com.example.superstoresimulator.domain.inventory.ItemBatch> =
+        if (qty > 0) listOf(com.example.superstoresimulator.domain.inventory.ItemBatch(receivedDay = day, quantity = qty, expirationDay = Int.MAX_VALUE))
+        else emptyList()
+
+    /** Helper to create InventoryState from integer quantities. */
+    private fun inv(shelfStock: Int, backroomStock: Int): InventoryState =
+        InventoryState(shelfBatches = batch(shelfStock), backroomBatches = batch(backroomStock))
+
     // ── test data generators ──────────────────────────────────────────────────
 
     /**
@@ -150,7 +161,7 @@ class PerformanceRegressionTest {
         // Setup: 100 inventory items with stock
         val inventory = testItems.associate { item ->
             val itemId = item.id.removePrefix("item_").toInt()
-            itemId to InventoryState(shelfStock = 10, backroomStock = 10)
+            itemId to inv(10, 10)
         }
         
         // Setup: 10 staff members (5 cashiers + 5 stockers)
@@ -206,7 +217,7 @@ class PerformanceRegressionTest {
         // Setup: 500 inventory items with full stock (superstore scale)
         val inventory = testItems.associate { item ->
             val itemId = item.id.removePrefix("item_").toInt()
-            itemId to InventoryState(shelfStock = 50, backroomStock = 50)
+            itemId to inv(50, 50)
         }
         
         // Setup: 50 staff members (25 cashiers + 25 stockers) - late-game staffing
@@ -251,7 +262,7 @@ class PerformanceRegressionTest {
     @Test
     fun `tick performance with minimal work`() {
         // Setup: No staff, no transactions, minimal inventory
-        val inventory = (1..10).associate { it to InventoryState(10, 10) }
+        val inventory = (1..10).associate { it to inv(10, 10) }
         gameEngine.state = gameEngine.state.copy(inventory = inventory)
         
         // Measure: 10,000 ticks (more iterations since each tick is cheaper)
@@ -284,7 +295,7 @@ class PerformanceRegressionTest {
     @Test
     fun `transaction processing performance`() {
         // Setup: Small inventory for consistent transaction generation
-        val inventory = (1..10).associate { it to InventoryState(100, 100) }
+        val inventory = (1..10).associate { it to inv(100, 100) }
         gameEngine.state = gameEngine.state.copy(
             inventory = inventory,
             money = Money(100_000_00)
@@ -326,7 +337,7 @@ class PerformanceRegressionTest {
     @Test
     fun `inventory operations performance`() {
         // Setup: Inventory with backroom stock
-        val inventory = (1..50).associate { it to InventoryState(0, 100) }
+        val inventory = (1..50).associate { it to inv(0, 100) }
         gameEngine.state = gameEngine.state.copy(
             inventory = inventory,
             money = Money(100_000_00)
@@ -354,4 +365,5 @@ class PerformanceRegressionTest {
         println("Inventory operations: 1000 operations completed in ${elapsedMs}ms (${elapsedMs / 1000}ms per operation)")
     }
 }
+
 
