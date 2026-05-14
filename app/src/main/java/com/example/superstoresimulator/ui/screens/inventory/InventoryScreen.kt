@@ -138,6 +138,9 @@ fun InventoryScreen(
             }
         }
         
+        // Exclude fresh items (those with shelfLifeDays) - they only appear in Fresh tab
+        filtered = filtered.filter { item -> item.shelfLifeDays == null }
+        
         // Apply search filter if debounced search query is not empty
         if (debouncedSearchQuery.value.isNotEmpty()) {
             filtered = filtered.filter { item ->
