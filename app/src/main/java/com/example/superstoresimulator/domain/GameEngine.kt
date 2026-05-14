@@ -46,47 +46,27 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         currentTime = timeManager.currentTime,
         storeState = timeManager.getStoreState(),
         storeConfig = StoreConfig(
-            backroomCapPerItem = com.example.superstoresimulator.domain.store.StoreSize.MOM_AND_POP.backroomCapPerItem
+            backroomCapPerItem = StoreSize.MOM_AND_POP.backroomCapPerItem
         ),
-        // Testing: Start with $1,000,000 for easy testing
-        money = Money.fromDollars(1_000_000.0),
-        // Testing: Unlock all tiers immediately
-        currentTier = ItemUnlockTier.TIER_GM,
-        totalRevenue = Money.fromDollars(200_000.0), // Well above TIER_GM unlock threshold
+        // Start with $500 for a challenging beginning
+        money = Money.fromDollars(1000.0),
+        // Start at TIER_1 (locked progression)
+        currentTier = ItemUnlockTier.TIER_1,
+        // No revenue earned yet
+        totalRevenue = Money.ZERO,
     )
         internal set
 
     init {
-        // Initialize inventory from cached items (already loaded in ItemMetadataCache)
+        // Initialize with empty inventory - player must purchase items to stock the store
         val allDbItems = itemMetadataCache.getAllItems()
         if (allDbItems.isNotEmpty()) {
             val inventory = mutableMapOf<Int, InventoryState>()
-            allDbItems.forEach { (itemId, dbItem) ->
-                val metadata = itemMetadataCache.get(itemId)
-                val currentDay = state.currentTime.dayNumber
-                
-                // Create initial batches for shelf and backroom
-                val expirationDay = if (metadata?.isPerishable == true) {
-                    currentDay + (metadata.shelfLifeDays ?: 0)
-                } else {
-                    Int.MAX_VALUE
-                }
-                
-                val shelfBatch = com.example.superstoresimulator.domain.inventory.ItemBatch(
-                    receivedDay = currentDay,
-                    quantity = 10,
-                    expirationDay = expirationDay
-                )
-                
-                val backroomBatch = com.example.superstoresimulator.domain.inventory.ItemBatch(
-                    receivedDay = currentDay,
-                    quantity = 10,
-                    expirationDay = expirationDay
-                )
-                
+            allDbItems.forEach { (itemId, _) ->
+                // Start with completely empty inventory
                 inventory[itemId] = InventoryState(
-                    shelfBatches = listOf(shelfBatch),
-                    backroomBatches = listOf(backroomBatch)
+                    shelfBatches = emptyList(),
+                    backroomBatches = emptyList()
                 )
             }
             state = state.copy(inventory = inventory)
