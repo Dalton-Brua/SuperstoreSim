@@ -30,7 +30,58 @@ Screen updates
 
 **Key Files**: `domain/GameEngine.kt` | `ui/viewmodels/GameViewModel.kt` | `ui/state/GameUiState.kt` | `MainActivity.kt` (pager implementation)
 ---
-### **2. Immutable State with Copy Semantics**
+### **2. Batch-Based Inventory with Expiration** ⭐ IMPLEMENTED (May 2026)
+
+**Problem Solved**: Simple integer stock tracking could not support item expiration, FIFO consumption, or perishable inventory management.
+
+**Solution**: Batch-based inventory system where every delivery creates an `ItemBatch` with tracking metadata.
+
+**Architecture**:
+```
+InventoryState {
+    shelfBatches: List<ItemBatch>        // Items on display (consumed first)
+    backroomBatches: List<ItemBatch>     // Reserve stock
+}
+
+ItemBatch {
+    receivedDay: Int                      // When ordered
+    quantity: Int                         // Units in this batch
+    expirationDay: Int                    // receivedDay + shelfLifeDays (Int.MAX_VALUE for non-perishables)
+}
+```
+
+**Key Operations**:
+- **FIFO Consumption**: `oldestShelfBatch()` / `oldestBackroomBatch()` — always consume oldest batches first
+- **Batch Merging**: Batches with same `expirationDay` are automatically merged to reduce memory overhead
+- **Stocking**: `stockItemFromBackroom()` takes from oldest backroom batch, adds to shelf maintaining batch identity
+- **Purchasing**: `buyItemToBackroom()` / `buyItemCasePacks()` create new batches with `expirationDay = currentDay + shelfLifeDays`
+
+**Perishable Items**:
+- `ItemMetadata.shelfLifeDays: Int?` — null = non-perishable (never expires)
+- `ItemMetadata.isPerishable: Boolean` — computed property from `shelfLifeDays != null`
+- **SpoilageManager** (`domain/expiration/SpoilageManager.kt`):
+  - Called once per tick by GameEngine
+  - Removes batches where `expirationDay <= currentDay`
+  - Tracks waste in `DailyMetricsAccumulator.itemsExpired`, `expiredWasteCost`, `expiredItemEvents`
+  - Waste cost calculated at `unitCost`, not sale price (reflects inventory loss)
+
+**Breaking Rules for AI Agents**:
+- ❌ Never access `InventoryState.shelfStock` or `backroomStock` directly as mutable integers — they are computed properties (`shelfBatches.sumOf { it.quantity }`)
+- ❌ Never create `InventoryState` with `shelfStock: Int` constructor — use `shelfBatches: List<ItemBatch>`
+- ❌ Never modify batch quantities in-place — always use `.copy()` to create new batches
+- ✅ Always use `InventoryManager` methods for inventory operations (handles FIFO and batch merging)
+- ✅ Fresh items MUST have `shelfLifeDays` set in item data; non-perishables should have `shelfLifeDays = null`
+- ✅ When adding test inventory, create batches: `ItemBatch(receivedDay = 0, quantity = 10, expirationDay = Int.MAX_VALUE)` for non-perishables
+
+**Daily Metrics Integration**:
+- `ExpiredItemEvent(itemId, itemName, quantity, valueLost)` — one per item type that expired this day
+- Displayed in end-of-day report "Shrinkage" section
+- Future enhancement slots: paid disposal ($50/day), composting ($5k one-time + $10/day revenue) — see `EXTREME_FEATURES_PROPOSAL.md`
+
+**See**: `domain/inventory/InventoryState.kt` (`ItemBatch` data class) | `domain/expiration/SpoilageManager.kt` | `domain/inventory/InventoryManager.kt` (FIFO stocking) | `domain/metrics/DailyMetrics.kt` (`ExpiredItemEvent`) | `domain/items/ItemMetadata.kt` (`shelfLifeDays`, `isPerishable`)
+
+---
+### **3. Immutable State with Copy Semantics**
 GameState is a data class. All updates use `.copy()`:
 
 ```kotlin
@@ -46,7 +97,7 @@ state.inventory[itemId] = newInventoryState
 
 **Why**: Enables time-travel debugging, prevents accidental side effects, makes Compose recomposition predictable.
 ---
-### **3A. ItemMetadataCache: Single Source of Truth for Item Data** ⭐ NEW (April 3, 2026)
+### **4A. ItemMetadataCache: Single Source of Truth for Item Data** ⭐ NEW (April 3, 2026)
 
 **Problem Solved**: Before this fix, the codebase made 3+ redundant `getAllItems()` database calls:
 1. `ItemMetadataCache.initialize()` → loads for UI inventory mapping
@@ -98,7 +149,7 @@ MemoizedInventoryMapper(cache)       // No extra DB load
 **See**: `domain/items/ItemMetadataCache.kt` | Updated: `GameEngine.kt` | `GameViewModel.kt` | `InventoryScreen.kt` | All test files
 
 ---
-### **3B. Service-Layer Manager Architecture** ⭐ IMPLEMENTED (April 15, 2026)
+### **4B. Service-Layer Manager Architecture** ⭐ IMPLEMENTED (April 15, 2026)
 
 **Problem Solved**: GameEngine had grown to 400+ lines handling concerns across 6+ domains (inventory, staff, progression, day metrics, store state, player actions). Maintenance and testing were difficult.
 
@@ -114,13 +165,14 @@ Calls GameEngine public methods
     ↓
 GameEngine routes to specialized managers:
   ├─ ProgressionManager.unlockNextTier()
-  ├─ StaffManager.{hireEntity, upgradeEntity, fireEntity}
+  ├─ StaffManager.{hireEntity, upgradeEntity, fireEntity, advanceFreshHandlerProgress}
   ├─ StoreController.{toggleTimePaused, updateStoreName, setGameSpeedState, upgradeStoreSize}
-  ├─ InventoryManager.{stockItemFromBackroom, buyItemToBackroom, placeBulkOrder, etc}
+  ├─ InventoryManager.{stockItemFromBackroom, buyItemToBackroom, placeBulkOrder, placeFreshBulkOrder, queueFreshOrder, shouldAutoOrderFreshItem}
   ├─ PlayerActionHandler.{calculateCashierWork, calculateStockerWork, setPlayerRole}
   ├─ DayManager.{rollOverDay, dismissEndOfDayReport}
   ├─ TrafficManager.update()
-  └─ TransactionEngine.{ringUpSingleItem, processRefund, etc}
+  ├─ TransactionEngine.{ringUpSingleItem, processRefund, etc}
+  └─ SpoilageManager.processExpiration()
     ↓
 Each returns new GameState via .copy()
     ↓
@@ -133,13 +185,14 @@ Emit change via _changes.emit(...)
 1. **ProgressionManager** (`domain/progression/ProgressionManager.kt`)
    - `unlockNextTier(state)` → new state with advanced tier, deducted cost
 
-2. **StaffManager** (`domain/staff/StaffManager.kt`)
+3. **StaffManager** (`domain/staff/StaffManager.kt`)
    - `hireEntity(state, def, type)` → new state with hired entity
    - `upgradeEntity(state, entityId)` → new state with upgraded entity
    - `fireEntity(state, entityId)` → new state with dismissed entity
    - `advanceCashierProgress(cashierCount, deltaSeconds, multiplier)` → `Int` actions to perform this tick
    - `advanceStockerProgress(stockerCount, deltaSeconds, multiplier)` → `Int` actions to perform this tick
-   - Fractional accumulators (`cashierProgress`, `stockerProgress`) are **outside GameState** — internal engine counters, not player-visible
+   - `advanceFreshHandlerProgress(freshHandlerCount, deltaSeconds, multiplier)` → `Int` actions to perform this tick (fresh handlers stock perishable items only)
+   - Fractional accumulators (`cashierProgress`, `stockerProgress`, `freshHandlerProgress`) are **outside GameState** — internal engine counters, not player-visible
 
 3. **StoreController** (`domain/store/StoreController.kt`)
    - `updateStoreName(state, newName)` → new state
@@ -148,23 +201,34 @@ Emit change via _changes.emit(...)
    - `handleStoreStateChange(state, newState, trafficManager)` → new state with side-effects (closes customers on CLOSED transition, resets traffic)
    - `toggleTimePaused(state)` → new state (flips `playerPausedTime` flag)
 
-4. **InventoryManager** (`domain/inventory/InventoryManager.kt`)
-   - `stockItemFromBackroom(state, itemId)` → new state
+5. **InventoryManager** (`domain/inventory/InventoryManager.kt`)
+   - `stockItemFromBackroom(state, itemId)` → new state (FIFO batch consumption)
    - `stockCasePackFromBackroom(state, itemId)` → new state
+   - `stockRandomItemFromBackroom(state)` → new state (excludes fresh items; used by regular stockers)
+   - `stockRandomFreshItemFromBackroom(state)` → new state (only fresh items; used by fresh handlers)
    - `buyItemToBackroom(state, itemId)` → new state (refuses if full case pack exceeds backroom cap)
-   - `buyItemCasePacks(state, itemId, casePacks)` → new state (clamps delivery to backroom cap)
-   - `placeBulkOrder(state, maxTotalQty, casePacksPerItem, categoryFilter)` → new state with volume discounts applied
+   - `buyItemCasePacks(state, itemId, casePacks)` → new state (clamps delivery to backroom cap; creates new batches with expiration)
+   - `placeBulkOrder(state, maxTotalQty, casePacksPerItem, categoryFilter)` → new state with volume discounts applied (excludes fresh items)
+   - `placeFreshBulkOrder(state, maxTotalQty, casePacksPerItem, currentTier)` → new state (only fresh items; lower discount tiers: 5% @ 15 cases, 10% @ 30, 15% @ 50)
+   - `shouldAutoOrderFreshItem(state, itemId, config)` → Boolean (checks if fresh item below threshold)
+   - `queueFreshOrder(state, itemId, casePacksRequested)` → new state (adds to `queuedFreshOrders` for end-of-day processing)
    - **Backroom cap**: `StoreConfig.backroomCapPerItem` is in **case packs per item** and is synced to `currentStoreSize` (starts at `StoreSize.MOM_AND_POP.backroomCapPerItem = 2`)
 
-5. **PlayerActionHandler** (`domain/player/PlayerActionHandler.kt`)
+6. **PlayerActionHandler** (`domain/player/PlayerActionHandler.kt`)
    - `setPlayerRole(state, role)` → new state (toggles active role back to `NONE`)
    - `calculateCashierWork(state, deltaSeconds)` → `PlayerWorkResult`
    - `calculateStockerWork(state, deltaSeconds)` → `PlayerWorkResult`
 
-6. **DayManager** (`domain/metrics/DayManager.kt`)
+7. **DayManager** (`domain/metrics/DayManager.kt`)
    - `rollOverDay(state, dayNumber)` → new state with metrics snapshot appended, daily costs applied, and end-of-day report surfaced
    - `dismissEndOfDayReport(state)` → new state with flag cleared
    - **Mutable counter**: `lastKnownDayNumber` — engine-internal, not in GameState
+
+8. **SpoilageManager** (`domain/expiration/SpoilageManager.kt`)
+   - `processExpiration(state)` → new state with expired batches removed and metrics updated
+   - Called once per tick; checks all inventory for `batch.expirationDay <= currentDay`
+   - Tracks waste in `currentDayMetrics.itemsExpired`, `expiredWasteCost`, `expiredItemEvents`
+   - Pure function: no side effects, no mutable state
 
 **Breaking Rules for AI Agents**:
 - ❌ Never call manager methods directly — GameEngine public methods orchestrate them
@@ -175,10 +239,10 @@ Emit change via _changes.emit(...)
 - ✅ Managers are testable in isolation by passing mocked GameState
 - ✅ Each manager knows ONE domain; never cross-call between managers
 
-**See**: `domain/progression/` | `domain/staff/` | `domain/store/` | `domain/inventory/` | `domain/player/` | `domain/metrics/`
+**See**: `domain/progression/` | `domain/staff/` | `domain/store/` | `domain/inventory/` | `domain/player/` | `domain/metrics/` | `domain/expiration/`
 
 ---
-### **4. Save/Load System** ⭐ IMPLEMENTED (April 19, 2026)
+### **5. Save/Load System** ⭐ IMPLEMENTED (April 19, 2026)
 
 Complete persistence system for saving and loading game state using SharedPreferences and JSON serialization.
 
@@ -272,25 +336,29 @@ private fun deserializeMyType(json: JSONObject): MyType { ... }
 **See**: `domain/persistence/GameStateSerializer.kt` | `domain/persistence/GameStateRepository.kt` | `MainActivity.kt` (lifecycle hooks) | `GameViewModel.kt` (auto-load/save)
 
 ---
-### **3. GameEngine: The Core State Machine (Facade)**
+### **6. GameEngine: The Core State Machine (Facade)**
 - **Role**: Thin orchestrator — receives GameEvents, routes to appropriate managers, emits changes
 - **Single source of truth**: `var state: GameState`
 - **Lifecycle**: Async-initialized (not in constructor)
   - ItemDataLoader loads JSON → ItemDao → ItemMetadataCache initialized
   - GameViewModel waits for async completion before creating engine
 - **Helper method**: `getDbItem(itemId: Int): Item?` — public access to cached item metadata for UI components (returns full Item object from ItemMetadataCache)
-- **Managers** (April 15, 2026): Delegates to 6 specialized managers (see section 3B):
-  - ProgressionManager, StaffManager, StoreController, InventoryManager, PlayerActionHandler, DayManager
+- **Managers** (April 15, 2026): Delegates to 8 specialized managers (see section 4B):
+  - ProgressionManager, StaffManager, StoreController, InventoryManager, PlayerActionHandler, DayManager, TrafficManager, SpoilageManager
   - Each manager is pure: receives GameState, returns new GameState
   - Each manager owns one domain of logic; GameEngine coordinates
-- **Database Access**: Passes `ItemMetadataCache` to managers that need item lookups (InventoryManager, etc.)
+- **Database Access**: Passes `ItemMetadataCache` to managers that need item lookups (InventoryManager, SpoilageManager, etc.)
   - Single database load: `itemDao.getAllItems()` called ONCE in `itemMetadataCache.initialize()`
+- **Fresh Auto-Ordering** (May 2026): Idle fresh handlers auto-queue orders when fresh items fall below threshold
+  - `attemptFreshHandlerAutoOrder()` — called during tick when fresh handlers have no backroom stock to process
+  - Queued orders processed at end-of-day via `processFreshOrders()` — deducts cost, creates batches with expiration
+  - Incomplete orders (insufficient funds) tracked in `state.incompleteFreshOrders` — can be manually ordered via `orderIncompleteItem()`
 - **Change Emission**: `_changes: StateFlow<GameStateChange?>` for incremental UI updates (99% fewer reconstructions)
   - `GameStateChange` subtypes: `MoneyChanged`, `InventoryUpdated`, `TransactionCompleted`, `TransactionStarted`, `RefundRequested`, `RefundProcessed`, `StaffUpdated`, `StoreStateChanged`, `TimeUpdated`, `TierUnlocked(newTier, previousTier)`
 
 **See**: `domain/GameEngine.kt`
 ---
-### **4. ViewModel Projection: GameState → GameUiState**
+### **7. ViewModel Projection: GameState → GameUiState**
 - **GameViewModel** transforms domain state into UI-safe state
 - **Lazy init**: Engine created AFTER items loaded (ItemDataLoader handles async)
 - **Automatic Tick Loop**: Init block spawns a coroutine that dispatches `GameEvent.Tick` every `@TickDelta` milliseconds (16ms default)
@@ -318,7 +386,7 @@ When tapping the current bottom nav screen button, local screen state resets:
 
 **See**: ui/viewmodels/GameViewModel.kt | ui/state/mappers/MemoizedInventoryMapper.kt | ui/state/builders/IncrementalUiStateBuilder.kt | MainActivity.kt (reset logic)
 ---
-### **5. Time System (Decoupled from Real Time)**
+### **8. Time System (Decoupled from Real Time)**
 - **GameTime.kt**: Value class wrapping `totalMinutesElapsed` (immutable, single source of truth)
   - Computed: `hour`, `minute`, `dayNumber`, `dayOfWeek` (0-6: Mon-Sun)
   - 1440 minutes = 1 game day
@@ -331,7 +399,7 @@ When tapping the current bottom nav screen button, local screen state resets:
 
 **See**: `domain/time/GameTime.kt` | `domain/time/TimeManager.kt`
 ---
-### **6. Money: Integer-Based (No Floating Point)**
+### **9. Money: Integer-Based (No Floating Point)**
 - **Value class**: `@JvmInline value class Money(val cents: Long)`
 - **Always cents**: `Money(100)` = $1.00
 - **Construction**: `Money(cents: Long)` or `Money.fromDollars(123.45)`
@@ -351,7 +419,7 @@ val tax = subtotal * Money(7) / Money(100)
 
 **See**: `domain/GameStateData.kt` (Money class)
 ---
-### **7. Sealed Events & Command Pattern**
+### **10. Sealed Events & Command Pattern**
 All user interactions dispatch `GameEvent` (sealed interface):
 
 ```kotlin
@@ -379,7 +447,7 @@ when (event) {
 
 **See**: `ui/GameEvent.kt` | `ui/viewmodels/GameViewModel.kt`
 ---
-### **8. Database & Room Integration**
+### **11. Database & Room Integration**
 - **AppDatabase**: Room DB **v6** (`@Database(version = 6)`), single entity: `Item` (table: `items`)
 - **ItemDao**: Query interface (`getAllItems()`, `getItemById()`, `insertItem()`)
 - **Item Entity**:
@@ -399,13 +467,13 @@ when (event) {
 
 **See**: `domain/items/` | `di/AppDatabase.kt` | `di/DatabaseModule.kt`
 ---
-### **9. Staff & Entity Registry Pattern**
+### **12. Staff & Entity Registry Pattern**
 - **EntityDef**: Purchasable employee definition
   - Fields: `key`, `displayName`, `cost` (Money), `description`, `icon` (ImageVector), optional `nextUpgrade`
-  - Companion constants: `CASHIER`, `FAST_CASHIER`, `STOCKER`, `FAST_STOCKER`, `CUSTOMER_SERVICE_REP`, `allEntities`
+  - Companion constants: `CASHIER`, `FAST_CASHIER`, `STOCKER`, `FAST_STOCKER`, `FRESH_HANDLER`, `FAST_FRESH_HANDLER`, `allEntities`
 - **EntityType**: Data class grouping related `EntityDef`s into a hire category
   - Fields: `displayName`, `description`, `icon`, `entities: List<EntityDef>`
-  - Companion constants: `NONE`, `CASHIERS`, `STOCKERS`, `CUSTOMER_SERVICE_REPRESENTATIVES`, `allEntityTypes`
+  - Companion constants: `NONE`, `CASHIERS`, `STOCKERS`, `FRESH_HANDLERS`, `allEntityTypes`
 - **EntityTrait**: Enum — `EFFICIENT`, `FRIENDLY`, `HARDWORKER`; randomly assigned at hire time
 - **HiredEntity**: Represents employed staff (immutable)
   - Fields: `id`, `name`, `entityDefinition`, `entityType`, `trait`
@@ -416,7 +484,7 @@ when (event) {
 
 **See**: `domain/Entities/` folder
 ---
-### **10. Hilt Dependency Injection**
+### **13. Hilt Dependency Injection**
 - **@HiltViewModel**: All ViewModels use this decorator
 - **@TickDelta**: Custom qualifier for tick delta (16ms default)
 - **@ApplicationContext**: App context provided by Hilt
@@ -427,7 +495,7 @@ when (event) {
 
 **See**: `di/DatabaseModule.kt` | `SuperstoreSimulatorApp.kt`
 ---
-### **11. Phase 2: Player Role System** ⭐ IMPLEMENTED (April 4, 2026)
+### **14. Phase 2: Player Role System** ⭐ IMPLEMENTED (April 4, 2026)
 
 - **PlayerRole** enum: `NONE`, `CASHIER`, `STOCKER` — only one active at a time
 - **Toggle behaviour**: Dispatching `SetPlayerRole(role)` with the already-active role returns to `NONE`
@@ -442,7 +510,7 @@ when (event) {
 
 **See**: `domain/player/PlayerRole.kt` | `domain/GameEngine.kt` (`performPlayerCashierWork`, `performPlayerStockerWork`, `setPlayerRole`)
 ---
-### **12. Phase 2: Autonomous Customer Traffic** ⭐ IMPLEMENTED (April 4, 2026)
+### **15. Phase 2: Autonomous Customer Traffic** ⭐ IMPLEMENTED (April 4, 2026)
 
 - **TrafficManager**: fractional-accumulation customer generator — same technique as `TimeManager`
   - `update(state, deltaSeconds)` → returns `List<TransactionRequest>` (one per arrived customer)
@@ -460,7 +528,7 @@ when (event) {
 
 **See**: `domain/traffic/TrafficManager.kt` | `domain/traffic/TrafficPattern.kt` | `ui/components/CustomerQueueIndicator.kt`
 ---
-### **13. Phase 3: Daily Metrics System** ⭐ IMPLEMENTED (April 4, 2026)
+### **16. Phase 3: Daily Metrics System** ⭐ IMPLEMENTED (April 4, 2026)
 
 **Architecture**: Two-class design — live accumulator in `GameState` + immutable snapshots in a list.
 
@@ -481,7 +549,9 @@ rollOverDay() → toSnapshot() → appended to GameState.completedDayMetrics
   - `itemsStocked` (units moved backroom → shelf), `itemsOrdered` (units bought to backroom)
   - `lostRevenue`, `itemsLostToOutOfStock`, `outOfStockEvents: List<OutOfStockEvent>` — items the cashier could not ring due to zero shelf stock
   - `soldItemEvents: List<SoldItemEvent>` — per-line sales breakdown; aggregated in dialogs
-  - Derived: `averageTransactionValue`, `averageBasketSize`, `netRevenue`
+  - `itemsExpired`, `expiredWasteCost`, `expiredItemEvents: List<ExpiredItemEvent>` ⭐ NEW (May 2026) — items removed due to expiration; shown in end-of-day "Shrinkage" section
+  - `autoOrderedFreshItems: List<FreshOrderLineItem>`, `incompleteOrderedFreshItems: List<IncompleteOrderLineItem>` ⭐ NEW (May 2026) — fresh auto-order tracking
+  - Derived: `averageTransactionValue`, `averageBasketSize`, `netRevenue` (now includes expiredWasteCost deduction)
 
 **`OutOfStockEvent`** (`domain/metrics/DailyMetrics.kt`): `itemId`, `itemName`, `quantityLost`, `revenueLost` — one entry per transaction line that hit zero shelf stock; grouped by `itemId` in the dialog.
 
@@ -511,11 +581,15 @@ val showEndOfDayReport: Boolean                   // triggers dialog in MainActi
 val lastEndOfDayReport: DailyMetrics?             // passed to dialog
 val pausedByEndOfDay: Boolean                     // true when rollOverDay() auto-paused time;
                                                   // dismissEndOfDayReport() only unpauses if this is true
+// Fresh auto-ordering (May 2026)
+val freshAutoOrderConfig: FreshAutoOrderConfig   // enabled, minStockThreshold, casePacksPerItem
+val queuedFreshOrders: List<FreshOrderRequest>   // orders queued during day, processed at midnight
+val incompleteFreshOrders: List<IncompleteOrderRequest>  // failed orders (insufficient funds)
 ```
 
 **See**: `domain/metrics/DailyMetrics.kt` | `domain/GameEngine.kt` (`rollOverDay`, `dismissEndOfDayReport`) | `ui/screens/metrics/MetricsScreen.kt` | `ui/dialogs/EndOfDayReportDialog.kt`
 ---
-### **14. Progression System** ⭐ IMPLEMENTED (April 7, 2026)
+### **17. Progression System** ⭐ IMPLEMENTED (April 7, 2026)
 
 Revenue tiers gate which store sections the player can see. The system runs entirely inside the domain layer — UI just renders `ProgressionUIState`.
 
@@ -603,7 +677,7 @@ data class ProgressionUIState(
 **See**: `domain/items/ItemUnlockTier.kt` | `domain/GameEngine.kt` (`unlockNextTier`) | `domain/Transactions/TransactionEngine.kt` (`completeTransaction`) | `ui/state/GameUiState.kt` (`ProgressionUIState`) | `domain/GameStateChange.kt` (`TierUnlocked`)
 
 ---
-### **15. Skip Day** ⭐ IMPLEMENTED (April 8, 2026)
+### **18. Skip Day** ⭐ IMPLEMENTED (April 8, 2026)
 
 Fast-forwards the rest of the current game day in a synchronous tight loop, then surfaces the end-of-day report exactly as midnight would.
 
@@ -624,28 +698,45 @@ GameEvent.SkipDay -> gameEngine.simulateRestOfDay()
 **See**: `domain/GameEngine.kt` (`simulateRestOfDay`) | `ui/screens/home/StoreHomeScreen.kt`
 
 ---
-### **16. Bulk Order System** ⭐ IMPLEMENTED (April 8, 2026)
+### **19. Bulk Order System** ⭐ IMPLEMENTED (April 8, 2026)
 
-Allows the player to restock an entire category (or all accessible categories) in one action with tiered volume discounts.
+Allows the player to restock entire categories in one action with tiered volume discounts.
 
-- **Unlocked at**: TIER_2 and above (the `BulkOrderDialog` appears in `InventoryScreen`)
-- **Event**: `GameEvent.BulkOrder(maxTotalQuantity, casePacksPerItem, categoryFilter)` → `gameEngine.placeBulkOrder()`
-- **Eligibility filter** (all three must pass):
-  1. Item tier ≤ `currentTier` (per-item unlock tier)
-  2. Category matches `categoryFilter` (or `null` = all categories)
-  3. `shelfStock + backroomStock ≤ maxTotalQuantity`
-- **Volume discount tiers** (applied to the entire order's base cost):
+- **Regular Bulk Order** (unlocked at TIER_2):
+  - **Event**: `GameEvent.BulkOrder(maxTotalQuantity, casePacksPerItem, categoryFilter)` → `gameEngine.placeBulkOrder()`
+  - **Eligibility filter** (all three must pass):
+    1. Item tier ≤ `currentTier` (per-item unlock tier)
+    2. Category matches `categoryFilter` (or `null` = all categories)
+    3. `shelfStock + backroomStock ≤ maxTotalQuantity`
+  - **Volume discount tiers** (applied to the entire order's base cost):
 
-  | Total case packs | Discount |
-  |-----------------|---------|
-  | < 20 | 0% |
-  | ≥ 20 | 10% |
-  | ≥ 50 | 15% |
-  | ≥ 100 | 25% |
+    | Total case packs | Discount |
+    |-----------------|---------|
+    | < 20 | 0% |
+    | ≥ 20 | 10% |
+    | ≥ 50 | 15% |
+    | ≥ 100 | 25% |
+
+  - **Excludes**: Fresh/perishable items (handled by separate system)
+  - **UI**: `BulkOrderDialog` (slider for max stock threshold, slider for case packs per item, category chip filter)
+
+- **Fresh Bulk Order** ⭐ NEW (May 2026):
+  - **Event**: `GameEvent.FreshBulkOrder(maxTotalQuantity, casePacksPerItem)` → `gameEngine.placeFreshBulkOrder()`
+  - **Eligibility**: Only fresh items (`shelfLifeDays != null`), same stock threshold logic
+  - **Lower discount tiers** (reflects perishability risk):
+
+    | Total case packs | Discount |
+    |-----------------|---------|
+    | < 15 | 0% |
+    | ≥ 15 | 5% |
+    | ≥ 30 | 10% |
+    | ≥ 50 | 15% |
+
+  - **Creates batches with expiration**: `expirationDay = currentDay + shelfLifeDays`
+  - **UI**: `FreshBulkOrderDialog` (same interface as regular bulk order)
 
 - **Guard**: does nothing if player cannot afford the discounted total
 - **Metrics**: `itemsOrdered` accumulator updated for all items added to backroom
-- **UI**: `BulkOrderDialog` (slider for max stock threshold, slider for case packs per item, category chip filter) is accessed via a button in `InventoryScreen`
 
 **Pattern**:
 ```kotlin
@@ -653,9 +744,73 @@ Allows the player to restock an entire category (or all accessible categories) i
 onBulkOrder = { maxQty, casePacks, category ->
     viewModel.onEvent(GameEvent.BulkOrder(maxQty, casePacks, category))
 }
+onFreshBulkOrder = { maxQty, casePacks ->
+    viewModel.onEvent(GameEvent.FreshBulkOrder(maxQty, casePacks))
+}
 ```
 
-**See**: `domain/GameEngine.kt` (`placeBulkOrder`) | `ui/dialogs/BulkOrderDialog.kt` | `ui/screens/inventory/InventoryScreen.kt`
+**See**: `domain/GameEngine.kt` (`placeBulkOrder`, `placeFreshBulkOrder`) | `domain/inventory/InventoryManager.kt` | `ui/dialogs/BulkOrderDialog.kt` | `ui/dialogs/FreshBulkOrderDialog.kt` | `ui/screens/inventory/InventoryScreen.kt`
+
+---
+### **20. Fresh Auto-Ordering System** ⭐ NEW (May 2026)
+
+Automated inventory management for perishable items. Idle fresh handlers automatically queue orders when fresh items fall below a configurable threshold. Orders are processed at end-of-day to minimize deliveries and optimize freshness.
+
+**Architecture**:
+```
+Tick loop:
+    Fresh handlers idle (no backroom stock to process)
+        ↓
+    attemptFreshHandlerAutoOrder() checks all fresh items
+        ↓
+    Items below threshold → queueFreshOrder(itemId, casePacksPerItem)
+        ↓
+    state.queuedFreshOrders += FreshOrderRequest
+    
+End-of-day (midnight):
+    processFreshOrders()
+        ↓
+    For each queued order:
+        If affordable → deduct money, create batches with expiration
+        Else → add to incompleteFreshOrders with reason "Insufficient funds"
+        ↓
+    Update currentDayMetrics.autoOrderedFreshItems / incompleteOrderedFreshItems
+```
+
+**Configuration** (`FreshAutoOrderConfig` in `GameState`):
+- `enabled: Boolean` — toggle auto-ordering on/off (default: true)
+- `minStockThreshold: Int` — trigger when `shelfStock + backroomStock < threshold` (default: 5)
+- `casePacksPerItem: Int` — how many case packs to order per item (default: 1)
+- **Event**: `GameEvent.UpdateFreshAutoOrderConfig(enabled, minStockThreshold, casePacksPerItem)` → `gameEngine.updateFreshAutoOrderConfig()`
+
+**Incomplete Orders**:
+- Tracked in `GameState.incompleteFreshOrders: List<IncompleteOrderRequest>`
+- Each entry: `itemId`, `casePacksRequested`, `requestedOnDay`, `reason`
+- **Manual ordering**: `GameEvent.OrderIncompleteItem(itemId, casePacksRequested)` → `gameEngine.orderIncompleteItem()` — deducts cost if affordable, removes from incomplete list
+- **UI**: `IncompleteOrdersDialog` lists all incomplete orders with item name, quantity, cost, and "Order Now" button
+
+**Key Methods** (in `InventoryManager`):
+- `shouldAutoOrderFreshItem(state, itemId, config)` → Boolean — checks config.enabled, item is fresh, stock < threshold
+- `queueFreshOrder(state, itemId, casePacksRequested)` → new state with order added to `queuedFreshOrders`
+
+**Key Methods** (in `GameEngine`):
+- `attemptFreshHandlerAutoOrder()` — private, called during tick when fresh handlers idle
+- `processFreshOrders()` — private, called at end-of-day by `DayManager.rollOverDay()`
+- `orderIncompleteItem(itemId, casePacksRequested)` — public, manual ordering from incomplete list
+
+**Daily Metrics Integration**:
+- `FreshOrderLineItem(itemId, itemName, casePacksOrdered, costPerCasePack, totalCost)` — successful orders
+- `IncompleteOrderLineItem(itemId, itemName, casePacksRequested, costPerCasePack, totalCost, reason)` — failed orders
+- Displayed in end-of-day report "Fresh Orders" section
+
+**Breaking Rules for AI Agents**:
+- ❌ Never queue fresh orders manually during regular gameplay — only via `attemptFreshHandlerAutoOrder()` during tick
+- ❌ Never process fresh orders outside end-of-day — always via `processFreshOrders()` at midnight
+- ✅ Fresh auto-ordering only triggers when fresh handlers are idle (no backroom stock)
+- ✅ Each item can only be queued once per day (prevents duplicate orders)
+- ✅ Orders create batches with `expirationDay = currentDay + shelfLifeDays`
+
+**See**: `domain/GameEngine.kt` (`attemptFreshHandlerAutoOrder`, `processFreshOrders`, `orderIncompleteItem`, `updateFreshAutoOrderConfig`) | `domain/inventory/InventoryManager.kt` (`shouldAutoOrderFreshItem`, `queueFreshOrder`) | `domain/GameStateData.kt` (`FreshAutoOrderConfig`, `FreshOrderRequest`, `IncompleteOrderRequest`) | `domain/metrics/DailyMetrics.kt` (`FreshOrderLineItem`, `IncompleteOrderLineItem`) | `ui/dialogs/IncompleteOrdersDialog.kt`
 
 ---
 **Event Types** (sealed interface GameEvent):
@@ -670,7 +825,9 @@ onBulkOrder = { maxQty, casePacks, category ->
 - **Progression**: DismissTierUnlock, UnlockNextTier
 - **Skip Day**: SkipDay
 - **Bulk Order**: BulkOrder(maxTotalQuantity, casePacksPerItem, categoryFilter)
-- **Save System** ⭐ NEW (April 19, 2026): SaveGame
+- **Fresh System** ⭐ NEW (May 2026): FreshBulkOrder(maxTotalQuantity, casePacksPerItem), UpdateFreshAutoOrderConfig(enabled, minStockThreshold, casePacksPerItem), OrderIncompleteItem(itemId, casePacksRequested)
+- **Save System** (April 19, 2026): SaveGame
+- **Reset System** ⭐ NEW (May 2026): ResetGame
 
 **⚠️ Pure-UI events** (handled directly by ViewModel, no GameEngine call, no domain state rebuild):
 - `SelectItemCategory`, `FocusInventoryItem`, `SelectStaffType`
@@ -844,6 +1001,7 @@ git merge feature/my-feature
 | Time doesn't advance | Call `GameViewModel.onEvent(GameEvent.Tick)` every 16ms |
 | PlayerRole doesn't deactivate | Dispatching `SetPlayerRole(activeRole)` toggles it OFF — returns to `NONE` |
 | Hired stocker vs. player stocker | Hired stocker: 0.1 case-packs/sec; Player stocker: 0.3 case-packs/sec |
+| Fresh handler vs. regular stocker | Fresh handlers only stock perishable items (`shelfLifeDays != null`); regular stockers exclude them |
 | `totalRevenue` not updating | Updated only in `TransactionEngine.completeTransaction()` — never in spending paths |
 | Tier unlock banner stuck | Dispatch `GameEvent.DismissTierUnlock`; never mutate `ProgressionUIState` directly |
 | Tier not advancing after revenue gate | Tiers are **purchased** — dispatch `GameEvent.UnlockNextTier` (costs `unlockCost`); check `ProgressionUIState.availableTier` to know when the gate is met |
@@ -852,28 +1010,34 @@ git merge feature/my-feature
 | Bulk Order not available | `BulkOrderDialog` only appears when `currentTier >= TIER_2` |
 | Pager state sync loops | Use `isNavigatingProgrammatically` flag; check `!pagerState.isScrollInProgress` before syncing |
 | Calling private manager methods | Never call private methods like `stockCasePackFromBackroom()` — route through GameEngine public methods |
+| InventoryState stock is wrong ⭐ NEW | `shelfStock` and `backroomStock` are computed properties from batches — never set directly |
+| Buying inventory doesn't create batches ⭐ NEW | All inventory operations must create `ItemBatch` with `expirationDay = currentDay + shelfLifeDays` (or `Int.MAX_VALUE` for non-perishables) |
+| Fresh items never expire ⭐ NEW | Ensure `ItemMetadata.shelfLifeDays` is set; `null` = non-perishable |
+| Fresh auto-orders not processing ⭐ NEW | Orders are queued during tick, processed at end-of-day — check `queuedFreshOrders` and `incompleteFreshOrders` |
+| Test inventory setup fails ⭐ NEW | Use `ItemBatch(receivedDay = 0, quantity = 10, expirationDay = Int.MAX_VALUE)` for test data |
 ---
 ## 🗂️ File Organization
 
 **domain/** — Business logic
 - GameEngine.kt [Facade orchestrator, routes to managers]
-- GameStateData.kt [GameState, Money]
+- GameStateData.kt [GameState, Money, FreshAutoOrderConfig, FreshOrderRequest, IncompleteOrderRequest]
 - GameStateChange.kt [Incremental updates]
-- InventoryState.kt [shelfStock, backroomStock per item]
+- InventoryState.kt [ItemBatch with receivedDay/quantity/expirationDay, shelfBatches, backroomBatches]
 - RefundRequest.kt [RefundRequest, RefundLine]
 - Screen.kt [Screen enum: GAME, INVENTORY, HISTORY, METRICS, STAFF, STAFF_ENTITY_LIST]
 - Transactions/TransactionEngine.kt [Transaction logic, tax calculation]
 - time/ [TimeManager, GameTime, StoreConfig, StoreState]
-- items/ [Item, ItemDao, ItemMetadataCache, ItemDataLoader, ItemMetadata (has `purchaseWeight: Float` for weighted basket sampling), ItemCategory, ItemUnlockTier, ItemDefinition, ItemWithName, MoneyData, ItemRegistry (legacy)]
-- Entities/ [HiredEntity, EntityDef, EntityType, EntityTrait, EntityUpgrades, HiredEntityRegistry]
+- items/ [Item, ItemDao, ItemMetadataCache, ItemDataLoader, ItemMetadata (has `purchaseWeight: Float` for weighted basket sampling, `shelfLifeDays: Int?` for expiration, `isPerishable: Boolean`), ItemCategory, ItemUnlockTier, ItemDefinition, ItemWithName, MoneyData, ItemRegistry (legacy)]
+- Entities/ [HiredEntity, EntityDef (includes FRESH_HANDLER, FAST_FRESH_HANDLER), EntityType (includes FRESH_HANDLERS), EntityTrait, EntityUpgrades, HiredEntityRegistry]
 - Transactions/ [Transaction.kt — contains both `Transaction` and `TransactionLine`; `TransactionEngine.kt`]
-- **progression/** ⭐ NEW [ProgressionManager — tier unlock logic]
-- **staff/** ⭐ NEW [StaffManager — hire/upgrade/fire, cashier/stocker ticks]
-- **store/** ⭐ NEW [StoreController — store name, speed, open/close state]
-- **inventory/** ⭐ NEW [InventoryManager — stock/buy/bulk-order operations]
-- **player/** [PlayerRole.kt — enum: NONE, CASHIER, STOCKER] + **PlayerActionHandler** ⭐ NEW [player work ticks]
-- **metrics/** [DailyMetrics.kt — DailyMetrics (snapshot), DailyMetricsAccumulator (live)] + **DayManager** ⭐ NEW [day rollover, end-of-day report]
-- **persistence/** ⭐ NEW (April 19, 2026) [GameStateSerializer.kt — JSON serialization; GameStateRepository.kt — SharedPreferences persistence]
+- **progression/** [ProgressionManager — tier unlock logic]
+- **staff/** [StaffManager — hire/upgrade/fire, cashier/stocker/fresh-handler ticks]
+- **store/** [StoreController — store name, speed, open/close state]
+- **inventory/** [InventoryManager — stock/buy/bulk-order operations, FIFO batch consumption, fresh auto-order queuing]
+- **player/** [PlayerRole.kt — enum: NONE, CASHIER, STOCKER] + [PlayerActionHandler — player work ticks]
+- **metrics/** [DailyMetrics.kt — DailyMetrics (snapshot), DailyMetricsAccumulator (live), ExpiredItemEvent, FreshOrderLineItem, IncompleteOrderLineItem] + [DayManager — day rollover, end-of-day report, fresh order processing]
+- **persistence/** (April 19, 2026) [GameStateSerializer.kt — JSON serialization; GameStateRepository.kt — SharedPreferences persistence]
+- **expiration/** ⭐ NEW (May 2026) [SpoilageManager.kt — automatic expiration processing, batch removal]
 - traffic/ [TrafficManager.kt, TrafficPattern.kt — TrafficPattern, TrafficSchedule, TransactionRequest]
 
 **ui/** — User interface (Compose)
@@ -881,7 +1045,7 @@ git merge feature/my-feature
 - state/ [GameUiState (AppUIState, DashboardUIState, TransactionUIState, InventoryUIState, StaffUIState, HistoryUIState, TimeUIState, MetricsUIState, **ProgressionUIState**), mappers, builders]
 - screens/ [home/StoreHomeScreen, inventory/InventoryScreen, sales/SalesHistoryScreen, staff/StaffScreen (**StaffAndUnlocksScreen** composite with "Staff"/"Unlocks" tabs), staff/UnlocksScreen, **metrics/MetricsScreen**]
 - components/ [buttons/, cards/, common/, panels/, CustomerQueueIndicator.kt, PlayerRoleButtons.kt, PlayerRoleIndicator.kt]
-- dialogs/ [PendingRefundsDialog, TransactionDetailDialog, **EndOfDayReportDialog**, **OutOfStockReportDialog**, **SoldItemsReportDialog**, **BulkOrderDialog**]
+- dialogs/ [PendingRefundsDialog, TransactionDetailDialog, **EndOfDayReportDialog**, **OutOfStockReportDialog**, **SoldItemsReportDialog**, **BulkOrderDialog**, **FreshBulkOrderDialog** ⭐ NEW, **IncompleteOrdersDialog** ⭐ NEW, **ResetGameConfirmationDialog** ⭐ NEW]
 - theme/ [Colors, Styles]
 
 **di/** — Dependency injection
