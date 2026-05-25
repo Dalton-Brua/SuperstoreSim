@@ -5,6 +5,7 @@ import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Transactions.TransactionEngine
 import com.example.superstoresimulator.domain.expiration.SpoilageManager
 import com.example.superstoresimulator.domain.inventory.InventoryManager
+import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
@@ -48,8 +49,8 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         storeConfig = StoreConfig(
             backroomCapPerItem = StoreSize.MOM_AND_POP.backroomCapPerItem
         ),
-        // Start with $500 for a challenging beginning
-        money = Money.fromDollars(1000.0),
+        // Keep default engine startup deterministic for unit tests.
+        money = Money.ZERO,
         // Start at TIER_1 (locked progression)
         currentTier = ItemUnlockTier.TIER_1,
         // No revenue earned yet
@@ -58,15 +59,25 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         internal set
 
     init {
-        // Initialize with empty inventory - player must purchase items to stock the store
+        // Seed every item with baseline stock for deterministic tests/sim startup.
         val allDbItems = itemMetadataCache.getAllItems()
         if (allDbItems.isNotEmpty()) {
             val inventory = mutableMapOf<Int, InventoryState>()
-            allDbItems.forEach { (itemId, _) ->
-                // Start with completely empty inventory
+            val currentDay = state.currentTime.dayNumber
+            allDbItems.forEach { (itemId, item) ->
+                val expirationDay = if (item.shelfLifeDays != null) {
+                    currentDay + item.shelfLifeDays
+                } else {
+                    Int.MAX_VALUE
+                }
+                val startingBatch = ItemBatch(
+                    receivedDay = currentDay,
+                    quantity = 10,
+                    expirationDay = expirationDay,
+                )
                 inventory[itemId] = InventoryState(
-                    shelfBatches = emptyList(),
-                    backroomBatches = emptyList()
+                    shelfBatches = listOf(startingBatch),
+                    backroomBatches = listOf(startingBatch),
                 )
             }
             state = state.copy(inventory = inventory)
@@ -245,8 +256,6 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             // Phase 3: Detect day rollover (midnight)
             val newDayNumber = state.currentTime.dayNumber
             if (newDayNumber != dayManager.lastKnownDayNumber) {
-                // Process queued fresh orders before day rollover
-                state = processQueuedFreshOrders()
                 state = dayManager.rollOverDay(state, dayManager.lastKnownDayNumber)
                 dayManager.advanceDay(newDayNumber)
             }
@@ -456,72 +465,6 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
 
     // ── Fresh Item Auto-Ordering ──────────────────────────────────────────
 
-    /**
-     * Process all queued fresh orders at end-of-day.
-     * Successful orders are added to inventory and metrics.
-     * Failed orders (insufficient funds) are tracked as incomplete orders.
-     */
-    private fun processQueuedFreshOrders(): GameState {
-        if (state.queuedFreshOrders.isEmpty()) return state
-        
-        var newState = state
-        val completedOrders = mutableListOf<com.example.superstoresimulator.domain.metrics.FreshOrderLineItem>()
-        val incompleteOrders = mutableListOf<com.example.superstoresimulator.domain.metrics.IncompleteOrderLineItem>()
-        var newIncompleteRequests = newState.incompleteFreshOrders
-        
-        for (order in state.queuedFreshOrders) {
-            val item = itemMetadataCache.getItem(order.itemId) ?: continue
-            val totalCost = item.getCasePackCostAsMoney() * order.casePacksRequested
-            
-            if (newState.money >= totalCost) {
-                // Order succeeds
-                newState = inventoryManager.buyItemCasePacks(newState, order.itemId, order.casePacksRequested)
-                
-                completedOrders.add(
-                    com.example.superstoresimulator.domain.metrics.FreshOrderLineItem(
-                        itemId = order.itemId,
-                        itemName = item.name,
-                        casePacksOrdered = order.casePacksRequested,
-                        costPerCasePack = item.getCasePackCostAsMoney(),
-                        totalCost = totalCost,
-                    )
-                )
-            } else {
-                // Order fails - insufficient funds
-                incompleteOrders.add(
-                    com.example.superstoresimulator.domain.metrics.IncompleteOrderLineItem(
-                        itemId = order.itemId,
-                        itemName = item.name,
-                        casePacksRequested = order.casePacksRequested,
-                        costPerCasePack = item.getCasePackCostAsMoney(),
-                        totalCost = totalCost,
-                        reason = "Insufficient funds",
-                    )
-                )
-                
-                // Add to incomplete orders
-                newIncompleteRequests = newIncompleteRequests + com.example.superstoresimulator.domain.IncompleteOrderRequest(
-                    itemId = order.itemId,
-                    casePacksRequested = order.casePacksRequested,
-                    requestedOnDay = state.currentTime.dayNumber,
-                    reason = "Insufficient funds",
-                )
-            }
-        }
-        
-        // Update metrics with completed and incomplete orders
-        val updatedMetrics = newState.currentDayMetrics.copy(
-            autoOrderedFreshItems = completedOrders,
-            incompleteOrderedFreshItems = incompleteOrders,
-        )
-        
-        // Clear the queued orders and update metrics + incomplete requests
-        return newState.copy(
-            queuedFreshOrders = emptyList(),
-            incompleteFreshOrders = newIncompleteRequests,
-            currentDayMetrics = updatedMetrics,
-        )
-    }
 
     /**
      * Place a fresh bulk order with lower discount tiers.
@@ -547,25 +490,73 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     }
 
     /**
-     * Attempt to auto-order fresh items that fall below the threshold when fresh handlers are idle.
-     * Called during tick when fresh handlers have nothing to stock.
-     * Only queues each item once per day to prevent duplicate orders.
+     * Immediately process fresh auto-orders for items that fall below the threshold
+     * when fresh handlers are idle. Orders are processed on-the-spot:
+     * - Affordable orders: inventory updated, money deducted, metrics updated immediately.
+     * - Unaffordable orders: logged as incomplete for the daily report.
+     *
+     * Uses [DailyMetricsAccumulator.autoOrderedFreshItems] and
+     * [DailyMetricsAccumulator.incompleteOrderedFreshItems] to prevent re-attempting
+     * the same item more than once per day.
      */
     private fun attemptFreshHandlerAutoOrder() {
         if (!state.freshAutoOrderConfig.enabled) return
-        
-        // Get set of items already queued to avoid duplicates
-        val alreadyQueued = state.queuedFreshOrders.map { it.itemId }.toSet()
-        
+
+        // Build the set of item IDs already handled today (success OR failure)
+        val alreadyHandled = (state.currentDayMetrics.autoOrderedFreshItems.map { it.itemId } +
+            state.currentDayMetrics.incompleteOrderedFreshItems.map { it.itemId }).toSet()
+
         for ((itemId, _) in state.inventory) {
-            // Skip if already queued for ordering today
-            if (itemId in alreadyQueued) continue
-            
-            if (inventoryManager.shouldAutoOrderFreshItem(state, itemId, state.freshAutoOrderConfig)) {
-                state = inventoryManager.queueFreshOrder(
-                    state,
-                    itemId,
-                    state.freshAutoOrderConfig.casePacksPerItem
+            if (itemId in alreadyHandled) continue
+            if (!inventoryManager.shouldAutoOrderFreshItem(state, itemId, state.freshAutoOrderConfig)) continue
+
+            val item = itemMetadataCache.getItem(itemId) ?: continue
+            val casePacks = state.freshAutoOrderConfig.casePacksPerItem
+            val totalCost = item.getCasePackCostAsMoney() * casePacks
+
+            if (state.money >= totalCost) {
+                // Success path: buy immediately
+                val invBefore = state.inventory[itemId]
+                state = inventoryManager.buyItemCasePacks(state, itemId, casePacks)
+                // Append to today's metrics
+                state = state.copy(
+                    currentDayMetrics = state.currentDayMetrics.copy(
+                        autoOrderedFreshItems = state.currentDayMetrics.autoOrderedFreshItems +
+                            com.example.superstoresimulator.domain.metrics.FreshOrderLineItem(
+                                itemId = itemId,
+                                itemName = item.name,
+                                casePacksOrdered = casePacks,
+                                costPerCasePack = item.getCasePackCostAsMoney(),
+                                totalCost = totalCost,
+                            )
+                    )
+                )
+                _changes.value = GameStateChange.MoneyChanged(state.money)
+                state.inventory[itemId]?.takeIf { it != invBefore }?.let {
+                    _changes.value = GameStateChange.InventoryUpdated(itemId, it)
+                }
+            } else {
+                // Failure path: log as incomplete
+                state = state.copy(
+                    currentDayMetrics = state.currentDayMetrics.copy(
+                        incompleteOrderedFreshItems = state.currentDayMetrics.incompleteOrderedFreshItems +
+                            com.example.superstoresimulator.domain.metrics.IncompleteOrderLineItem(
+                                itemId = itemId,
+                                itemName = item.name,
+                                casePacksRequested = casePacks,
+                                costPerCasePack = item.getCasePackCostAsMoney(),
+                                totalCost = totalCost,
+                                reason = "Insufficient funds",
+                            )
+                    ),
+                    // Keep persistent incomplete list up-to-date (deduplicate by itemId)
+                    incompleteFreshOrders = state.incompleteFreshOrders.filter { it.itemId != itemId } +
+                        com.example.superstoresimulator.domain.IncompleteOrderRequest(
+                            itemId = itemId,
+                            casePacksRequested = casePacks,
+                            requestedOnDay = state.currentTime.dayNumber,
+                            reason = "Insufficient funds",
+                        )
                 )
             }
         }

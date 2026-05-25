@@ -244,10 +244,11 @@ class InventoryManagerTest {
 
     @Test
     fun `buyItemToBackroom is no-op when adding a case-pack would exceed cap`() {
-        // Cap = 50; backroom already at 46; casePack = 6 → 46+6 = 52 > 50
+        // Cap is measured in case-packs. backroom=12 with casePack=6 => 2 case-packs already.
+        // With cap=2, adding one more case-pack is rejected.
         val state = stateWith(
-            1 to inv(0, 46),
-            backroomCap = 50,
+            1 to inv(0, 12),
+            backroomCap = 2,
         )
         val result = manager.buyItemToBackroom(state, itemId = 1)
         assertEquals(state, result)
@@ -277,14 +278,15 @@ class InventoryManagerTest {
 
     @Test
     fun `buyItemCasePacks clamps delivery to fit backroom cap`() {
-        // Cap = 50; current backroom = 44; space = 6 = exactly 1 case-pack; request 3
+        // Cap is measured in case-packs.
+        // backroom=10 with casePack=6 => 1 current case-pack.
+        // cap=2 => available=1 case-pack; request 3 => clamp to 1.
         val state = stateWith(
-            1 to inv(0, 44),
-            backroomCap = 50,
+            1 to inv(0, 10),
+            backroomCap = 2,
         )
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 3)
-        // Only 1 case-pack delivered (6 units)
-        assertEquals(50, result.inventory[1]!!.backroomStock)
+        assertEquals(16, result.inventory[1]!!.backroomStock)
         assertEquals(state.money - item1CasePackCost, result.money)
     }
 
@@ -298,8 +300,8 @@ class InventoryManagerTest {
     @Test
     fun `buyItemCasePacks is no-op when backroom is already full`() {
         val state = stateWith(
-            1 to inv(0, 50),
-            backroomCap = 50,
+            1 to inv(0, 12),
+            backroomCap = 2,
         )
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 1)
         assertEquals(state, result)
@@ -424,7 +426,11 @@ class InventoryManagerTest {
     private fun newGameEngineWithItems(): GameEngine {
         val cache = ItemMetadataCache(FakeItemDao(testItems))
         runBlocking { cache.initialize() }
-        return GameEngine(cache)
+        val engine = GameEngine(cache)
+        engine.state = engine.state.copy(
+            storeConfig = engine.state.storeConfig.copy(backroomCapPerItem = 100)
+        )
+        return engine
     }
 
     private fun setEngineMoneyTo(engine: GameEngine, cents: Long) {

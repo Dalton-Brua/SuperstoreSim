@@ -22,14 +22,6 @@ data class FreshAutoOrderConfig(
     val casePacksPerItem: Int = 1,       // How many case packs to order per item when triggered
 )
 
-/**
- * Represents a fresh item order queued for processing at end-of-day.
- */
-data class FreshOrderRequest(
-    val itemId: Int,
-    val casePacksRequested: Int,
-    val queuedOnDay: Int,
-)
 
 /**
  * Represents a fresh item order that failed to complete (e.g., insufficient funds).
@@ -94,7 +86,6 @@ data class GameState(
 
     // Fresh item auto-ordering
     val freshAutoOrderConfig: FreshAutoOrderConfig = FreshAutoOrderConfig(),
-    val queuedFreshOrders: List<FreshOrderRequest> = emptyList(),
     val incompleteFreshOrders: List<IncompleteOrderRequest> = emptyList(),
 )
 

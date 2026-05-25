@@ -65,25 +65,8 @@ class DayManager {
      *                  at the moment the rollover was detected).
      */
     fun rollOverDay(state: GameState, dayNumber: Int): GameState {
-        // First, process queued fresh orders before calculating costs
-        var processedState = state
-        
-        // Process queued orders separately - will be called from GameEngine which has access to inventory manager
-        // For now, just clear the queue and mark incomplete orders
-        if (state.queuedFreshOrders.isNotEmpty()) {
-            val incompleteOrders = mutableListOf<com.example.superstoresimulator.domain.IncompleteOrderRequest>()
-            for (order in state.queuedFreshOrders) {
-                incompleteOrders.add(
-                    com.example.superstoresimulator.domain.IncompleteOrderRequest(
-                        itemId = order.itemId,
-                        casePacksRequested = order.casePacksRequested,
-                        requestedOnDay = state.currentTime.dayNumber,
-                        reason = "Will be processed in GameEngine",
-                    )
-                )
-            }
-        }
-        
+        val processedState = state
+
         // Calculate operating costs
         val rentCost = processedState.currentStoreSize.dailyRent
         val wagesCost = StaffWageCalculator.calculateTotalWages(processedState.hiredEntityRegistry)
@@ -109,7 +92,6 @@ class DayManager {
             lastEndOfDayReport = snapshot,
             playerPausedTime = true,
             pausedByEndOfDay = !wasAlreadyPaused,
-            queuedFreshOrders = emptyList(), // Clear queue after day rollover
         )
     }
 

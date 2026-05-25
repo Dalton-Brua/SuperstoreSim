@@ -423,23 +423,6 @@ class InventoryManager(private val cache: ItemMetadataCache) {
         return totalStock < config.minStockThreshold
     }
 
-    /**
-     * Queue a fresh item order for processing at end-of-day.
-     */
-    fun queueFreshOrder(
-        state: GameState,
-        itemId: Int,
-        casePacksRequested: Int
-    ): GameState {
-        val order = com.example.superstoresimulator.domain.FreshOrderRequest(
-            itemId = itemId,
-            casePacksRequested = casePacksRequested,
-            queuedOnDay = state.currentTime.dayNumber
-        )
-        return state.copy(
-            queuedFreshOrders = state.queuedFreshOrders + order
-        )
-    }
 
     /**
      * Create a fresh bulk order with lower discount tiers than regular items.
