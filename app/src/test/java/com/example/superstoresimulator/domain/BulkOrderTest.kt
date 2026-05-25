@@ -108,7 +108,12 @@ class BulkOrderTest {
     private fun newEngine(items: List<Item>): GameEngine {
         val cache = ItemMetadataCache(FakeItemDao(items))
         runBlocking { cache.initialize() }
-        return GameEngine(cache)
+        val engine = GameEngine(cache)
+        // Keep non-cap tests focused on pricing/filtering, not store-size cap limits.
+        engine.state = engine.state.copy(
+            storeConfig = engine.state.storeConfig.copy(backroomCapPerItem = 10_000)
+        )
+        return engine
     }
 
     /** Injects a money balance directly into the engine state. */
@@ -482,7 +487,7 @@ class BulkOrderTest {
         )
         val engine = newEngine(items)
         setMoney(engine, 100_000L)
-        setBackroomCap(engine, 14)
+        setBackroomCap(engine, 1)
 
         engine.buyItemToBackroom(1)
 
@@ -517,7 +522,7 @@ class BulkOrderTest {
         )
         val engine = newEngine(items)
         setMoney(engine, 100_000L)
-        setBackroomCap(engine, 28)
+        setBackroomCap(engine, 4)
 
         engine.buyItemCasePacks(1, 10)
 
@@ -533,7 +538,7 @@ class BulkOrderTest {
         )
         val engine = newEngine(items)
         setMoney(engine, 100_000L)
-        setBackroomCap(engine, 10)
+        setBackroomCap(engine, 1)
 
         engine.buyItemCasePacks(1, 5)
 
@@ -554,7 +559,7 @@ class BulkOrderTest {
         val engine = newEngine(items)
         setMoney(engine, 100_000L)
         // Set different caps per-item by manually pinning item 1's backroom to cap
-        setBackroomCap(engine, 50)
+        setBackroomCap(engine, 8)
         engine.state = engine.state.copy(
             inventory = engine.state.inventory + (1 to inv(10, 50))
         )
@@ -577,7 +582,7 @@ class BulkOrderTest {
         )
         val engine = newEngine(items)
         setMoney(engine, 100_000L)
-        setBackroomCap(engine, 28)
+        setBackroomCap(engine, 4)
 
         engine.placeBulkOrder(maxTotalQuantity = 20, casePacksPerItem = 5, categoryFilter = null)
 
@@ -600,7 +605,7 @@ class BulkOrderTest {
         )
         val engine = newEngine(items)
         setMoney(engine, 100_000L)
-        setBackroomCap(engine, 28)
+        setBackroomCap(engine, 4)
 
         engine.placeBulkOrder(maxTotalQuantity = 20, casePacksPerItem = 20, categoryFilter = null)
 
