@@ -389,6 +389,7 @@ object GameStateSerializer {
                 entitiesArray.put(serializeHiredEntity(entity))
             }
             put("entities", entitiesArray)
+            put("nextEntityId", registry.getNextEntityId())
         }
     }
 
@@ -398,12 +399,12 @@ object GameStateSerializer {
         for (i in 0 until entitiesArray.length()) {
             entities.add(deserializeHiredEntity(entitiesArray.getJSONObject(i)))
         }
-        var registry = HiredEntityRegistry()
-        entities.forEach { entity ->
-            // Reconstruct by hiring each entity with its original definition and type
-            registry = registry.hireEntity(entity.entityDefinition, entity.entityType)
-        }
-        return registry
+
+        // Preserve exact saved employee identity (name/trait/id), and keep backward compatibility
+        // with older saves that did not persist nextEntityId.
+        val fallbackNextId = (entities.maxOfOrNull { it.id } ?: 0) + 1
+        val nextEntityId = json.optInt("nextEntityId", fallbackNextId)
+        return HiredEntityRegistry(entities = entities, nextEntityId = nextEntityId)
     }
 
     private fun serializeHiredEntity(entity: HiredEntity): JSONObject {

@@ -198,6 +198,8 @@ Emit change via _changes.emit(...)
    - `updateStoreName(state, newName)` → new state
    - `setGameSpeedState(state, multiplier)` → new state (updates `storeConfig.gameSpeedMultiplier`)
    - `upgradeStoreSize(state)` → new state (deducts `nextSize.upgradeCost`, updates `currentStoreSize`, syncs `storeConfig.backroomCapPerItem`)
+   - **StoreSize tiers** (`domain/store/StoreSize.kt`): `MOM_AND_POP` ($100/day rent, cap 2) → `SMALL_GROCERY` ($300/day, $1k upgrade, cap 5, 2×traffic) → `GROCERY_STORE` ($800/day, $20k upgrade, cap 10, 4×traffic) → `SUPERSTORE` ($1500/day, $200k upgrade, cap 30, 8×traffic) → `SUPERCENTER` ($3000/day, $1M upgrade, cap 999, 16×traffic)
+   - `maxDeliveryDaysAllowed = 2 + storeSize.ordinal + extraTruckSlotsUnlocked` (store upgrade increases free delivery days)
    - `handleStoreStateChange(state, newState, trafficManager)` → new state with side-effects (closes customers on CLOSED transition, resets traffic)
    - `toggleTimePaused(state)` → new state (flips `playerPausedTime` flag)
 
@@ -206,13 +208,13 @@ Emit change via _changes.emit(...)
    - `stockCasePackFromBackroom(state, itemId)` → new state
    - `stockRandomItemFromBackroom(state)` → new state (excludes fresh items; used by regular stockers)
    - `stockRandomFreshItemFromBackroom(state)` → new state (only fresh items; used by fresh handlers)
-   - `buyItemToBackroom(state, itemId)` → new state (refuses if full case pack exceeds backroom cap)
-   - `buyItemCasePacks(state, itemId, casePacks)` → new state (clamps delivery to backroom cap; creates new batches with expiration)
-   - `placeBulkOrder(state, maxTotalQty, casePacksPerItem, categoryFilter)` → new state with volume discounts applied (excludes fresh items)
-   - `placeFreshBulkOrder(state, maxTotalQty, casePacksPerItem, currentTier)` → new state (only fresh items; lower discount tiers: 5% @ 15 cases, 10% @ 30, 15% @ 50)
+   - `buyItemToBackroom(state, itemId)` → **`BuyResult`** (deducts money; returns `orderLines` for TruckManager; refuses if total committed case packs ≥ cap)
+   - `buyItemCasePacks(state, itemId, casePacks)` → **`BuyResult`** (deducts money; returns `orderLines`; supports multi-truck pre-ordering up to `MAX_TRUCKS_AHEAD(2) × cap`)
+   - `placeBulkOrder(state, maxTotalQty, casePacksPerItem, categoryFilter)` → **`BuyResult`** with volume discounts applied (excludes fresh items)
+   - `placeFreshBulkOrder(state, maxTotalQty, casePacksPerItem, currentTier)` → **`BuyResult`** (only fresh items; lower discount tiers)
    - `shouldAutoOrderFreshItem(state, itemId, config)` → Boolean (checks if fresh item below threshold)
-   - `queueFreshOrder(state, itemId, casePacksRequested)` → new state (adds to `queuedFreshOrders` for end-of-day processing)
-   - **Backroom cap**: `StoreConfig.backroomCapPerItem` is in **case packs per item** and is synced to `currentStoreSize` (starts at `StoreSize.MOM_AND_POP.backroomCapPerItem = 2`)
+   - ⚠️ `queueFreshOrder()` **no longer exists** — fresh orders now go directly through TruckManager
+   - **In-transit cap**: `buyItemToBackroom` and `buyItemCasePacks` count scheduled truck orders toward the backroom cap to prevent spam-ordering during delivery
 
 6. **PlayerActionHandler** (`domain/player/PlayerActionHandler.kt`)
    - `setPlayerRole(state, role)` → new state (toggles active role back to `NONE`)
@@ -223,6 +225,7 @@ Emit change via _changes.emit(...)
    - `rollOverDay(state, dayNumber)` → new state with metrics snapshot appended, daily costs applied, and end-of-day report surfaced
    - `dismissEndOfDayReport(state)` → new state with flag cleared
    - **Mutable counter**: `lastKnownDayNumber` — engine-internal, not in GameState
+   - ⚠️ DayManager no longer calls `processFreshOrders()` — fresh orders are placed immediately during tick via `attemptFreshHandlerAutoOrder()`, not at midnight
 
 8. **SpoilageManager** (`domain/expiration/SpoilageManager.kt`)
    - `processExpiration(state)` → new state with expired batches removed and metrics updated
@@ -235,6 +238,7 @@ Emit change via _changes.emit(...)
 - ❌ Never instantiate managers outside GameEngine — managers are created and owned by the engine
 - ❌ Never mutate manager state (accumulators like `staffManager.cashierProgress`) — only GameEngine writes
 - ❌ Never call private manager methods (e.g., `stockCasePackFromBackroom()`) from outside code — always route through GameEngine public methods
+- ❌ Never call `InventoryManager.buyItemToBackroom()` / `buyItemCasePacks()` and discard `BuyResult.orderLines` — items will not arrive without TruckManager scheduling
 - ✅ When reading GameEngine code, understand managers are pure: all state flows through GameState.copy()
 - ✅ Managers are testable in isolation by passing mocked GameState
 - ✅ Each manager knows ONE domain; never cross-call between managers
@@ -343,18 +347,19 @@ private fun deserializeMyType(json: JSONObject): MyType { ... }
   - ItemDataLoader loads JSON → ItemDao → ItemMetadataCache initialized
   - GameViewModel waits for async completion before creating engine
 - **Helper method**: `getDbItem(itemId: Int): Item?` — public access to cached item metadata for UI components (returns full Item object from ItemMetadataCache)
-- **Managers** (April 15, 2026): Delegates to 8 specialized managers (see section 4B):
-  - ProgressionManager, StaffManager, StoreController, InventoryManager, PlayerActionHandler, DayManager, TrafficManager, SpoilageManager
+- **Managers** (April 15, 2026): Delegates to 9 specialized managers (see sections 4B and 20):
+  - ProgressionManager, StaffManager, StoreController, InventoryManager, PlayerActionHandler, DayManager, TrafficManager, SpoilageManager, **TruckManager**
   - Each manager is pure: receives GameState, returns new GameState
   - Each manager owns one domain of logic; GameEngine coordinates
-- **Database Access**: Passes `ItemMetadataCache` to managers that need item lookups (InventoryManager, SpoilageManager, etc.)
+- **Database Access**: Passes `ItemMetadataCache` to managers that need item lookups (InventoryManager, SpoilageManager, TruckManager)
   - Single database load: `itemDao.getAllItems()` called ONCE in `itemMetadataCache.initialize()`
-- **Fresh Auto-Ordering** (May 2026): Idle fresh handlers auto-queue orders when fresh items fall below threshold
-  - `attemptFreshHandlerAutoOrder()` — called during tick when fresh handlers have no backroom stock to process
-  - Queued orders processed at end-of-day via `processFreshOrders()` — deducts cost, creates batches with expiration
+- **Fresh Auto-Ordering** (May 2026): Idle fresh handlers auto-order immediately via truck system when fresh items fall below threshold
+  - `attemptFreshHandlerAutoOrder()` — called during tick when fresh handlers have no backroom stock to process; routes through `TruckManager.scheduleFreshOrderLines()`
+  - ⚠️ `processFreshOrders()` **no longer exists** — orders are placed immediately, not queued for end-of-day
   - Incomplete orders (insufficient funds) tracked in `state.incompleteFreshOrders` — can be manually ordered via `orderIncompleteItem()`
+- **Truck arrivals**: Processed at each day rollover in tick via `TruckManager.processArrivals(state, newDayNumber)`
 - **Change Emission**: `_changes: StateFlow<GameStateChange?>` for incremental UI updates (99% fewer reconstructions)
-  - `GameStateChange` subtypes: `MoneyChanged`, `InventoryUpdated`, `TransactionCompleted`, `TransactionStarted`, `RefundRequested`, `RefundProcessed`, `StaffUpdated`, `StoreStateChanged`, `TimeUpdated`, `TierUnlocked(newTier, previousTier)`
+  - `GameStateChange` subtypes: `MoneyChanged`, `InventoryUpdated`, `TransactionCompleted`, `TransactionStarted`, `RefundRequested`, `RefundProcessed`, `StaffUpdated`, `StoreStateChanged`, `TimeUpdated`, `TierUnlocked(newTier, previousTier)`, **`ItemsExpired(totalExpired, wasteCost)`**, **`OrderScheduled(arrivalDay)`**
 
 **See**: `domain/GameEngine.kt`
 ---
@@ -583,8 +588,13 @@ val pausedByEndOfDay: Boolean                     // true when rollOverDay() aut
                                                   // dismissEndOfDayReport() only unpauses if this is true
 // Fresh auto-ordering (May 2026)
 val freshAutoOrderConfig: FreshAutoOrderConfig   // enabled, minStockThreshold, casePacksPerItem
-val queuedFreshOrders: List<FreshOrderRequest>   // orders queued during day, processed at midnight
+// NOTE: queuedFreshOrders / FreshOrderRequest no longer exist — orders go directly through the truck system
 val incompleteFreshOrders: List<IncompleteOrderRequest>  // failed orders (insufficient funds)
+// Truck delivery system (May 2026)
+val scheduledTrucks: List<ScheduledTruck> = emptyList()
+val truckConfig: TruckConfig = TruckConfig()
+val nextTruckId: Int = 1
+val objectiveBonusEarned: Money = Money.ZERO  // bonus from completed objectives (reserved for future objective system)
 ```
 
 **See**: `domain/metrics/DailyMetrics.kt` | `domain/GameEngine.kt` (`rollOverDay`, `dismissEndOfDayReport`) | `ui/screens/metrics/MetricsScreen.kt` | `ui/dialogs/EndOfDayReportDialog.kt`
@@ -752,30 +762,109 @@ onFreshBulkOrder = { maxQty, casePacks ->
 **See**: `domain/GameEngine.kt` (`placeBulkOrder`, `placeFreshBulkOrder`) | `domain/inventory/InventoryManager.kt` | `ui/dialogs/BulkOrderDialog.kt` | `ui/dialogs/FreshBulkOrderDialog.kt` | `ui/screens/inventory/InventoryScreen.kt`
 
 ---
-### **20. Fresh Auto-Ordering System** ⭐ NEW (May 2026)
+### **20. Truck Delivery System** ⭐ IMPLEMENTED (May 2026)
+
+All inventory purchases are now **deferred deliveries** — items are no longer added to the backroom instantly. Instead, `InventoryManager` buy methods return a `BuyResult(state, orderLines)` and GameEngine schedules those lines onto trucks via `TruckManager`.
+
+**Architecture**:
+```
+Player/staff orders item
+    ↓
+InventoryManager.buyItemToBackroom() / buyItemCasePacks() / placeBulkOrder() / placeFreshBulkOrder()
+    → Returns BuyResult(newState, orderLines)  // money deducted; NO backroom change yet
+    ↓
+GameEngine routes orderLines to TruckManager:
+    Regular items → TruckManager.scheduleRegularOrderLines(state, lines, currentDay)
+    Fresh items   → TruckManager.scheduleFreshOrderLines(state, lines, currentDay)
+    → state.scheduledTrucks updated; emits GameStateChange.OrderScheduled(arrivalDay)
+    ↓
+End-of-day (each new dayNumber during tick):
+    TruckManager.processArrivals(state, newDayNumber)
+    → Delivers lines as ItemBatch to backroom; appends DeliveredTruckRecord to currentDayMetrics
+    → Arrived trucks removed from scheduledTrucks
+```
+
+**Key Data Classes** (`domain/GameStateData.kt`):
+```kotlin
+PendingOrderLine(itemId, quantity, casePacksCount, unitCost, orderedOnDay, isFresh)
+ScheduledTruck(truckId, scheduledArrivalDay, capacityCasePacks, orders, isFreshTruck, isEarlyTruck)
+TruckConfig(deliveryDays: Set<Int>, regularTruckCapacityCasePacks, freshTruckCapacityCasePacks, extraTruckSlotsUnlocked)
+```
+
+**GameState fields added**:
+```kotlin
+val scheduledTrucks: List<ScheduledTruck> = emptyList()
+val truckConfig: TruckConfig = TruckConfig()   // default: Mon+Thu delivery, 2000 regular / 500 fresh cap
+val nextTruckId: Int = 1
+```
+
+**TruckManager public API** (`domain/delivery/TruckManager.kt`):
+- `scheduleRegularOrderLines(state, lines, currentDay)` → places lines on next regular truck(s); creates new truck if all full; prefers early truck for tomorrow if one is booked
+- `scheduleFreshOrderLines(state, lines, currentDay)` → places lines on that day's fresh truck (arrives currentDay + 1), creating it if needed
+- `processArrivals(state, currentDay)` → delivers all trucks where `scheduledArrivalDay ≤ currentDay`; creates `ItemBatch` with correct `expirationDay`; tracks `DeliveredTruckRecord` in `currentDayMetrics`
+- `updateConfig(state, newConfig)` → updates `truckConfig`; silently clamps `deliveryDays` to `maxDeliveryDaysAllowed`; no-op if `deliveryDays` would be empty
+- `purchaseExtraTruckSlot(state)` → costs `TruckConfig.EXTRA_SLOT_COST` ($100); increments `extraTruckSlotsUnlocked`
+- `requestEarlyTruck(state, currentDay)` → costs $100; reschedules next regular truck to arrive tomorrow + marks `isEarlyTruck`; or creates empty early truck if none scheduled
+- `cancelPendingOrderLine(state, itemId, truckId, currentDay)` → refunds `unitCost × quantity`; removes truck if it becomes empty; no-op for already-arrived trucks
+- `decrementOrderLine(state, itemId, truckId, currentDay)` → removes one case pack from item's last line; refunds `unitCost × unitsPerCasePack`; guard: total case packs for item must be > 1
+
+**Delivery day scheduling**:
+- Default: Monday (0) and Thursday (3) per week
+- `maxDeliveryDaysAllowed = TruckConfig.BASE_FREE_SLOTS(2) + storeSize.ordinal + extraTruckSlotsUnlocked`
+- `findNextDeliveryDay(currentDay, deliveryDays)` — finds next absolute day where `day % 7 ∈ deliveryDays`
+
+**Multi-truck pre-ordering**: `buyItemCasePacks` allows ordering up to `MAX_TRUCKS_AHEAD(2) × backroomCapPerItem` case packs total (backroom + in-transit). Orders that exceed a single truck's per-item cap are split across multiple trucks automatically.
+
+**In-transit cap enforcement**: `buyItemToBackroom` and `buyItemCasePacks` both count in-transit case packs from `scheduledTrucks` toward the cap, preventing spam-ordering while deliveries are pending.
+
+**New GameEvents**:
+```kotlin
+UpdateTruckConfig(deliveryDays, regularCapacityCasePacks, freshCapacityCasePacks)
+CancelPendingOrderLine(itemId, truckId)
+DecrementOrderLine(itemId, truckId)
+RequestEarlyTruck
+PurchaseExtraTruckSlot
+```
+
+**New GameStateChange subtype**: `OrderScheduled(arrivalDay: Int)` — emitted after any successful order scheduling.
+
+**Daily Metrics**:
+- `DeliveredTruckRecord(truckId, arrivalDay, isFreshTruck, isEarlyTruck, totalCasePacks, lines)` — one per truck that arrived
+- `DeliveredItemLine(itemId, itemName, casePacks, quantity)` — one per line in the truck
+- Both in `DailyMetrics.deliveredTrucks` and `DailyMetricsAccumulator.deliveredTrucks`
+
+**Breaking Rules for AI Agents**:
+- ❌ Never add items to backroom directly from `InventoryManager` buy methods — they now return `BuyResult` with `orderLines`; GameEngine is responsible for routing to `TruckManager`
+- ❌ Never call `InventoryManager.buyItemToBackroom()` / `buyItemCasePacks()` and discard `orderLines` — inventory will not actually arrive
+- ✅ Fresh items go to `scheduleFreshOrderLines()` (`isFresh = true`); regular items go to `scheduleRegularOrderLines()`
+- ✅ `processArrivals()` is called automatically each tick at day rollover — never call it manually mid-day
+- ✅ When adding to test inventory, still use `ItemBatch` directly on `InventoryState` (test setup bypasses the truck system)
+
+**See**: `domain/delivery/TruckManager.kt` | `domain/GameStateData.kt` (`PendingOrderLine`, `ScheduledTruck`, `TruckConfig`) | `domain/inventory/InventoryManager.kt` (`BuyResult`) | `domain/metrics/DailyMetrics.kt` (`DeliveredTruckRecord`, `DeliveredItemLine`) | `domain/GameStateChange.kt` (`OrderScheduled`) | `app/src/test/…/domain/delivery/TruckManagerTest.kt`
+
+---
+### **21. Fresh Auto-Ordering System** ⭐ UPDATED (May 2026)
 
 Automated inventory management for perishable items. Idle fresh handlers automatically queue orders when fresh items fall below a configurable threshold. Orders are processed at end-of-day to minimize deliveries and optimize freshness.
 
-**Architecture**:
+**Architecture** (updated — orders now route through the Truck Delivery System):
 ```
 Tick loop:
     Fresh handlers idle (no backroom stock to process)
         ↓
     attemptFreshHandlerAutoOrder() checks all fresh items
         ↓
-    Items below threshold → queueFreshOrder(itemId, casePacksPerItem)
-        ↓
-    state.queuedFreshOrders += FreshOrderRequest
-    
-End-of-day (midnight):
-    processFreshOrders()
-        ↓
-    For each queued order:
-        If affordable → deduct money, create batches with expiration
-        Else → add to incompleteFreshOrders with reason "Insufficient funds"
-        ↓
-    Update currentDayMetrics.autoOrderedFreshItems / incompleteOrderedFreshItems
+    Items below threshold and not already handled today:
+        If affordable:
+            inventoryManager.buyItemCasePacks() → BuyResult
+            truckManager.scheduleFreshOrderLines() → truck scheduled for currentDay + 1
+            currentDayMetrics.autoOrderedFreshItems += FreshOrderLineItem
+        Else:
+            currentDayMetrics.incompleteOrderedFreshItems += IncompleteOrderLineItem
+            incompleteFreshOrders += IncompleteOrderRequest
 ```
+
+> ⚠️ The `queuedFreshOrders` GameState field and `FreshOrderRequest` data class **no longer exist** — they were part of the old end-of-day processing approach. Fresh auto-orders are now placed immediately via the truck system, not queued for midnight.
 
 **Configuration** (`FreshAutoOrderConfig` in `GameState`):
 - `enabled: Boolean` — toggle auto-ordering on/off (default: true)
@@ -791,12 +880,10 @@ End-of-day (midnight):
 
 **Key Methods** (in `InventoryManager`):
 - `shouldAutoOrderFreshItem(state, itemId, config)` → Boolean — checks config.enabled, item is fresh, stock < threshold
-- `queueFreshOrder(state, itemId, casePacksRequested)` → new state with order added to `queuedFreshOrders`
 
 **Key Methods** (in `GameEngine`):
-- `attemptFreshHandlerAutoOrder()` — private, called during tick when fresh handlers idle
-- `processFreshOrders()` — private, called at end-of-day by `DayManager.rollOverDay()`
-- `orderIncompleteItem(itemId, casePacksRequested)` — public, manual ordering from incomplete list
+- `attemptFreshHandlerAutoOrder()` — private, called during tick when fresh handlers idle; immediately routes through truck system (no end-of-day queue)
+- `orderIncompleteItem(itemId, casePacksRequested)` — public, manual ordering from incomplete list; routes through `truckManager.scheduleFreshOrderLines()`
 
 **Daily Metrics Integration**:
 - `FreshOrderLineItem(itemId, itemName, casePacksOrdered, costPerCasePack, totalCost)` — successful orders
@@ -804,13 +891,13 @@ End-of-day (midnight):
 - Displayed in end-of-day report "Fresh Orders" section
 
 **Breaking Rules for AI Agents**:
-- ❌ Never queue fresh orders manually during regular gameplay — only via `attemptFreshHandlerAutoOrder()` during tick
-- ❌ Never process fresh orders outside end-of-day — always via `processFreshOrders()` at midnight
+- ❌ Never queue fresh orders manually — `queuedFreshOrders` / `FreshOrderRequest` no longer exist; orders now go directly through the truck system
+- ❌ Never call `processFreshOrders()` — it was removed; auto-ordering is immediate
 - ✅ Fresh auto-ordering only triggers when fresh handlers are idle (no backroom stock)
-- ✅ Each item can only be queued once per day (prevents duplicate orders)
-- ✅ Orders create batches with `expirationDay = currentDay + shelfLifeDays`
+- ✅ Each item can only be auto-ordered once per day (tracked via `currentDayMetrics.autoOrderedFreshItems` + `incompleteOrderedFreshItems`)
+- ✅ Auto-orders create a fresh truck scheduled for `currentDay + 1`
 
-**See**: `domain/GameEngine.kt` (`attemptFreshHandlerAutoOrder`, `processFreshOrders`, `orderIncompleteItem`, `updateFreshAutoOrderConfig`) | `domain/inventory/InventoryManager.kt` (`shouldAutoOrderFreshItem`, `queueFreshOrder`) | `domain/GameStateData.kt` (`FreshAutoOrderConfig`, `FreshOrderRequest`, `IncompleteOrderRequest`) | `domain/metrics/DailyMetrics.kt` (`FreshOrderLineItem`, `IncompleteOrderLineItem`) | `ui/dialogs/IncompleteOrdersDialog.kt`
+**See**: `domain/GameEngine.kt` (`attemptFreshHandlerAutoOrder`, `orderIncompleteItem`, `updateFreshAutoOrderConfig`) | `domain/inventory/InventoryManager.kt` (`shouldAutoOrderFreshItem`) | `domain/GameStateData.kt` (`FreshAutoOrderConfig`, `IncompleteOrderRequest`) | `domain/metrics/DailyMetrics.kt` (`FreshOrderLineItem`, `IncompleteOrderLineItem`) | `ui/dialogs/IncompleteOrdersDialog.kt`
 
 ---
 **Event Types** (sealed interface GameEvent):
@@ -825,9 +912,10 @@ End-of-day (midnight):
 - **Progression**: DismissTierUnlock, UnlockNextTier
 - **Skip Day**: SkipDay
 - **Bulk Order**: BulkOrder(maxTotalQuantity, casePacksPerItem, categoryFilter)
-- **Fresh System** ⭐ NEW (May 2026): FreshBulkOrder(maxTotalQuantity, casePacksPerItem), UpdateFreshAutoOrderConfig(enabled, minStockThreshold, casePacksPerItem), OrderIncompleteItem(itemId, casePacksRequested)
+- **Fresh System** ⭐ UPDATED (May 2026): FreshBulkOrder(maxTotalQuantity, casePacksPerItem), UpdateFreshAutoOrderConfig(enabled, minStockThreshold, casePacksPerItem), OrderIncompleteItem(itemId, casePacksRequested)
 - **Save System** (April 19, 2026): SaveGame
 - **Reset System** ⭐ NEW (May 2026): ResetGame
+- **Truck Delivery System** ⭐ NEW (May 2026): UpdateTruckConfig(deliveryDays, regularCapacityCasePacks, freshCapacityCasePacks), CancelPendingOrderLine(itemId, truckId), DecrementOrderLine(itemId, truckId), RequestEarlyTruck, PurchaseExtraTruckSlot
 
 **⚠️ Pure-UI events** (handled directly by ViewModel, no GameEngine call, no domain state rebuild):
 - `SelectItemCategory`, `FocusInventoryItem`, `SelectStaffType`
@@ -883,6 +971,8 @@ End-of-day (midnight):
 | `domain/Transactions/TransactionTest.kt` | Convenience constructor, multi-line subtotals, high-value totals |
 | `domain/Transactions/TransactionEngineTest.kt` | Full ring-up / OOS / history / tax / immutability |
 | `domain/Transactions/TransactionEngineAdvancedTest.kt` | Refund paths (100% chance), partial refunds, inventory restoration |
+| `domain/delivery/TruckManagerTest.kt` | Truck scheduling, arrivals, early truck, cancellation, overflow splitting |
+| `domain/ImmediateFreshAutoOrderTest.kt` | Fresh auto-order routes through truck system (not queued end-of-day) |
 
 ### **Test Pattern** — `FakeItemDao` (NOT Mockito)
 
@@ -1013,14 +1103,16 @@ git merge feature/my-feature
 | InventoryState stock is wrong ⭐ NEW | `shelfStock` and `backroomStock` are computed properties from batches — never set directly |
 | Buying inventory doesn't create batches ⭐ NEW | All inventory operations must create `ItemBatch` with `expirationDay = currentDay + shelfLifeDays` (or `Int.MAX_VALUE` for non-perishables) |
 | Fresh items never expire ⭐ NEW | Ensure `ItemMetadata.shelfLifeDays` is set; `null` = non-perishable |
-| Fresh auto-orders not processing ⭐ NEW | Orders are queued during tick, processed at end-of-day — check `queuedFreshOrders` and `incompleteFreshOrders` |
+| Fresh auto-orders not processing ⭐ NEW | Auto-orders are placed immediately during `attemptFreshHandlerAutoOrder()` tick and routed through the truck system — `queuedFreshOrders` / `FreshOrderRequest` no longer exist |
+| Buying inventory doesn't appear in backroom ⭐ NEW | `InventoryManager` buy methods return `BuyResult` — GameEngine must pass `orderLines` to `TruckManager`; items arrive next delivery day, not instantly |
+| Order placed but no truck scheduled | `buyItemToBackroom` / `buyItemCasePacks` return `BuyResult`; if `orderLines` is empty the cap/affordability guard rejected the order — check `scheduledTrucks` in-transit count |
 | Test inventory setup fails ⭐ NEW | Use `ItemBatch(receivedDay = 0, quantity = 10, expirationDay = Int.MAX_VALUE)` for test data |
 ---
 ## 🗂️ File Organization
 
 **domain/** — Business logic
 - GameEngine.kt [Facade orchestrator, routes to managers]
-- GameStateData.kt [GameState, Money, FreshAutoOrderConfig, FreshOrderRequest, IncompleteOrderRequest]
+- GameStateData.kt [GameState, Money, FreshAutoOrderConfig, IncompleteOrderRequest, PendingOrderLine, ScheduledTruck, TruckConfig]
 - GameStateChange.kt [Incremental updates]
 - InventoryState.kt [ItemBatch with receivedDay/quantity/expirationDay, shelfBatches, backroomBatches]
 - RefundRequest.kt [RefundRequest, RefundLine]
@@ -1038,6 +1130,7 @@ git merge feature/my-feature
 - **metrics/** [DailyMetrics.kt — DailyMetrics (snapshot), DailyMetricsAccumulator (live), ExpiredItemEvent, FreshOrderLineItem, IncompleteOrderLineItem] + [DayManager — day rollover, end-of-day report, fresh order processing]
 - **persistence/** (April 19, 2026) [GameStateSerializer.kt — JSON serialization; GameStateRepository.kt — SharedPreferences persistence]
 - **expiration/** ⭐ NEW (May 2026) [SpoilageManager.kt — automatic expiration processing, batch removal]
+- **delivery/** ⭐ NEW (May 2026) [TruckManager.kt — truck scheduling, arrivals, cancellation, early truck booking]
 - traffic/ [TrafficManager.kt, TrafficPattern.kt — TrafficPattern, TrafficSchedule, TransactionRequest]
 
 **ui/** — User interface (Compose)
@@ -1063,6 +1156,7 @@ git merge feature/my-feature
    - Store admin (name, speed, open/close) → `domain/store/StoreController.kt`
    - Player work ticks → `domain/player/PlayerActionHandler.kt`
    - Day rollover → `domain/metrics/DayManager.kt`
+   - Truck/delivery ops → `domain/delivery/TruckManager.kt`
    - Otherwise → implement in `domain/GameEngine.kt` and call from manager orchestration
 4. Add/adjust GameEngine routing by calling the appropriate manager from the relevant GameEngine method
 5. Add ViewModel handler → `GameViewModel.onEvent()`
