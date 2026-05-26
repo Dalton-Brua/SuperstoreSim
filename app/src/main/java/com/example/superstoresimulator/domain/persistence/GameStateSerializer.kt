@@ -889,6 +889,7 @@ object GameStateSerializer {
             put("deliveryDays", daysArray)
             put("regularTruckCapacityCasePacks", config.regularTruckCapacityCasePacks)
             put("freshTruckCapacityCasePacks", config.freshTruckCapacityCasePacks)
+            put("extraTruckSlotsUnlocked", config.extraTruckSlotsUnlocked)
         }
     }
 
@@ -899,6 +900,7 @@ object GameStateSerializer {
             deliveryDays = days.ifEmpty { setOf(0, 3) },
             regularTruckCapacityCasePacks = json.optInt("regularTruckCapacityCasePacks", TruckConfig.DEFAULT_REGULAR_TRUCK_CAPACITY),
             freshTruckCapacityCasePacks = json.optInt("freshTruckCapacityCasePacks", TruckConfig.DEFAULT_FRESH_TRUCK_CAPACITY),
+            extraTruckSlotsUnlocked = json.optInt("extraTruckSlotsUnlocked", 0),
         )
     }
 }

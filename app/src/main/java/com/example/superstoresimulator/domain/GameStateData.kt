@@ -44,16 +44,26 @@ data class ScheduledTruck(
 
 /**
  * Player-configurable truck delivery schedule and capacities.
+ *
+ * Base free delivery days per week = 2 + storeSize.ordinal.
+ * Players can purchase extra delivery-day slots beyond the free limit for $100 each.
+ * [extraTruckSlotsUnlocked] tracks how many extra slots have been purchased (one-time cost).
  */
 data class TruckConfig(
     /** Day-of-week indices for regular trucks (0 = Monday … 6 = Sunday). */
     val deliveryDays: Set<Int> = setOf(0, 3),  // Monday and Thursday by default
     val regularTruckCapacityCasePacks: Int = DEFAULT_REGULAR_TRUCK_CAPACITY,
     val freshTruckCapacityCasePacks: Int = DEFAULT_FRESH_TRUCK_CAPACITY,
+    /** Number of extra delivery-day slots purchased beyond the store-size-based free limit. */
+    val extraTruckSlotsUnlocked: Int = 0,
 ) {
     companion object {
         const val DEFAULT_REGULAR_TRUCK_CAPACITY = 2000
         const val DEFAULT_FRESH_TRUCK_CAPACITY = 500
+        /** One-time cost to unlock one additional weekly delivery slot beyond the free limit. */
+        val EXTRA_SLOT_COST = Money(10_000L) // $100
+        /** Base free delivery days at the smallest store size. */
+        const val BASE_FREE_SLOTS = 2
     }
 }
 

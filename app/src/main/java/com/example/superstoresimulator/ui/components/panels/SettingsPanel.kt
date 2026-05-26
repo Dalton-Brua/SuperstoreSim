@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.TruckConfig
+import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.ui.state.AppUIState
 import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.PrimaryDark
@@ -64,7 +65,9 @@ fun SettingsPanel(
     freshCasePacksPerItem: Int = 1,
     onFreshAutoOrderConfigChanged: (enabled: Boolean, threshold: Int, packs: Int) -> Unit = { _, _, _ -> },
     truckConfig: TruckConfig = TruckConfig(),
+    currentStoreSize: StoreSize = StoreSize.MOM_AND_POP,
     onTruckConfigChanged: (deliveryDays: Set<Int>, regularCap: Int, freshCap: Int) -> Unit = { _, _, _ -> },
+    onPurchaseExtraTruckSlot: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -201,34 +204,69 @@ fun SettingsPanel(
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 // ── Delivery Schedule ──────────────────────────────────────
+                // Compute slot limits from params (not remembered — reactive to param changes)
+                val freeSlotsForSize = TruckConfig.BASE_FREE_SLOTS + currentStoreSize.ordinal
+                val maxTrucksPerWeek = freeSlotsForSize + truckConfig.extraTruckSlotsUnlocked
+                val atMaxDays = selectedDays.size >= maxTrucksPerWeek
+
                 Text(
                     "Delivery Schedule",
                     fontWeight = FontWeight.Medium,
                     color = PrimaryDark,
                     fontSize = 14.sp,
                 )
-                Text(
-                    "Delivery days (select at least one):",
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Slots used: ${selectedDays.size} / $maxTrucksPerWeek" +
+                            if (truckConfig.extraTruckSlotsUnlocked > 0) " (${freeSlotsForSize} free + ${truckConfig.extraTruckSlotsUnlocked} purchased)" else " (free)",
+                        fontSize = 11.sp,
+                        color = if (atMaxDays) Color(0xFFD97706) else TextSecondary,
+                    )
+                }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     DAY_LABELS.forEachIndexed { index, label ->
                         val isSelected = index in selectedDays
-                        val isLast = selectedDays.size == 1 && isSelected
+                        val isLastSelected = selectedDays.size == 1 && isSelected
+                        // Disable unselected days when at the max truck limit
+                        val disabledByLimit = !isSelected && atMaxDays
                         FilterChip(
                             selected = isSelected,
                             onClick = {
-                                if (!isLast) {
+                                if (!isLastSelected && !disabledByLimit) {
                                     val newDays = if (isSelected) selectedDays - index else selectedDays + index
                                     selectedDays = newDays
                                     onTruckConfigChanged(newDays, regularCap.toInt(), freshCap.toInt())
                                 }
                             },
                             label = { Text(label, fontSize = 11.sp) },
-                            enabled = !isLast || !isSelected,
+                            enabled = !isLastSelected && !disabledByLimit,
                         )
                     }
+                }
+                // Extra slot purchase button — shown when at the day limit
+                if (atMaxDays) {
+                    Button(
+                        onClick = onPurchaseExtraTruckSlot,
+                        enabled = app.money >= TruckConfig.EXTRA_SLOT_COST,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
+                    ) {
+                        Text(
+                            "🚛 Add Truck Slot (${TruckConfig.EXTRA_SLOT_COST})",
+                            fontSize = 12.sp,
+                            color = Color.White,
+                        )
+                    }
+                    Text(
+                        "Purchase an extra weekly delivery day beyond your free limit.",
+                        fontSize = 10.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
                 }
                 Text(
                     "Regular truck capacity: ${regularCap.toInt()} case packs",

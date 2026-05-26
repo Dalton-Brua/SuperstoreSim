@@ -167,4 +167,12 @@ data class DeliveryUIState(
     val freshTruck: TruckUIState? = null,                 // today's+1 fresh truck, if any
     val earlyTruckAvailable: Boolean = true,              // false when one already scheduled for tomorrow
     val earlyTruckCost: Money = Money(10_000L),           // always $100
+    /** Maximum delivery days allowed per week (free limit + purchased extra slots). */
+    val maxTrucksPerWeek: Int = 2,
+    /** Base free delivery days at the current store size (2 + storeSize.ordinal). */
+    val freeTrucksPerWeek: Int = 2,
+    /** Number of extra delivery-day slots purchased beyond the free limit. */
+    val extraTruckSlotsUnlocked: Int = 0,
+    /** Cost to purchase one additional weekly delivery slot. */
+    val extraTruckSlotCost: Money = Money(10_000L),       // always $100
 )

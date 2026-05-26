@@ -103,7 +103,13 @@ class MainActivity : ComponentActivity() {
                 val snackbarHostState = remember { SnackbarHostState() }
                 LaunchedEffect(Unit) {
                     viewModel.snackbarMessage.collect { message ->
-                        snackbarHostState.showSnackbar(message)
+                        // Only show when no snackbar is currently on screen.
+                        // The 1-slot DROP_OLDEST buffer in the ViewModel means at most one
+                        // pending message ever builds up, so this guard reliably prevents
+                        // duplicate "Order placed" banners from rapid / bulk orders.
+                        if (snackbarHostState.currentSnackbarData == null) {
+                            snackbarHostState.showSnackbar(message)
+                        }
                     }
                 }
 
@@ -245,8 +251,12 @@ class MainActivity : ComponentActivity() {
                                      viewModel.onEvent(GameEvent.UpdateFreshAutoOrderConfig(enabled, threshold, packs))
                                 },
                                 truckConfig = viewModel.currentState().truckConfig,
+                                currentStoreSize = viewModel.currentState().currentStoreSize,
                                 onTruckConfigChanged = { days, regularCap, freshCap ->
                                     viewModel.onEvent(GameEvent.UpdateTruckConfig(days, regularCap, freshCap))
+                                },
+                                onPurchaseExtraTruckSlot = {
+                                    viewModel.onEvent(GameEvent.PurchaseExtraTruckSlot)
                                 },
                             )
 

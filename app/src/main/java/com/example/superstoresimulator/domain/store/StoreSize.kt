@@ -31,7 +31,7 @@ enum class StoreSize(
     ),
     SMALL_GROCERY(
         displayName = "Small Grocery",
-        dailyRent = Money(40_000),      // $400/day
+        dailyRent = Money(30_000),      // $300/day
         shelfCapacity = 5_000,
         backroomCapPerItem = 5,          // 5 case packs per item (2.5x)
         trafficMultiplier = 2.0f,        // 2× traffic
@@ -39,7 +39,7 @@ enum class StoreSize(
     ),
     GROCERY_STORE(
         displayName = "Grocery Store",
-        dailyRent = Money(120_000),     // $1,200/day
+        dailyRent = Money(80_000),      // $800/day
         shelfCapacity = 10_000,
         backroomCapPerItem = 10,         // 10 case packs per item (5x)
         trafficMultiplier = 4.0f,        // 4× traffic (3² = 3×3)
@@ -47,7 +47,7 @@ enum class StoreSize(
     ),
     SUPERSTORE(
         displayName = "Superstore",
-        dailyRent = Money(300_000),     // $3,000/day
+        dailyRent = Money(150_000),     // $1,500/day
         shelfCapacity = 20_000,
         backroomCapPerItem = 30,         // 30 case packs per item (15x)
         trafficMultiplier = 8.0f,       // 8× traffic (3³ = 9×3)
@@ -55,7 +55,7 @@ enum class StoreSize(
     ),
     SUPERCENTER(
         displayName = "Supercenter",
-        dailyRent = Money(500_000),     // $5,000/day
+        dailyRent = Money(300_000),     // $3,000/day
         shelfCapacity = 40_000,
         backroomCapPerItem = 999,        // Effectively unlimited case packs
         trafficMultiplier = 16.0f,       // 16× traffic (3⁴ = 27×3)

@@ -213,12 +213,51 @@ class TruckManager(private val cache: ItemMetadataCache) {
     // ── Configuration ─────────────────────────────────────────────────────────
 
     /**
+     * Return the maximum number of weekly delivery days allowed for [state].
+     * Formula: [TruckConfig.BASE_FREE_SLOTS] + storeSize.ordinal + extraSlotsUnlocked.
+     */
+    fun maxDeliveryDaysAllowed(state: GameState): Int =
+        TruckConfig.BASE_FREE_SLOTS +
+            state.currentStoreSize.ordinal +
+            state.truckConfig.extraTruckSlotsUnlocked
+
+    /**
      * Update truck configuration. Already-scheduled trucks are untouched.
      * No-op if [newConfig] would leave [TruckConfig.deliveryDays] empty.
+     * Silently clamps [newConfig.deliveryDays] to [maxDeliveryDaysAllowed] if exceeded.
+     * Always preserves [TruckConfig.extraTruckSlotsUnlocked] from [state].
      */
     fun updateConfig(state: GameState, newConfig: TruckConfig): GameState {
         if (newConfig.deliveryDays.isEmpty()) return state
-        return state.copy(truckConfig = newConfig)
+        val existingSlots = state.truckConfig.extraTruckSlotsUnlocked
+        val maxAllowed = TruckConfig.BASE_FREE_SLOTS + state.currentStoreSize.ordinal + existingSlots
+        // Clamp delivery days to the allowed maximum (preserve sorted/insertion order)
+        val effectiveDays = newConfig.deliveryDays.take(maxAllowed).toSet()
+        if (effectiveDays.isEmpty()) return state
+        return state.copy(
+            truckConfig = newConfig.copy(
+                deliveryDays = effectiveDays,
+                extraTruckSlotsUnlocked = existingSlots,  // never changed here
+            )
+        )
+    }
+
+    /**
+     * Unlock one extra weekly delivery-day slot for [TruckConfig.EXTRA_SLOT_COST].
+     *
+     * Guard: player must have ≥ [TruckConfig.EXTRA_SLOT_COST].
+     * The slot is not automatically tied to a day — the player must then set the desired
+     * delivery day via [updateConfig].
+     */
+    fun purchaseExtraTruckSlot(state: GameState): GameState {
+        val cost = TruckConfig.EXTRA_SLOT_COST
+        if (state.money < cost) return state
+        return state.copy(
+            money = state.money - cost,
+            truckConfig = state.truckConfig.copy(
+                extraTruckSlotsUnlocked = state.truckConfig.extraTruckSlotsUnlocked + 1,
+            )
+        )
     }
 
     // ── Cancellation ──────────────────────────────────────────────────────────

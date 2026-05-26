@@ -71,7 +71,9 @@ fun StoreHomeScreen (
     freshCasePacksPerItem: Int = 1,
     onFreshAutoOrderConfigChanged: (Boolean, Int, Int) -> Unit = { _, _, _ -> },
     truckConfig: TruckConfig = TruckConfig(),
+    currentStoreSize: com.example.superstoresimulator.domain.store.StoreSize = com.example.superstoresimulator.domain.store.StoreSize.MOM_AND_POP,
     onTruckConfigChanged: (Set<Int>, Int, Int) -> Unit = { _, _, _ -> },
+    onPurchaseExtraTruckSlot: () -> Unit = {},
 ) {
     var showTransactionDialog by remember { mutableStateOf(false) }
     var showPendingRefunds by remember { mutableStateOf(false) }
@@ -308,7 +310,9 @@ fun StoreHomeScreen (
                 freshCasePacksPerItem = freshCasePacksPerItem,
                 onFreshAutoOrderConfigChanged = onFreshAutoOrderConfigChanged,
                 truckConfig = truckConfig,
+                currentStoreSize = currentStoreSize,
                 onTruckConfigChanged = onTruckConfigChanged,
+                onPurchaseExtraTruckSlot = onPurchaseExtraTruckSlot,
             )
         }
 

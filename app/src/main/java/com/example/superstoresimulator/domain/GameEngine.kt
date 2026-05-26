@@ -668,6 +668,18 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     }
 
     /**
+     * Purchase one extra weekly delivery-day slot for $100.
+     * This allows the player to schedule one additional regular delivery day beyond the
+     * store-size-based free limit (2 + storeSize.ordinal).
+     * Guard: player must have ≥ $100.
+     */
+    fun purchaseExtraTruckSlot() {
+        val moneyBefore = state.money
+        state = truckManager.purchaseExtraTruckSlot(state)
+        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
+    }
+
+    /**
      * Book an on-demand early truck for $100, arriving the next game day.
      */
     fun requestEarlyTruck() {

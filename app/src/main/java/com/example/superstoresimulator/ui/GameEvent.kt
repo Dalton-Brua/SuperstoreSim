@@ -93,4 +93,11 @@ sealed interface GameEvent {
     ) : GameEvent
 
     data object RequestEarlyTruck : GameEvent
+
+    /**
+     * Purchase one extra weekly delivery-day slot beyond the store-size-based free limit.
+     * Costs $100 (one-time). Does not assign to a specific day — the player configures that
+     * separately in the Delivery Schedule settings.
+     */
+    data object PurchaseExtraTruckSlot : GameEvent
 }

@@ -26,9 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
@@ -51,7 +48,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
@@ -70,7 +66,6 @@ import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 @Composable
 fun InventoryScreen(
@@ -381,19 +376,8 @@ internal fun InventoryItemDetailScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Get full item metadata from cache for additional details
     val fullItem = remember(item.id) { itemMetadataCache.getItem(item.id) }
-    
-    // Calculate margins and profit info
-    val margin = item.price - item.unitCost
-    val marginPercent = if (item.unitCost.cents > 0) {
-        ((margin.cents.toDouble() / item.unitCost.cents) * 100).toInt()
-    } else {
-        0
-    }
-    
-    val casePackProfit = margin * item.casePack
-    
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -401,13 +385,12 @@ internal fun InventoryItemDetailScreen(
             .statusBarsPadding()
             .padding(16.dp)
     ) {
-        // Header with money display
+        // Money display header
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.End
         ) {
-            // Money display
             Text(
                 text = money.toString(),
                 fontSize = 18.sp,
@@ -418,588 +401,42 @@ internal fun InventoryItemDetailScreen(
 
         Spacer(Modifier.height(24.dp))
 
-        // Main content
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.weight(1f)
         ) {
-            // Item name and category
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(Color.White),
-                    elevation = CardDefaults.cardElevation(4.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = item.name,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E40AF)
-                        )
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Category: ${item.category.displayName}",
-                                fontSize = 14.sp,
-                                color = Color(0xFF64748B)
-                            )
-                            
-                            // Tier badge
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFFDEEBFF)
-                            ) {
-                                Text(
-                                    text = "${fullItem?.tier ?: currentTier}",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF1E40AF),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                        
-                        // Description (if available from full item)
-                        fullItem?.description?.let { desc ->
-                            if (desc.isNotBlank()) {
-                                Text(
-                                    text = desc,
-                                    fontSize = 14.sp,
-                                    color = Color(0xFF334155),
-                                    lineHeight = 20.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Stock Information
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(Color.White),
-                    elevation = CardDefaults.cardElevation(2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = "Stock Levels",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E293B)
-                        )
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text("Shelf Stock", fontSize = 12.sp, color = Color(0xFF64748B))
-                                Text(
-                                    text = "${item.shelfStock} units",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF1E293B)
-                                )
-                            }
-                            
-                            Column(horizontalAlignment = Alignment.End) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text("Backroom Stock", fontSize = 12.sp, color = Color(0xFF64748B))
-                                    if (item.backroomFull) {
-                                        Text(
-                                            "FULL",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFEF4444)
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = "${item.backroomStock} units",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF1E293B)
-                                )
-                            }
-                        }
-                        
-                        // Total stock
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Total Stock", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text(
-                                text = "${item.shelfStock + item.backroomStock} units",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1E40AF)
-                            )
-                        }
-                    }
-                }
-            }
-            
-            // Detailed Batch Information (only for perishable items with batches)
+            item { ItemHeaderCard(item = item, fullItem = fullItem, currentTier = currentTier) }
+
+            item { StockLevelsCard(item = item) }
+
+            // Batch details (perishable with full batch data)
             if (item.shelfLifeDays != null && (shelfBatches.isNotEmpty() || backroomBatches.isNotEmpty())) {
-                val allBatches = (shelfBatches.map { it to "Shelf" } + backroomBatches.map { it to "Backroom" })
-                    .sortedBy { it.first.expirationDay } // Sort by expiration (oldest first)
-                
                 item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(Color.White),
-                        elevation = CardDefaults.cardElevation(2.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(
-                                text = "Batch Details",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1E293B)
-                            )
-                            
-                            Text(
-                                text = "${allBatches.size} batch${if (allBatches.size != 1) "es" else ""} in stock",
-                                fontSize = 13.sp,
-                                color = Color(0xFF64748B)
-                            )
-                            
-                            // List all batches
-                            allBatches.forEach { (batch, location) ->
-                                val daysUntilExpiration = batch.expirationDay - currentDay
-                                val freshnessPercent = if (item.shelfLifeDays > 0) {
-                                    val daysRemaining = kotlin.math.max(0, daysUntilExpiration)
-                                    ((daysRemaining.toFloat() / item.shelfLifeDays) * 100).toInt().coerceIn(0, 100)
-                                } else 100
-                                
-                                val freshnessColor = when {
-                                    freshnessPercent <= 10 -> Color(0xFFDC2626) // Critical - Red
-                                    freshnessPercent <= 25 -> Color(0xFFEA580C) // Warning - Orange
-                                    freshnessPercent <= 50 -> Color(0xFFFBBF24) // Caution - Yellow
-                                    else -> Color(0xFF22C55E) // Good - Green
-                                }
-                                
-                                val valueAtRisk = item.unitCost * batch.quantity
-                                
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFF8FAFC),
-                                    tonalElevation = 1.dp
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        // Header row: location and quantity
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(4.dp),
-                                                    color = if (location == "Shelf") Color(0xFF3B82F6) else Color(0xFF8B5CF6)
-                                                ) {
-                                                    Text(
-                                                        text = location,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White,
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    )
-                                                }
-                                                
-                                                Text(
-                                                    text = "${batch.quantity} units",
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = Color(0xFF1E293B)
-                                                )
-                                            }
-                                            
-                                            Text(
-                                                text = "$freshnessPercent%",
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = freshnessColor
-                                            )
-                                        }
-                                        
-                                        // Expiration info
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(
-                                                text = when {
-                                                    daysUntilExpiration <= 0 -> "⚠️ Expired"
-                                                    daysUntilExpiration == 1 -> "⚠️ Expires tomorrow"
-                                                    daysUntilExpiration <= 3 -> "⚠️ Expires in $daysUntilExpiration days"
-                                                    else -> "Expires in $daysUntilExpiration days"
-                                                },
-                                                fontSize = 12.sp,
-                                                color = if (daysUntilExpiration <= 3) Color(0xFFDC2626) else Color(0xFF64748B),
-                                                fontWeight = if (daysUntilExpiration <= 3) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                            
-                                            Text(
-                                                text = "Received day ${batch.receivedDay}",
-                                                fontSize = 11.sp,
-                                                color = Color(0xFF94A3B8)
-                                            )
-                                        }
-                                        
-                                        // Progress bar
-                                        androidx.compose.material3.LinearProgressIndicator(
-                                            progress = { freshnessPercent / 100f },
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(6.dp),
-                                            color = freshnessColor,
-                                            trackColor = Color(0xFFE2E8F0),
-                                        )
-                                        
-                                        // Value at risk
-                                        Surface(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = when {
-                                                daysUntilExpiration <= 1 -> Color(0xFFFEE2E2) // Light red
-                                                daysUntilExpiration <= 3 -> Color(0xFFFED7AA) // Light orange
-                                                else -> Color(0xFFF1F5F9)
-                                            }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(8.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = "Value at risk:",
-                                                    fontSize = 11.sp,
-                                                    color = Color(0xFF64748B)
-                                                )
-                                                Text(
-                                                    text = valueAtRisk.toString(),
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = when {
-                                                        daysUntilExpiration <= 1 -> Color(0xFFDC2626)
-                                                        daysUntilExpiration <= 3 -> Color(0xFFEA580C)
-                                                        else -> Color(0xFF1E293B)
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Total value at risk summary
-                            val totalValueAtRisk = allBatches.sumOf { (batch, _) ->
-                                (item.unitCost * batch.quantity).cents
-                            }
-                            
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFDEEBFF)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Total Value in Stock",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF1E40AF)
-                                    )
-                                    Text(
-                                        text = Money(totalValueAtRisk).toString(),
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1E40AF)
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    BatchDetailsCard(
+                        item = item,
+                        shelfBatches = shelfBatches,
+                        backroomBatches = backroomBatches,
+                        currentDay = currentDay
+                    )
                 }
             } else if (item.shelfLifeDays != null && item.closestExpirationDay != null) {
-                // Fallback to simple indicator if no batch data available
-                item {
-                    val daysUntilExpiration = item.closestExpirationDay - currentDay
-                    val freshnessPercent = if (item.shelfLifeDays > 0) {
-                        val daysRemaining = kotlin.math.max(0, daysUntilExpiration)
-                        ((daysRemaining.toFloat() / item.shelfLifeDays) * 100).toInt().coerceIn(0, 100)
-                    } else 100
-                    
-                    val freshnessColor = when {
-                        freshnessPercent <= 10 -> Color(0xFFDC2626) // Critical - Red
-                        freshnessPercent <= 25 -> Color(0xFFEA580C) // Warning - Orange
-                        freshnessPercent <= 50 -> Color(0xFFFBBF24) // Caution - Yellow
-                        else -> Color(0xFF22C55E) // Good - Green
-                    }
-                    
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(Color.White),
-                        elevation = CardDefaults.cardElevation(2.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(
-                                text = "Freshness",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1E293B)
-                            )
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = when {
-                                        daysUntilExpiration <= 0 -> "⚠️ Expired"
-                                        daysUntilExpiration == 1 -> "⚠️ Expires tomorrow"
-                                        daysUntilExpiration <= 3 -> "⚠️ Expires in $daysUntilExpiration days"
-                                        else -> "Expires in $daysUntilExpiration days"
-                                    },
-                                    fontSize = 14.sp,
-                                    color = if (daysUntilExpiration <= 3) Color(0xFFDC2626) else Color(0xFF64748B),
-                                    fontWeight = if (daysUntilExpiration <= 3) FontWeight.Bold else FontWeight.Normal
-                                )
-                                
-                                Text(
-                                    text = "$freshnessPercent% fresh",
-                                    fontSize = 14.sp,
-                                    color = freshnessColor,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            
-                            // Freshness progress bar
-                            androidx.compose.material3.LinearProgressIndicator(
-                                progress = { freshnessPercent / 100f },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(10.dp),
-                                color = freshnessColor,
-                                trackColor = Color(0xFFE2E8F0),
-                            )
-                            
-                            // Shelf life info
-                            Text(
-                                text = "Shelf life: ${item.shelfLifeDays} days",
-                                fontSize = 12.sp,
-                                color = Color(0xFF64748B)
-                            )
-                        }
-                    }
-                }
-            }
-            
-            // Pricing Information
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(Color.White),
-                    elevation = CardDefaults.cardElevation(2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = "Pricing & Profit",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E293B)
-                        )
-                        
-                        DetailRow("Retail Price", item.price.toString(), Color(0xFF1E40AF))
-                        DetailRow("Unit Cost", item.unitCost.toString(), Color(0xFF64748B))
-                        DetailRow(
-                            "Margin per Unit",
-                            "$margin ($marginPercent%)",
-                            if (margin.cents >= 0) Color(0xFF22C55E) else Color(0xFFEF4444)
-                        )
-                    }
-                }
-            }
-            
-            // Case Pack Information
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(Color.White),
-                    elevation = CardDefaults.cardElevation(2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = "Case Pack Details",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E293B)
-                        )
-                        
-                        DetailRow("Units per Case", "${item.casePack} units", Color(0xFF1E293B))
-                        DetailRow("Case Pack Cost", item.casePackCost.toString(), Color(0xFF1E40AF))
-                        DetailRow(
-                            "Case Pack Profit",
-                            casePackProfit.toString(),
-                            if (casePackProfit.cents >= 0) Color(0xFF22C55E) else Color(0xFFEF4444)
-                        )
-                        
-                        // Purchase weight (if available)
-                        fullItem?.purchaseWeight?.let { baselineWeight ->
-                            // Calculate percentage relative to item's baseline weight
-                            // When events modify demand, they would change currentWeight
-                            val currentWeight = baselineWeight  // TODO: Apply event modifiers when implemented
-                            val demandPercentage = ((currentWeight / baselineWeight) * 100).toInt()
-                            
-                            // Green for normal/high demand (≥100%), yellow for low demand (<100%)
-                            val backgroundColor = if (demandPercentage >= 100) {
-                                Color(0xFFDCFCE7)  // Light green
-                            } else {
-                                Color(0xFFFEF3C7)  // Amber/yellow
-                            }
-                            val textColor = if (demandPercentage >= 100) {
-                                Color(0xFF166534)  // Dark green
-                            } else {
-                                Color(0xFF78350F)  // Dark amber
-                            }
-                            
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(8.dp),
-                                color = backgroundColor
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        "Customer Demand",
-                                        fontSize = 12.sp,
-                                        color = textColor
-                                    )
-                                    Text(
-                                        "$demandPercentage%",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = textColor
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Sales Analysis Card
-            item {
-                SalesAnalysisCard(
-                    itemId = item.id,
-                    metricsData = metricsData
-                )
+                // Fallback freshness card
+                item { FreshnessCard(item = item, currentDay = currentDay) }
             }
 
-            // Pending Deliveries card (shown only when there are pending lines for this item)
-            if (pendingDeliveries.isNotEmpty()) {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(Color.White),
-                        elevation = CardDefaults.cardElevation(2.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "🚚 Pending Deliveries",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1E293B)
-                            )
-                            pendingDeliveries.forEach { line ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    val dow = line.truckId % 7  // proxy for display; full info in DeliveriesScreen
-                                    Text(
-                                        text = "${line.casePacks} cases · ${line.quantity} units",
-                                        fontSize = 13.sp,
-                                        color = Color(0xFF1E293B),
-                                    )
-                                    if (line.canCancel) {
-                                        if (line.casePacks > 1) {
-                                            FilterChip(
-                                                selected = false,
-                                                onClick = { onDecrementOrderLine(item.id, line.truckId) },
-                                                label = { Text("Cancel 1", fontSize = 11.sp) },
-                                            )
-                                        }
-                                        FilterChip(
-                                            selected = false,
-                                            onClick = { onCancelOrderLine(item.id, line.truckId) },
-                                            label = { Text("Cancel", fontSize = 11.sp) },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            item { PricingCard(item = item) }
+
+            item { CasePackDetailsCard(item = item, fullItem = fullItem) }
+
+            item { SalesAnalysisCard(itemId = item.id, metricsData = metricsData) }
+
+            item {
+                PendingDeliveriesCard(
+                    itemId = item.id,
+                    pendingDeliveries = pendingDeliveries,
+                    onCancelOrderLine = onCancelOrderLine,
+                    onDecrementOrderLine = onDecrementOrderLine
+                )
             }
 
             // Order button
@@ -1017,12 +454,10 @@ internal fun InventoryItemDetailScreen(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
-                        text = if (item.backroomFull) {
-                            "Backroom Full"
-                        } else if (money < item.casePackCost) {
-                            "Insufficient Funds"
-                        } else {
-                            "Order Case Pack (${item.casePackCost})"
+                        text = when {
+                            item.backroomFull -> "Backroom Full"
+                            money < item.casePackCost -> "Insufficient Funds"
+                            else -> "Order Case Pack (${item.casePackCost})"
                         },
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
@@ -1031,15 +466,14 @@ internal fun InventoryItemDetailScreen(
                 }
             }
         }
-        
+
         Spacer(Modifier.height(16.dp))
-        
-        // Back button at bottom
+
         Button(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF1E40AF),  // Primary blue
+                containerColor = Color(0xFF1E40AF),
                 contentColor = Color.White
             ),
             shape = RoundedCornerShape(8.dp)
@@ -1049,238 +483,7 @@ internal fun InventoryItemDetailScreen(
     }
 }
 
-@Composable
-private fun DetailRow(
-    label: String,
-    value: String,
-    valueColor: Color = Color(0xFF1E293B)
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            color = Color(0xFF64748B)
-        )
-        Text(
-            text = value,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = valueColor
-        )
-    }
-}
 
-enum class SalesTimeRange {
-    DAILY, WEEKLY, MONTHLY
-}
-
-@Composable
-private fun SalesAnalysisCard(
-    itemId: Int,
-    metricsData: List<DailyMetrics>
-) {
-    var selectedRange by remember { mutableStateOf(SalesTimeRange.DAILY) }
-    
-    // Calculate sales stats based on selected range
-    val salesStats = remember(itemId, metricsData, selectedRange) {
-        calculateSalesStats(itemId, metricsData, selectedRange)
-    }
-    
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(Color.White),
-        elevation = CardDefaults.cardElevation(2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "Sales Analysis",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1E293B)
-            )
-            
-            // Time range filter chips
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SalesTimeRange.entries.forEach { range ->
-                    val isSelected = selectedRange == range
-                    val bg = if (isSelected) Color(0xFF1E40AF) else Color(0xFFE2E8F0)
-                    val fg = if (isSelected) Color.White else Color(0xFF1E293B)
-                    
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = bg,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { selectedRange = range }
-                    ) {
-                        Text(
-                            text = when (range) {
-                                SalesTimeRange.DAILY -> "Daily"
-                                SalesTimeRange.WEEKLY -> "Weekly"
-                                SalesTimeRange.MONTHLY -> "Monthly"
-                            },
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = fg,
-                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 12.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-            
-            Spacer(Modifier.height(4.dp))
-            
-            // Sales metrics
-            if (salesStats.totalUnitsSold > 0) {
-                DetailRow(
-                    "Total Units Sold",
-                    "${salesStats.totalUnitsSold} units",
-                    Color(0xFF1E293B)
-                )
-                DetailRow(
-                    "Total Revenue",
-                    salesStats.totalRevenue.toString(),
-                    Color(0xFF22C55E)
-                )
-                DetailRow(
-                    "Average per ${getRangeName(selectedRange)}",
-                    String.format(Locale.US, "%.1f units", salesStats.averagePerPeriod),
-                    Color(0xFF64748B)
-                )
-                
-                // Performance indicator
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    color = when {
-                        salesStats.averagePerPeriod >= 10 -> Color(0xFFDCFCE7) // High sales - light green
-                        salesStats.averagePerPeriod >= 5 -> Color(0xFFFEF3C7)  // Medium - amber
-                        else -> Color(0xFFFEE2E2)  // Low - light red
-                    }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Performance",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = when {
-                                salesStats.averagePerPeriod >= 10 -> Color(0xFF166534)
-                                salesStats.averagePerPeriod >= 5 -> Color(0xFF78350F)
-                                else -> Color(0xFF991B1B)
-                            }
-                        )
-                        Text(
-                            when {
-                                salesStats.averagePerPeriod >= 10 -> "High Demand"
-                                salesStats.averagePerPeriod >= 5 -> "Moderate"
-                                else -> "Low Sales"
-                            },
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = when {
-                                salesStats.averagePerPeriod >= 10 -> Color(0xFF166534)
-                                salesStats.averagePerPeriod >= 5 -> Color(0xFF78350F)
-                                else -> Color(0xFF991B1B)
-                            }
-                        )
-                    }
-                }
-            } else {
-                // No sales data
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFF1F5F9)
-                ) {
-                    Text(
-                        text = "No sales recorded for this ${getRangeName(selectedRange).lowercase()}",
-                        fontSize = 13.sp,
-                        color = Color(0xFF64748B),
-                        modifier = Modifier.padding(16.dp),
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun getRangeName(range: SalesTimeRange): String {
-    return when (range) {
-        SalesTimeRange.DAILY -> "Day"
-        SalesTimeRange.WEEKLY -> "Week"
-        SalesTimeRange.MONTHLY -> "Month"
-    }
-}
-
-data class SalesStats(
-    val totalUnitsSold: Int,
-    val totalRevenue: Money,
-    val averagePerPeriod: Double,
-    val daysAnalyzed: Int
-)
-
-private fun calculateSalesStats(
-    itemId: Int,
-    metricsData: List<DailyMetrics>,
-    range: SalesTimeRange
-): SalesStats {
-    if (metricsData.isEmpty()) {
-        return SalesStats(0, Money.ZERO, 0.0, 0)
-    }
-    
-    // Determine how many days to look back
-    val daysToAnalyze = when (range) {
-        SalesTimeRange.DAILY -> 1  // Just today/last completed day
-        SalesTimeRange.WEEKLY -> 7
-        SalesTimeRange.MONTHLY -> 30
-    }
-    
-    // Take the most recent N days
-    val relevantDays = metricsData.take(daysToAnalyze)
-    
-    var totalUnits = 0
-    var totalRevenue = Money.ZERO
-    
-    relevantDays.forEach { dayMetrics ->
-        // Find sales events for this specific item
-        val itemSales = dayMetrics.soldItemEvents.filter { it.itemId == itemId }
-        itemSales.forEach { event ->
-            totalUnits += event.quantitySold
-            totalRevenue += event.revenue
-        }
-    }
-    
-    val actualDaysAnalyzed = relevantDays.size
-    val averagePerDay = if (actualDaysAnalyzed > 0) {
-        totalUnits.toDouble() / actualDaysAnalyzed
-    } else {
-        0.0
-    }
-    
-    return SalesStats(
-        totalUnitsSold = totalUnits,
-        totalRevenue = totalRevenue,
-        averagePerPeriod = averagePerDay,
-        daysAnalyzed = actualDaysAnalyzed
-    )
-}
 
 /**
  * Wrapper screen that adds tabs to Inventory screen (Inventory / Fresh).

@@ -26,6 +26,7 @@ import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.ui.state.mappers.MemoizedInventoryMapper
 import com.example.superstoresimulator.ui.state.builders.IncrementalUiStateBuilder
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -59,8 +60,15 @@ class GameViewModel @Inject constructor(
 
     val uiState = _uiState.asStateFlow()
 
-    /** One-shot snackbar messages from truck ordering feedback. */
-    private val _snackbarMessage = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    /** One-shot snackbar messages from truck ordering feedback.
+     *  extraBufferCapacity = 1 + DROP_OLDEST: holds at most one pending message so rapid
+     *  orders (e.g. bulk order) never queue up dozens of banners.  The collector in
+     *  MainActivity shows each message one at a time and checks currentSnackbarData so
+     *  a new one only appears after the previous one has been dismissed. */
+    private val _snackbarMessage = MutableSharedFlow<String>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val snackbarMessage: SharedFlow<String> = _snackbarMessage.asSharedFlow()
 
     // Cache previous states to detect changes
@@ -306,6 +314,10 @@ class GameViewModel @Inject constructor(
                 gameEngine.requestEarlyTruck()
             }
 
+            GameEvent.PurchaseExtraTruckSlot -> {
+                gameEngine.purchaseExtraTruckSlot()
+            }
+
             GameEvent.Tick -> gameEngine.tick(tickDelta)
 
         }
@@ -508,7 +520,8 @@ class GameViewModel @Inject constructor(
                newDomainState.currentTier != oldDomainState.currentTier ||
                newDomainState.totalRevenue != oldDomainState.totalRevenue ||
                newDomainState.currentStoreSize != oldDomainState.currentStoreSize ||
-               newDomainState.scheduledTrucks != oldDomainState.scheduledTrucks
+               newDomainState.scheduledTrucks != oldDomainState.scheduledTrucks ||
+               newDomainState.truckConfig != oldDomainState.truckConfig
     }
 
     private fun buildDeliveryUiState(domain: GameState): DeliveryUIState {
@@ -552,11 +565,19 @@ class GameViewModel @Inject constructor(
             it.isEarlyTruck && it.scheduledArrivalDay == nextDay
         }
 
+        val freeTrucks = com.example.superstoresimulator.domain.TruckConfig.BASE_FREE_SLOTS +
+            domain.currentStoreSize.ordinal
+        val maxTrucks = freeTrucks + domain.truckConfig.extraTruckSlotsUnlocked
+
         return DeliveryUIState(
             regularTrucks = regularTrucks,
             freshTruck = freshTruck,
             earlyTruckAvailable = !earlyTruckAlreadyExists,
             earlyTruckCost = com.example.superstoresimulator.domain.Money(10_000L),
+            maxTrucksPerWeek = maxTrucks,
+            freeTrucksPerWeek = freeTrucks,
+            extraTruckSlotsUnlocked = domain.truckConfig.extraTruckSlotsUnlocked,
+            extraTruckSlotCost = com.example.superstoresimulator.domain.TruckConfig.EXTRA_SLOT_COST,
         )
     }
 
