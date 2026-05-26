@@ -9,6 +9,7 @@ import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Entities.EntityTrait
 import com.example.superstoresimulator.domain.PendingOrderLine
 import com.example.superstoresimulator.domain.ScheduledTruck
+import com.example.superstoresimulator.domain.StaffShift
 import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.Transactions.TransactionLine
@@ -115,6 +116,16 @@ object GameStateSerializer {
         json.put("truckConfig", serializeTruckConfig(state.truckConfig))
         json.put("nextTruckId", state.nextTruckId)
 
+        // Staff schedules
+        val schedulesArray = JSONArray()
+        state.staffSchedules.forEach { shift ->
+            schedulesArray.put(JSONObject().apply {
+                put("entityId", shift.entityId)
+                put("startHour", shift.startHour)
+            })
+        }
+        json.put("staffSchedules", schedulesArray)
+
         return json.toString()
     }
 
@@ -169,6 +180,19 @@ object GameStateSerializer {
                     deserializeTruckConfig(json.getJSONObject("truckConfig"))
                 } else TruckConfig(),
                 nextTruckId = if (json.has("nextTruckId")) json.getInt("nextTruckId") else 1,
+                staffSchedules = if (json.has("staffSchedules")) {
+                    val arr = json.getJSONArray("staffSchedules")
+                    (0 until arr.length()).mapNotNull { i ->
+                        val shiftJson = arr.getJSONObject(i)
+                        val startHour = shiftJson.getInt("startHour")
+                        if (startHour in 6..13) {
+                            StaffShift(
+                                entityId = shiftJson.getInt("entityId"),
+                                startHour = startHour,
+                            )
+                        } else null  // skip invalid entries from stale saves
+                    }
+                } else emptyList(),
             )
         } catch (e: Exception) {
             e.printStackTrace()

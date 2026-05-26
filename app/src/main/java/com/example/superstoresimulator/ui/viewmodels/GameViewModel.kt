@@ -318,6 +318,12 @@ class GameViewModel @Inject constructor(
                 gameEngine.purchaseExtraTruckSlot()
             }
 
+            is GameEvent.UpdateShift -> {
+                // Clamp to valid range before passing to engine (UI-side safety net)
+                val clampedHour = event.newStartHour.coerceIn(6, 13)
+                gameEngine.updateShift(event.entityId, clampedHour)
+            }
+
             GameEvent.Tick -> gameEngine.tick(tickDelta)
 
         }

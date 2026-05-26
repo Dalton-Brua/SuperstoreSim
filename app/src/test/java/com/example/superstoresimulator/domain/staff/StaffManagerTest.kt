@@ -195,7 +195,7 @@ class StaffManagerTest {
     @Test
     fun `advanceCashierProgress returns 0 when cashierCount is 0`() {
         val result = staffManager.advanceCashierProgress(
-            cashierCount = 0, delta = 10.0, multiplier = 1.0f,
+            cashierCount = 0f, delta = 10.0, multiplier = 1.0f,
         )
         assertEquals(0, result)
     }
@@ -204,7 +204,7 @@ class StaffManagerTest {
     fun `advanceCashierProgress returns 0 on first half-second tick with 1 cashier`() {
         // 0.5 items/s × 1 cashier × 0.5 s × 1× speed = 0.25 — below 1.0
         val result = staffManager.advanceCashierProgress(
-            cashierCount = 1, delta = 0.5, multiplier = 1.0f,
+            cashierCount = 1f, delta = 0.5, multiplier = 1.0f,
         )
         assertEquals(0, result)
     }
@@ -212,10 +212,10 @@ class StaffManagerTest {
     @Test
     fun `advanceCashierProgress returns 1 after two one-second ticks with 1 cashier`() {
         // Tick 1: 0.5 accumulated → 0 whole
-        staffManager.advanceCashierProgress(cashierCount = 1, delta = 1.0, multiplier = 1.0f)
+        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 1.0, multiplier = 1.0f)
         // Tick 2: 0.5 + 0.5 = 1.0 accumulated → 1 whole
         val result = staffManager.advanceCashierProgress(
-            cashierCount = 1, delta = 1.0, multiplier = 1.0f,
+            cashierCount = 1f, delta = 1.0, multiplier = 1.0f,
         )
         assertEquals(1, result)
     }
@@ -225,9 +225,9 @@ class StaffManagerTest {
         // 0.5 items/s × 1 cashier × 1.0 s × 1× = 0.5 → 0 whole, 0.5 remainder
         // 0.5 + 0.5 = 1.0 → 1 whole, 0.0 remainder
         // 0.0 + 0.5 = 0.5 → 0 whole again
-        staffManager.advanceCashierProgress(cashierCount = 1, delta = 1.0, multiplier = 1.0f) // 0 whole, 0.5 left
-        staffManager.advanceCashierProgress(cashierCount = 1, delta = 1.0, multiplier = 1.0f) // 1 whole, 0.0 left
-        val third = staffManager.advanceCashierProgress(cashierCount = 1, delta = 1.0, multiplier = 1.0f)
+        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 1.0, multiplier = 1.0f) // 0 whole, 0.5 left
+        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 1.0, multiplier = 1.0f) // 1 whole, 0.0 left
+        val third = staffManager.advanceCashierProgress(cashierCount = 1f, delta = 1.0, multiplier = 1.0f)
         assertEquals("Third tick should give 0 whole actions (0.5 remainder)", 0, third)
     }
 
@@ -235,7 +235,7 @@ class StaffManagerTest {
     fun `advanceCashierProgress respects game-speed multiplier`() {
         // At 4× speed a single 0.5-second tick gives 0.5 × 1 × 0.5 × 4 = 1.0 → 1 whole
         val result = staffManager.advanceCashierProgress(
-            cashierCount = 1, delta = 0.5, multiplier = 4.0f,
+            cashierCount = 1f, delta = 0.5, multiplier = 4.0f,
         )
         assertEquals(1, result)
     }
@@ -244,7 +244,7 @@ class StaffManagerTest {
     fun `advanceCashierProgress scales with cashier count`() {
         // 0.5 items/s × 4 cashiers × 0.5 s × 1× = 1.0 → 1 whole
         val result = staffManager.advanceCashierProgress(
-            cashierCount = 4, delta = 0.5, multiplier = 1.0f,
+            cashierCount = 4f, delta = 0.5, multiplier = 1.0f,
         )
         assertEquals(1, result)
     }
@@ -254,7 +254,7 @@ class StaffManagerTest {
     @Test
     fun `advanceStockerProgress returns 0 when stockerCount is 0`() {
         val result = staffManager.advanceStockerProgress(
-            stockerCount = 0, delta = 100.0, multiplier = 1.0f,
+            stockerCount = 0f, delta = 100.0, multiplier = 1.0f,
         )
         assertEquals(0, result)
     }
@@ -263,7 +263,7 @@ class StaffManagerTest {
     fun `advanceStockerProgress returns 0 on a single 1-second tick with 1 stocker`() {
         // 0.1 case-packs/s × 1 stocker × 1.0 s × 1× = 0.1 — below 1.0
         val result = staffManager.advanceStockerProgress(
-            stockerCount = 1, delta = 1.0, multiplier = 1.0f,
+            stockerCount = 1f, delta = 1.0, multiplier = 1.0f,
         )
         assertEquals(0, result)
     }
@@ -272,10 +272,10 @@ class StaffManagerTest {
     fun `advanceStockerProgress returns 1 after ten one-second ticks with 1 stocker`() {
         // Each tick adds 0.1; after 10 ticks the accumulator reaches 1.0
         repeat(9) {
-            staffManager.advanceStockerProgress(stockerCount = 1, delta = 1.0, multiplier = 1.0f)
+            staffManager.advanceStockerProgress(stockerCount = 1f, delta = 1.0, multiplier = 1.0f)
         }
         val tenth = staffManager.advanceStockerProgress(
-            stockerCount = 1, delta = 1.0, multiplier = 1.0f,
+            stockerCount = 1f, delta = 1.0, multiplier = 1.0f,
         )
         assertEquals(1, tenth)
     }
@@ -284,7 +284,7 @@ class StaffManagerTest {
     fun `advanceStockerProgress respects game-speed multiplier`() {
         // At 4× speed a single 2.5-second tick gives 0.1 × 1 × 2.5 × 4 = 1.0 → 1 whole
         val result = staffManager.advanceStockerProgress(
-            stockerCount = 1, delta = 2.5, multiplier = 4.0f,
+            stockerCount = 1f, delta = 2.5, multiplier = 4.0f,
         )
         assertEquals(1, result)
     }
@@ -293,7 +293,7 @@ class StaffManagerTest {
     fun `advanceStockerProgress scales with stocker count`() {
         // 0.1 case-packs/s × 5 stockers × 2.0 s × 1× = 1.0 → 1 whole
         val result = staffManager.advanceStockerProgress(
-            stockerCount = 5, delta = 2.0, multiplier = 1.0f,
+            stockerCount = 5f, delta = 2.0, multiplier = 1.0f,
         )
         assertEquals(1, result)
     }

@@ -13,6 +13,31 @@ import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreState
 import java.util.Locale
 
+// ── Staff Scheduling ─────────────────────────────────────────────────────────
+
+/**
+ * Represents a single employee's work shift.
+ *
+ * [startHour] must be in 6..13 (inclusive), giving an 8-hour window of 6-14 to 13-21.
+ * Constructing with an out-of-range [startHour] throws [IllegalArgumentException].
+ */
+data class StaffShift(
+    val entityId: Int,
+    val startHour: Int,
+) {
+    init {
+        require(startHour in 6..13) {
+            "startHour must be between 6 and 13 (inclusive), got $startHour"
+        }
+    }
+
+    /** The hour at which this shift ends (exclusive). Always startHour + 8. */
+    val endHour: Int get() = startHour + 8
+
+    /** Returns true when [hour] falls within this shift window [startHour, endHour). */
+    fun isOnShift(hour: Int): Boolean = hour >= startHour && hour < endHour
+}
+
 // ── Truck Delivery System ─────────────────────────────────────────────────────
 
 /**
@@ -146,6 +171,9 @@ data class GameState(
     val scheduledTrucks: List<ScheduledTruck> = emptyList(),
     val truckConfig: TruckConfig = TruckConfig(),
     val nextTruckId: Int = 1,
+
+    // Staff scheduling
+    val staffSchedules: List<StaffShift> = emptyList(),
 )
 
 

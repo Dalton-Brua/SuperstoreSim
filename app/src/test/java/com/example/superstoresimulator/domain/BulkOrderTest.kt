@@ -110,8 +110,10 @@ class BulkOrderTest {
         runBlocking { cache.initialize() }
         val engine = GameEngine(cache)
         // Keep non-cap tests focused on pricing/filtering, not store-size cap limits.
+        // Also reset currentTier to TIER_1 — GameEngine init may override it for dev convenience.
         engine.state = engine.state.copy(
-            storeConfig = engine.state.storeConfig.copy(backroomCapPerItem = 10_000)
+            storeConfig = engine.state.storeConfig.copy(backroomCapPerItem = 10_000),
+            currentTier = ItemUnlockTier.TIER_1,
         )
         return engine
     }

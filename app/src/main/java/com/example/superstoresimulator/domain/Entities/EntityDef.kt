@@ -19,8 +19,15 @@ data class EntityDef(
     val description: String,
     val icon: ImageVector,
     val nextUpgrade: EntityDef? = null,
+    val hourlyWage: Money = Money.ZERO,
 ) {
     companion object {
+
+        // ── Wage multiplier constants ─────────────────────────────────────────
+        /** Hourly wage multiplier for fast-tier staff (2× base). */
+        const val FAST_STAFF_WAGE_MULTIPLIER = 2.0
+        /** Hourly wage multiplier for department managers (3× base). */
+        const val DEPT_MANAGER_WAGE_MULTIPLIER = 3.0
 
         // Upgrades must be declared BEFORE the base entities that reference them.
         // Kotlin/JVM initialises companion-object vals top-to-bottom; if CASHIER
@@ -34,7 +41,8 @@ data class EntityDef(
             cost = Money(10000),
             description = "Better training increases your cashier's speed.",
             icon = Icons.Default.Person,
-            nextUpgrade = null
+            nextUpgrade = null,
+            hourlyWage = Money(1250),  // $12.50/hr
         )
 
         val CASHIER = EntityDef(
@@ -43,7 +51,8 @@ data class EntityDef(
             cost = Money(1500),
             description = "Hires a cashier to auto-ring items.",
             icon = Icons.Default.Person,
-            nextUpgrade = FAST_CASHIER
+            nextUpgrade = FAST_CASHIER,
+            hourlyWage = Money(625),   // $6.25/hr
         )
 
         val FAST_STOCKER = EntityDef(
@@ -51,7 +60,8 @@ data class EntityDef(
             displayName = "Fast Stocker",
             cost = Money(10000),
             description = "Better training increases your stocker's speed.",
-            icon = Icons.Default.Build
+            icon = Icons.Default.Build,
+            hourlyWage = Money(1250),  // $12.50/hr
         )
 
         val STOCKER = EntityDef(
@@ -60,7 +70,8 @@ data class EntityDef(
             cost = Money(1500),
             description = "Hires a stocker to restock shelves.",
             icon = Icons.Default.Build,
-            nextUpgrade = FAST_STOCKER
+            nextUpgrade = FAST_STOCKER,
+            hourlyWage = Money(625),   // $6.25/hr
         )
 
         val FAST_FRESH_HANDLER = EntityDef(
@@ -69,7 +80,8 @@ data class EntityDef(
             cost = Money(10000),
             description = "Better training increases your fresh handler's speed.",
             icon = Icons.Default.Build,
-            nextUpgrade = null
+            nextUpgrade = null,
+            hourlyWage = Money(1250),  // $12.50/hr
         )
 
         val FRESH_HANDLER = EntityDef(
@@ -78,7 +90,8 @@ data class EntityDef(
             cost = Money(1500),
             description = "Hires a fresh handler to restock perishable items.",
             icon = Icons.Default.Build,
-            nextUpgrade = FAST_FRESH_HANDLER
+            nextUpgrade = FAST_FRESH_HANDLER,
+            hourlyWage = Money(625),   // $6.25/hr
         )
 
         /*
@@ -98,9 +111,21 @@ data class EntityDef(
             FAST_STOCKER,
             FRESH_HANDLER,
             FAST_FRESH_HANDLER,
-            //CUSTOMER_SERVICE_REP,
         )
+
+        /**
+         * Returns the throughput weight for a given [EntityDef].
+         *
+         * Base staff (CASHIER, STOCKER, FRESH_HANDLER) contribute 1.0.
+         * Fast-tier staff (FAST_CASHIER, FAST_STOCKER, FAST_FRESH_HANDLER) contribute 2.0.
+         * Department managers (FRONT_END_MANAGER, STOCKING_MANAGER) contribute 3.0.
+         * Unknown definitions default to 1.0.
+         */
+        fun baseThroughputWeight(def: EntityDef): Float = when (def.key) {
+            "fast_cashier", "fast_stocker", "fast_fresh_handler" -> 2.0f
+            "front_end_manager", "stocking_manager" -> 3.0f
+            else -> 1.0f
+        }
 
     }
 }
-

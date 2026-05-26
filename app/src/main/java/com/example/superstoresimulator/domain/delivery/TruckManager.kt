@@ -79,19 +79,31 @@ class TruckManager(private val cache: ItemMetadataCache) {
             remainingLines = leftover.toMutableList()
         }
 
-        // Place remaining on regular trucks (find existing ones with space, create new if needed)
+        // Place remaining on regular trucks (find existing ones with space, create new if needed).
+        // Track trucks whose per-item cap is saturated for all pending lines so we never
+        // re-select them and enter an infinite loop.
+        val perItemSaturated = mutableSetOf<Int>() // truckIds that can't accept any more of remainingLines
+
         while (remainingLines.isNotEmpty()) {
             val candidate = trucks.filter { !it.isFreshTruck && !it.isEarlyTruck }
-                .firstOrNull { it.remainingCapacityCasePacks > 0 }
+                .firstOrNull { it.remainingCapacityCasePacks > 0 && it.truckId !in perItemSaturated }
 
             if (candidate != null) {
                 val (updated, leftover) = fillTruck(candidate, remainingLines, perItemCap)
                 val idx = trucks.indexOf(candidate)
                 trucks[idx] = updated
-                if (leftover.isEmpty()) break
-                remainingLines = leftover.toMutableList()
+                if (leftover.size == remainingLines.size) {
+                    // Nothing was placed — per-item cap is full for all remaining lines on this truck.
+                    // Mark it as saturated so we don't select it again for these lines.
+                    perItemSaturated.add(candidate.truckId)
+                } else {
+                    // Progress was made; reset saturation tracking and update remaining lines.
+                    perItemSaturated.clear()
+                    if (leftover.isEmpty()) break
+                    remainingLines = leftover.toMutableList()
+                }
             } else {
-                // Create a new regular truck on the next configured delivery day
+                // No eligible truck with capacity — create a new regular truck on the next delivery day.
                 val lastRegularDay = trucks.filter { !it.isFreshTruck && !it.isEarlyTruck }
                     .maxOfOrNull { it.scheduledArrivalDay }
                 val baseDay = if (lastRegularDay != null && lastRegularDay > currentDay) lastRegularDay else currentDay
@@ -102,7 +114,7 @@ class TruckManager(private val cache: ItemMetadataCache) {
                     capacityCasePacks = state.truckConfig.regularTruckCapacityCasePacks,
                 )
                 trucks.add(newTruck)
-                // Loop back to fill the new truck
+                perItemSaturated.clear() // New truck available — reset saturation set
             }
         }
 

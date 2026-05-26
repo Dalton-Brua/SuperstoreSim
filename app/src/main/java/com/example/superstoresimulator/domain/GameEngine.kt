@@ -268,6 +268,15 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     fun fireEntity(entityId: Int) {
         state = staffManager.fireEntity(state, entityId)
     }
+
+    /**
+     * Update the shift start hour for employee [entityId].
+     * Delegates to [StaffManager.updateShift]; invalid hours are silently dropped there.
+     */
+    fun updateShift(entityId: Int, newStartHour: Int) {
+        state = staffManager.updateShift(state, entityId, newStartHour)
+    }
+
     fun updateStoreName(newName: String) {
         state = storeController.updateStoreName(state, newName)
     }
@@ -307,6 +316,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
 
             val delta = deltaMilliseconds / 1000.0
             val multiplier = state.storeConfig.gameSpeedMultiplier
+            val currentHour = state.currentTime.hour
 
             // Phase 2: Traffic arrivals — add to the waiting queue (don't start directly)
             if (state.storeState == StoreState.OPEN) {
@@ -329,27 +339,36 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 }
             }
 
-            // Process hired cashiers — ring up items in the active transaction
+            // Process hired cashiers — ring up items in the active transaction.
+            // activeCashiers is a weighted Float: FAST_CASHIER counts as 2.0, on-shift only.
             if (state.storeState == StoreState.OPEN) {
-                val cashiers = state.hiredEntityRegistry.countByEntity(EntityDef.CASHIER)
-                val wholeItems = staffManager.advanceCashierProgress(cashiers, delta, multiplier)
+                val activeCashiers = StaffManager.activeWeightedCount(
+                    EntityType.CASHIERS, currentHour, state.staffSchedules, state.hiredEntityRegistry
+                )
+                val wholeItems = staffManager.advanceCashierProgress(activeCashiers, delta, multiplier)
                 repeat(wholeItems) { ringUpItem() }
             }
 
-            val stockers = state.hiredEntityRegistry.countByEntity(EntityDef.STOCKER)
-            val wholeStockActions = staffManager.advanceStockerProgress(stockers, delta, multiplier)
+            // Process hired stockers — weighted, on-shift only.
+            val activeStockers = StaffManager.activeWeightedCount(
+                EntityType.STOCKERS, currentHour, state.staffSchedules, state.hiredEntityRegistry
+            )
+            val wholeStockActions = staffManager.advanceStockerProgress(activeStockers, delta, multiplier)
             repeat(wholeStockActions) { stockRandomItemFromBackroom() }
 
-            val freshHandlers = state.hiredEntityRegistry.countByEntity(EntityDef.FRESH_HANDLER)
-            val wholeFreshActions = staffManager.advanceFreshHandlerProgress(freshHandlers, delta, multiplier)
+            // Process fresh handlers — weighted, on-shift only.
+            val activeFreshHandlers = StaffManager.activeWeightedCount(
+                EntityType.FRESH_HANDLERS, currentHour, state.staffSchedules, state.hiredEntityRegistry
+            )
+            val wholeFreshActions = staffManager.advanceFreshHandlerProgress(activeFreshHandlers, delta, multiplier)
             repeat(wholeFreshActions) { stockRandomFreshItemFromBackroom() }
 
-            // If fresh handlers exist but have no fresh items in the backroom to stock,
+            // If fresh handlers are active but have no fresh items in the backroom to stock,
             // attempt auto-ordering regardless of how many actions were accumulated.
-            val hasFreshBackroomStock = freshHandlers > 0 && state.inventory.any { (itemId, inv) ->
+            val hasFreshBackroomStock = activeFreshHandlers > 0f && state.inventory.any { (itemId, inv) ->
                 itemMetadataCache.get(itemId)?.isPerishable == true && inv.backroomStock > 0
             }
-            if (freshHandlers > 0 && !hasFreshBackroomStock) {
+            if (activeFreshHandlers > 0f && !hasFreshBackroomStock) {
                 attemptFreshHandlerAutoOrder()
             }
 

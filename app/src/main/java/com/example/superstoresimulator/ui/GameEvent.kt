@@ -100,4 +100,12 @@ sealed interface GameEvent {
      * separately in the Delivery Schedule settings.
      */
     data object PurchaseExtraTruckSlot : GameEvent
+
+    // Staff Scheduling (Phase 1)
+    /**
+     * Update the shift start hour for a specific employee.
+     * [newStartHour] is clamped to 6..13 in the UI before dispatch; the domain
+     * layer also validates the range and silently ignores invalid values.
+     */
+    data class UpdateShift(val entityId: Int, val newStartHour: Int) : GameEvent
 }
