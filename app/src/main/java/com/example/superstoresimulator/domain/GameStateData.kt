@@ -13,6 +13,50 @@ import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreState
 import java.util.Locale
 
+// ── Truck Delivery System ─────────────────────────────────────────────────────
+
+/**
+ * Single item line awaiting delivery. Capacity is measured in case packs.
+ */
+data class PendingOrderLine(
+    val itemId: Int,
+    val quantity: Int,         // total units in this line
+    val casePacksCount: Int,   // number of case packs (for capacity tracking)
+    val unitCost: Money,       // per-unit cost (used for refund on cancellation)
+    val orderedOnDay: Int,
+    val isFresh: Boolean,
+)
+
+/**
+ * A truck with a locked arrival day, carrying [orders].
+ */
+data class ScheduledTruck(
+    val truckId: Int,
+    val scheduledArrivalDay: Int,
+    val capacityCasePacks: Int,
+    val orders: List<PendingOrderLine> = emptyList(),
+    val isFreshTruck: Boolean = false,
+    val isEarlyTruck: Boolean = false,
+) {
+    val usedCapacityCasePacks: Int get() = orders.sumOf { it.casePacksCount }
+    val remainingCapacityCasePacks: Int get() = capacityCasePacks - usedCapacityCasePacks
+}
+
+/**
+ * Player-configurable truck delivery schedule and capacities.
+ */
+data class TruckConfig(
+    /** Day-of-week indices for regular trucks (0 = Monday … 6 = Sunday). */
+    val deliveryDays: Set<Int> = setOf(0, 3),  // Monday and Thursday by default
+    val regularTruckCapacityCasePacks: Int = DEFAULT_REGULAR_TRUCK_CAPACITY,
+    val freshTruckCapacityCasePacks: Int = DEFAULT_FRESH_TRUCK_CAPACITY,
+) {
+    companion object {
+        const val DEFAULT_REGULAR_TRUCK_CAPACITY = 2000
+        const val DEFAULT_FRESH_TRUCK_CAPACITY = 500
+    }
+}
+
 /**
  * Configuration for fresh item auto-ordering behavior.
  */
@@ -87,6 +131,11 @@ data class GameState(
     // Fresh item auto-ordering
     val freshAutoOrderConfig: FreshAutoOrderConfig = FreshAutoOrderConfig(),
     val incompleteFreshOrders: List<IncompleteOrderRequest> = emptyList(),
+
+    // Truck delivery system
+    val scheduledTrucks: List<ScheduledTruck> = emptyList(),
+    val truckConfig: TruckConfig = TruckConfig(),
+    val nextTruckId: Int = 1,
 )
 
 

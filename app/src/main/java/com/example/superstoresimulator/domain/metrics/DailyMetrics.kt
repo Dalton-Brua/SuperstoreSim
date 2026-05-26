@@ -3,6 +3,28 @@ package com.example.superstoresimulator.domain.metrics
 import com.example.superstoresimulator.domain.Money
 
 /**
+ * One item line received from a truck delivery.
+ */
+data class DeliveredItemLine(
+    val itemId: Int,
+    val itemName: String,
+    val casePacks: Int,
+    val quantity: Int,
+)
+
+/**
+ * Record of a single truck that arrived on this day.
+ */
+data class DeliveredTruckRecord(
+    val truckId: Int,
+    val arrivalDay: Int,
+    val isFreshTruck: Boolean,
+    val isEarlyTruck: Boolean,
+    val totalCasePacks: Int,
+    val lines: List<DeliveredItemLine>,
+)
+
+/**
  * One auto-ordered fresh item that was successfully completed at end-of-day.
  */
 data class FreshOrderLineItem(
@@ -110,6 +132,9 @@ data class DailyMetrics(
     // ── Fresh Item Auto-Ordering ──────────────────────────────────────────
     val autoOrderedFreshItems: List<FreshOrderLineItem> = emptyList(),
     val incompleteOrderedFreshItems: List<IncompleteOrderLineItem> = emptyList(),
+
+    // ── Truck Deliveries ──────────────────────────────────────────────────
+    val deliveredTrucks: List<DeliveredTruckRecord> = emptyList(),
 ) {
     /** Average value per completed transaction (ZERO if no transactions). */
     val averageTransactionValue: Money
@@ -176,6 +201,9 @@ data class DailyMetricsAccumulator(
     // ── Fresh Item Auto-Ordering ──────────────────────────────────────────
     val autoOrderedFreshItems: List<FreshOrderLineItem> = emptyList(),
     val incompleteOrderedFreshItems: List<IncompleteOrderLineItem> = emptyList(),
+
+    // ── Truck Deliveries ──────────────────────────────────────────────────
+    val deliveredTrucks: List<DeliveredTruckRecord> = emptyList(),
 ) {
     /** Snapshot this accumulator into an immutable [DailyMetrics]. */
     fun toSnapshot(dayOfWeek: Int): DailyMetrics = DailyMetrics(
@@ -202,5 +230,6 @@ data class DailyMetricsAccumulator(
         expiredItemEvents = expiredItemEvents,
         autoOrderedFreshItems = autoOrderedFreshItems,
         incompleteOrderedFreshItems = incompleteOrderedFreshItems,
+        deliveredTrucks = deliveredTrucks,
     )
 }

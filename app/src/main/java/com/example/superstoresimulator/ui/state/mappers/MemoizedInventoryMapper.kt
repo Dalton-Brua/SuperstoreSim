@@ -1,5 +1,6 @@
 package com.example.superstoresimulator.ui.state.mappers
 
+import com.example.superstoresimulator.domain.ScheduledTruck
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.ItemMetadata
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
@@ -33,24 +34,43 @@ class MemoizedInventoryMapper(
     private var lastMappedItems: List<InventoryItemUI>? = null
     private var lastTier: ItemUnlockTier? = null
     private var lastBackroomCap: Int? = null
+    private var lastScheduledTrucks: List<ScheduledTruck>? = null
     private val itemCache: MutableMap<Int, InventoryItemUI> = mutableMapOf()
     
-    fun map(currentInventory: Map<Int, InventoryState>, tier: ItemUnlockTier, backroomCap: Int): InventoryUIState {
+    fun map(
+        currentInventory: Map<Int, InventoryState>,
+        tier: ItemUnlockTier,
+        backroomCap: Int,
+        scheduledTrucks: List<ScheduledTruck> = emptyList(),
+    ): InventoryUIState {
         val domainInventory = currentInventory
 
-        // Invalidate the cache when the tier or backroom cap changes
-        if (tier != lastTier || backroomCap != lastBackroomCap) {
+        // Invalidate the cache when the tier, backroom cap, or truck state changes
+        if (tier != lastTier || backroomCap != lastBackroomCap || scheduledTrucks != lastScheduledTrucks) {
             lastDomainInventory = null
             lastMappedItems = null
             lastTier = tier
             lastBackroomCap = backroomCap
+            lastScheduledTrucks = scheduledTrucks
         }
 
         // ✅ If inventory hasn't changed structurally, return cached result immediately
         if (domainInventory == lastDomainInventory && lastMappedItems != null) {
             return InventoryUIState(items = lastMappedItems!!)
         }
-        
+
+        // Build pending delivery lookup: itemId → (totalCasePacks, earliestArrivalDay)
+        val pendingDeliveryMap = mutableMapOf<Int, Pair<Int, Int>>()
+        for (truck in scheduledTrucks) {
+            for (line in truck.orders) {
+                val existing = pendingDeliveryMap[line.itemId]
+                val newCasePacks = (existing?.first ?: 0) + line.casePacksCount
+                val newEarliest = if (existing == null) truck.scheduledArrivalDay
+                                  else minOf(existing.second, truck.scheduledArrivalDay)
+                pendingDeliveryMap[line.itemId] = Pair(newCasePacks, newEarliest)
+            }
+        }
+
         // Identify changed items
         val changedItemIds = mutableSetOf<Int>()
         
@@ -69,22 +89,35 @@ class MemoizedInventoryMapper(
                 changedItemIds.add(itemId)
             }
         }
-        
+
+        // Also invalidate items whose pending delivery info changed
+        pendingDeliveryMap.forEach { (itemId, _) -> changedItemIds.add(itemId) }
+        lastScheduledTrucks?.forEach { truck ->
+            truck.orders.forEach { line -> changedItemIds.add(line.itemId) }
+        }
+
         // Only remap changed items (instead of remapping all items)
         changedItemIds.forEach { itemId ->
             val dyn = domainInventory[itemId] ?: return@forEach
             val meta = metadataCache.get(itemId) ?: ItemMetadata.default(itemId)
             
-            // Calculate current case packs in backroom and check if one more would exceed cap
+            // Pending delivery info must be computed BEFORE backroomFull so in-transit
+            // case packs are counted toward the committed total.
+            val pending = pendingDeliveryMap[itemId]
+            val pendingCasePacks = pending?.first ?: 0
+
+            // Calculate current case packs in backroom and check if one more would exceed cap,
+            // counting both backroom stock AND in-transit case packs as "committed".
             val currentCasePacksInBackroom = dyn.backroomStock / meta.casePack
-            val backroomFull = (currentCasePacksInBackroom + 1) > backroomCap
-            
+            val backroomFull = (currentCasePacksInBackroom + pendingCasePacks + 1) > backroomCap
+
             // Find the closest expiration date among all batches
             val allBatches = dyn.shelfBatches + dyn.backroomBatches
             val closestExpiration = if (allBatches.isNotEmpty()) {
                 allBatches.minOfOrNull { it.expirationDay }
             } else null
-            
+
+
             itemCache[itemId] = InventoryItemUI(
                 id = itemId,
                 name = meta.name,
@@ -95,10 +128,11 @@ class MemoizedInventoryMapper(
                 category = meta.category,
                 casePack = meta.casePack,
                 casePackCost = meta.casePackCost,
-                // True when there is no room for even one more full case pack
                 backroomFull = backroomFull,
                 shelfLifeDays = meta.shelfLifeDays,
                 closestExpirationDay = closestExpiration,
+                pendingCasePacks = pending?.first ?: 0,
+                earliestArrivalDay = pending?.second,
             )
         }
         

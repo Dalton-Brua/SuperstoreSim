@@ -92,6 +92,20 @@ fun InventoryItemCard(
                 Text("Case Cost: ${item.casePackCost}", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = PrimaryDark)
             }
 
+            // In-transit badge
+            if (item.pendingCasePacks > 0) {
+                val arrivalDow = item.earliestArrivalDay?.let { day ->
+                    val names = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+                    names.getOrElse(day % 7) { "" }
+                } ?: ""
+                val dayLabel = item.earliestArrivalDay?.let { " · Day ${it + 1} ($arrivalDow)" } ?: ""
+                Text(
+                    text = "🚚 ${item.pendingCasePacks} cases in transit$dayLabel",
+                    fontSize = 11.sp,
+                    color = Color(0xFFD97706),
+                )
+            }
+
             Spacer(Modifier.height(8.dp))
 
             Button(

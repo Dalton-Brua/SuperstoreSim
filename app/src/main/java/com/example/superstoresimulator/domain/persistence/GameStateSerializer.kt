@@ -7,6 +7,9 @@ import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Entities.EntityTrait
+import com.example.superstoresimulator.domain.PendingOrderLine
+import com.example.superstoresimulator.domain.ScheduledTruck
+import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.Transactions.TransactionLine
 import com.example.superstoresimulator.domain.RefundRequest
@@ -18,6 +21,10 @@ import com.example.superstoresimulator.domain.metrics.DailyMetricsAccumulator
 import com.example.superstoresimulator.domain.metrics.OutOfStockEvent
 import com.example.superstoresimulator.domain.metrics.SoldItemEvent
 import com.example.superstoresimulator.domain.metrics.ExpiredItemEvent
+import com.example.superstoresimulator.domain.metrics.FreshOrderLineItem
+import com.example.superstoresimulator.domain.metrics.IncompleteOrderLineItem
+import com.example.superstoresimulator.domain.metrics.DeliveredTruckRecord
+import com.example.superstoresimulator.domain.metrics.DeliveredItemLine
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreSize
@@ -98,7 +105,16 @@ object GameStateSerializer {
         state.lastEndOfDayReport?.let {
             json.put("lastEndOfDayReport", serializeDailyMetrics(it))
         }
-        
+
+        // Truck delivery system
+        val trucksArray = JSONArray()
+        state.scheduledTrucks.forEach { truck ->
+            trucksArray.put(serializeScheduledTruck(truck))
+        }
+        json.put("scheduledTrucks", trucksArray)
+        json.put("truckConfig", serializeTruckConfig(state.truckConfig))
+        json.put("nextTruckId", state.nextTruckId)
+
         return json.toString()
     }
 
@@ -144,7 +160,15 @@ object GameStateSerializer {
                 },
                 lastEndOfDayReport = if (json.has("lastEndOfDayReport")) {
                     deserializeDailyMetrics(json.getJSONObject("lastEndOfDayReport"))
-                } else null
+                } else null,
+                scheduledTrucks = if (json.has("scheduledTrucks")) {
+                    val arr = json.getJSONArray("scheduledTrucks")
+                    (0 until arr.length()).map { deserializeScheduledTruck(arr.getJSONObject(it)) }
+                } else emptyList(),
+                truckConfig = if (json.has("truckConfig")) {
+                    deserializeTruckConfig(json.getJSONObject("truckConfig"))
+                } else TruckConfig(),
+                nextTruckId = if (json.has("nextTruckId")) json.getInt("nextTruckId") else 1,
             )
         } catch (e: Exception) {
             e.printStackTrace()
@@ -450,6 +474,24 @@ object GameStateSerializer {
                 expiredArray.put(serializeExpiredItemEvent(event))
             }
             put("expiredItemEvents", expiredArray)
+
+            val freshOrdersArray = JSONArray()
+            acc.autoOrderedFreshItems.forEach { item ->
+                freshOrdersArray.put(serializeFreshOrderLineItem(item))
+            }
+            put("autoOrderedFreshItems", freshOrdersArray)
+
+            val incompleteOrdersArray = JSONArray()
+            acc.incompleteOrderedFreshItems.forEach { item ->
+                incompleteOrdersArray.put(serializeIncompleteOrderLineItem(item))
+            }
+            put("incompleteOrderedFreshItems", incompleteOrdersArray)
+
+            val deliveredTrucksArray = JSONArray()
+            acc.deliveredTrucks.forEach { record ->
+                deliveredTrucksArray.put(serializeDeliveredTruckRecord(record))
+            }
+            put("deliveredTrucks", deliveredTrucksArray)
         }
     }
 
@@ -473,7 +515,25 @@ object GameStateSerializer {
                 expiredEvents.add(deserializeExpiredItemEvent(expiredArray.getJSONObject(i)))
             }
         }
-        
+
+        val freshOrderItems = mutableListOf<FreshOrderLineItem>()
+        if (json.has("autoOrderedFreshItems")) {
+            val arr = json.getJSONArray("autoOrderedFreshItems")
+            for (i in 0 until arr.length()) freshOrderItems.add(deserializeFreshOrderLineItem(arr.getJSONObject(i)))
+        }
+
+        val incompleteOrderItems = mutableListOf<IncompleteOrderLineItem>()
+        if (json.has("incompleteOrderedFreshItems")) {
+            val arr = json.getJSONArray("incompleteOrderedFreshItems")
+            for (i in 0 until arr.length()) incompleteOrderItems.add(deserializeIncompleteOrderLineItem(arr.getJSONObject(i)))
+        }
+
+        val deliveredTrucksAcc = mutableListOf<DeliveredTruckRecord>()
+        if (json.has("deliveredTrucks")) {
+            val arr = json.getJSONArray("deliveredTrucks")
+            for (i in 0 until arr.length()) deliveredTrucksAcc.add(deserializeDeliveredTruckRecord(arr.getJSONObject(i)))
+        }
+
         return DailyMetricsAccumulator(
             dayNumber = if (json.has("dayNumber")) json.getInt("dayNumber") else 0,
             revenue = Money(json.getLong("revenue")),
@@ -494,7 +554,10 @@ object GameStateSerializer {
             soldItemEvents = soldEvents,
             itemsExpired = if (json.has("itemsExpired")) json.getInt("itemsExpired") else 0,
             expiredWasteCost = if (json.has("expiredWasteCost")) Money(json.getLong("expiredWasteCost")) else Money.ZERO,
-            expiredItemEvents = expiredEvents
+            expiredItemEvents = expiredEvents,
+            autoOrderedFreshItems = freshOrderItems,
+            incompleteOrderedFreshItems = incompleteOrderItems,
+            deliveredTrucks = deliveredTrucksAcc,
         )
     }
 
@@ -538,6 +601,24 @@ object GameStateSerializer {
                 expiredArray.put(serializeExpiredItemEvent(event))
             }
             put("expiredItemEvents", expiredArray)
+
+            val freshOrdersArray = JSONArray()
+            metrics.autoOrderedFreshItems.forEach { item ->
+                freshOrdersArray.put(serializeFreshOrderLineItem(item))
+            }
+            put("autoOrderedFreshItems", freshOrdersArray)
+
+            val incompleteOrdersArray = JSONArray()
+            metrics.incompleteOrderedFreshItems.forEach { item ->
+                incompleteOrdersArray.put(serializeIncompleteOrderLineItem(item))
+            }
+            put("incompleteOrderedFreshItems", incompleteOrdersArray)
+
+            val deliveredTrucksArray = JSONArray()
+            metrics.deliveredTrucks.forEach { record ->
+                deliveredTrucksArray.put(serializeDeliveredTruckRecord(record))
+            }
+            put("deliveredTrucks", deliveredTrucksArray)
         }
     }
 
@@ -561,7 +642,25 @@ object GameStateSerializer {
                 expiredEvents.add(deserializeExpiredItemEvent(expiredArray.getJSONObject(i)))
             }
         }
-        
+
+        val freshOrderItems = mutableListOf<FreshOrderLineItem>()
+        if (json.has("autoOrderedFreshItems")) {
+            val arr = json.getJSONArray("autoOrderedFreshItems")
+            for (i in 0 until arr.length()) freshOrderItems.add(deserializeFreshOrderLineItem(arr.getJSONObject(i)))
+        }
+
+        val incompleteOrderItems = mutableListOf<IncompleteOrderLineItem>()
+        if (json.has("incompleteOrderedFreshItems")) {
+            val arr = json.getJSONArray("incompleteOrderedFreshItems")
+            for (i in 0 until arr.length()) incompleteOrderItems.add(deserializeIncompleteOrderLineItem(arr.getJSONObject(i)))
+        }
+
+        val deliveredTrucksList = mutableListOf<DeliveredTruckRecord>()
+        if (json.has("deliveredTrucks")) {
+            val arr = json.getJSONArray("deliveredTrucks")
+            for (i in 0 until arr.length()) deliveredTrucksList.add(deserializeDeliveredTruckRecord(arr.getJSONObject(i)))
+        }
+
         return DailyMetrics(
             dayNumber = json.getInt("dayNumber"),
             dayOfWeek = json.getInt("dayOfWeek"),
@@ -583,7 +682,10 @@ object GameStateSerializer {
             soldItemEvents = soldEvents,
             itemsExpired = if (json.has("itemsExpired")) json.getInt("itemsExpired") else 0,
             expiredWasteCost = if (json.has("expiredWasteCost")) Money(json.getLong("expiredWasteCost")) else Money.ZERO,
-            expiredItemEvents = expiredEvents
+            expiredItemEvents = expiredEvents,
+            autoOrderedFreshItems = freshOrderItems,
+            incompleteOrderedFreshItems = incompleteOrderItems,
+            deliveredTrucks = deliveredTrucksList,
         )
     }
 
@@ -648,5 +750,155 @@ object GameStateSerializer {
             valueLost = Money(json.getLong("valueLost"))
         )
     }
-}
 
+    // ── Truck Delivery System ─────────────────────────────────────────────────
+
+    private fun serializeFreshOrderLineItem(item: FreshOrderLineItem): JSONObject =
+        JSONObject().apply {
+            put("itemId", item.itemId)
+            put("itemName", item.itemName)
+            put("casePacksOrdered", item.casePacksOrdered)
+            put("costPerCasePack", item.costPerCasePack.cents)
+            put("totalCost", item.totalCost.cents)
+        }
+
+    private fun deserializeFreshOrderLineItem(json: JSONObject): FreshOrderLineItem =
+        FreshOrderLineItem(
+            itemId = json.getInt("itemId"),
+            itemName = json.getString("itemName"),
+            casePacksOrdered = json.getInt("casePacksOrdered"),
+            costPerCasePack = Money(json.getLong("costPerCasePack")),
+            totalCost = Money(json.getLong("totalCost")),
+        )
+
+    private fun serializeIncompleteOrderLineItem(item: IncompleteOrderLineItem): JSONObject =
+        JSONObject().apply {
+            put("itemId", item.itemId)
+            put("itemName", item.itemName)
+            put("casePacksRequested", item.casePacksRequested)
+            put("costPerCasePack", item.costPerCasePack.cents)
+            put("totalCost", item.totalCost.cents)
+            put("reason", item.reason)
+        }
+
+    private fun deserializeIncompleteOrderLineItem(json: JSONObject): IncompleteOrderLineItem =
+        IncompleteOrderLineItem(
+            itemId = json.getInt("itemId"),
+            itemName = json.getString("itemName"),
+            casePacksRequested = json.getInt("casePacksRequested"),
+            costPerCasePack = Money(json.getLong("costPerCasePack")),
+            totalCost = Money(json.getLong("totalCost")),
+            reason = json.getString("reason"),
+        )
+
+    private fun serializeDeliveredItemLine(line: DeliveredItemLine): JSONObject =
+        JSONObject().apply {
+            put("itemId", line.itemId)
+            put("itemName", line.itemName)
+            put("casePacks", line.casePacks)
+            put("quantity", line.quantity)
+        }
+
+    private fun deserializeDeliveredItemLine(json: JSONObject): DeliveredItemLine =
+        DeliveredItemLine(
+            itemId = json.getInt("itemId"),
+            itemName = json.getString("itemName"),
+            casePacks = json.getInt("casePacks"),
+            quantity = json.getInt("quantity"),
+        )
+
+    private fun serializeDeliveredTruckRecord(record: DeliveredTruckRecord): JSONObject =
+        JSONObject().apply {
+            put("truckId", record.truckId)
+            put("arrivalDay", record.arrivalDay)
+            put("isFreshTruck", record.isFreshTruck)
+            put("isEarlyTruck", record.isEarlyTruck)
+            put("totalCasePacks", record.totalCasePacks)
+            val linesArray = JSONArray()
+            record.lines.forEach { linesArray.put(serializeDeliveredItemLine(it)) }
+            put("lines", linesArray)
+        }
+
+    private fun deserializeDeliveredTruckRecord(json: JSONObject): DeliveredTruckRecord {
+        val linesArray = json.getJSONArray("lines")
+        val lines = (0 until linesArray.length()).map { deserializeDeliveredItemLine(linesArray.getJSONObject(it)) }
+        return DeliveredTruckRecord(
+            truckId = json.getInt("truckId"),
+            arrivalDay = json.getInt("arrivalDay"),
+            isFreshTruck = json.optBoolean("isFreshTruck", false),
+            isEarlyTruck = json.optBoolean("isEarlyTruck", false),
+            totalCasePacks = json.getInt("totalCasePacks"),
+            lines = lines,
+        )
+    }
+
+    private fun serializeScheduledTruck(truck: ScheduledTruck): JSONObject {
+        return JSONObject().apply {
+            put("truckId", truck.truckId)
+            put("scheduledArrivalDay", truck.scheduledArrivalDay)
+            put("capacityCasePacks", truck.capacityCasePacks)
+            put("isFreshTruck", truck.isFreshTruck)
+            put("isEarlyTruck", truck.isEarlyTruck)
+            val ordersArray = JSONArray()
+            truck.orders.forEach { line -> ordersArray.put(serializePendingOrderLine(line)) }
+            put("orders", ordersArray)
+        }
+    }
+
+    private fun deserializeScheduledTruck(json: JSONObject): ScheduledTruck {
+        val ordersArray = json.getJSONArray("orders")
+        val orders = (0 until ordersArray.length()).map {
+            deserializePendingOrderLine(ordersArray.getJSONObject(it))
+        }
+        return ScheduledTruck(
+            truckId = json.getInt("truckId"),
+            scheduledArrivalDay = json.getInt("scheduledArrivalDay"),
+            capacityCasePacks = json.getInt("capacityCasePacks"),
+            isFreshTruck = json.optBoolean("isFreshTruck", false),
+            isEarlyTruck = json.optBoolean("isEarlyTruck", false),
+            orders = orders,
+        )
+    }
+
+    private fun serializePendingOrderLine(line: PendingOrderLine): JSONObject {
+        return JSONObject().apply {
+            put("itemId", line.itemId)
+            put("quantity", line.quantity)
+            put("casePacksCount", line.casePacksCount)
+            put("unitCost", line.unitCost.cents)
+            put("orderedOnDay", line.orderedOnDay)
+            put("isFresh", line.isFresh)
+        }
+    }
+
+    private fun deserializePendingOrderLine(json: JSONObject): PendingOrderLine {
+        return PendingOrderLine(
+            itemId = json.getInt("itemId"),
+            quantity = json.getInt("quantity"),
+            casePacksCount = json.getInt("casePacksCount"),
+            unitCost = Money(json.getLong("unitCost")),
+            orderedOnDay = json.getInt("orderedOnDay"),
+            isFresh = json.optBoolean("isFresh", false),
+        )
+    }
+
+    private fun serializeTruckConfig(config: TruckConfig): JSONObject {
+        return JSONObject().apply {
+            val daysArray = JSONArray()
+            config.deliveryDays.forEach { daysArray.put(it) }
+            put("deliveryDays", daysArray)
+            put("regularTruckCapacityCasePacks", config.regularTruckCapacityCasePacks)
+            put("freshTruckCapacityCasePacks", config.freshTruckCapacityCasePacks)
+        }
+    }
+
+    private fun deserializeTruckConfig(json: JSONObject): TruckConfig {
+        val daysArray = json.getJSONArray("deliveryDays")
+        val days = (0 until daysArray.length()).map { daysArray.getInt(it) }.toSet()
+        return TruckConfig(
+            deliveryDays = days.ifEmpty { setOf(0, 3) },
+            regularTruckCapacityCasePacks = json.optInt("regularTruckCapacityCasePacks", TruckConfig.DEFAULT_REGULAR_TRUCK_CAPACITY),
+            freshTruckCapacityCasePacks = json.optInt("freshTruckCapacityCasePacks", TruckConfig.DEFAULT_FRESH_TRUCK_CAPACITY),
+        )
+    }
+}

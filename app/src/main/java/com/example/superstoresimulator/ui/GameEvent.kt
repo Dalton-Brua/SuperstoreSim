@@ -74,4 +74,23 @@ sealed interface GameEvent {
 
     // Reset System: reset the game to initial state
     data object ResetGame : GameEvent
+
+    // Truck Delivery System
+    data class UpdateTruckConfig(
+        val deliveryDays: Set<Int>,
+        val regularCapacityCasePacks: Int,
+        val freshCapacityCasePacks: Int,
+    ) : GameEvent
+
+    data class CancelPendingOrderLine(
+        val itemId: Int,
+        val truckId: Int,
+    ) : GameEvent
+
+    data class DecrementOrderLine(
+        val itemId: Int,
+        val truckId: Int,
+    ) : GameEvent
+
+    data object RequestEarlyTruck : GameEvent
 }

@@ -3,6 +3,7 @@ package com.example.superstoresimulator.domain
 import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Transactions.TransactionEngine
+import com.example.superstoresimulator.domain.delivery.TruckManager
 import com.example.superstoresimulator.domain.expiration.SpoilageManager
 import com.example.superstoresimulator.domain.inventory.InventoryManager
 import com.example.superstoresimulator.domain.inventory.ItemBatch
@@ -37,6 +38,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     private val playerActionHandler = PlayerActionHandler()
     private val inventoryManager = InventoryManager(itemMetadataCache)
     private val spoilageManager = SpoilageManager(itemMetadataCache)
+    private val truckManager = TruckManager(itemMetadataCache)
 
     // Emit incremental changes instead of full state reconstructions
     private val _changes = MutableStateFlow<GameStateChange?>(null)
@@ -80,7 +82,12 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                     backroomBatches = listOf(startingBatch),
                 )
             }
-            state = state.copy(inventory = inventory)
+            // state = state.copy(inventory = inventory)
+            state = state.copy(inventory = inventory,
+                money = Money(10_000_000L),
+                currentTier = ItemUnlockTier.TIER_2,
+                currentStoreSize = StoreSize.SMALL_GROCERY,
+                storeConfig = StoreConfig(backroomCapPerItem = StoreSize.SMALL_GROCERY.backroomCapPerItem))
         }
     }
     
@@ -111,22 +118,51 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
 
     fun buyItemToBackroom(itemId: Int) {
         val moneyBefore = state.money
-        val invBefore = state.inventory[itemId]
-        state = inventoryManager.buyItemToBackroom(state, itemId)
-        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
-        val invAfter = state.inventory[itemId]
-        if (invAfter != null && invAfter != invBefore) {
-            _changes.value = GameStateChange.InventoryUpdated(itemId, invAfter)
+        val result = inventoryManager.buyItemToBackroom(state, itemId)
+        state = result.state
+        if (result.orderLines.isNotEmpty()) {
+            val currentDay = state.currentTime.dayNumber
+            val fresh = result.orderLines.filter { it.isFresh }
+            val regular = result.orderLines.filter { !it.isFresh }
+            if (regular.isNotEmpty()) state = truckManager.scheduleRegularOrderLines(state, regular, currentDay)
+            if (fresh.isNotEmpty()) state = truckManager.scheduleFreshOrderLines(state, fresh, currentDay)
+            val arrivalDay = state.scheduledTrucks
+                .filter { t -> result.orderLines.any { l -> t.orders.any { o -> o.itemId == l.itemId } } }
+                .minOfOrNull { it.scheduledArrivalDay } ?: (currentDay + 1)
+            _changes.value = GameStateChange.OrderScheduled(arrivalDay)
         }
+        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
     }
 
     fun buyItemCasePacks(itemId: Int, numCasePacks: Int) {
-        state = inventoryManager.buyItemCasePacks(state, itemId, numCasePacks)
+        val moneyBefore = state.money
+        val result = inventoryManager.buyItemCasePacks(state, itemId, numCasePacks)
+        state = result.state
+        if (result.orderLines.isNotEmpty()) {
+            val currentDay = state.currentTime.dayNumber
+            val fresh = result.orderLines.filter { it.isFresh }
+            val regular = result.orderLines.filter { !it.isFresh }
+            if (regular.isNotEmpty()) state = truckManager.scheduleRegularOrderLines(state, regular, currentDay)
+            if (fresh.isNotEmpty()) state = truckManager.scheduleFreshOrderLines(state, fresh, currentDay)
+            val arrivalDay = state.scheduledTrucks
+                .filter { t -> result.orderLines.any { l -> t.orders.any { o -> o.itemId == l.itemId } } }
+                .minOfOrNull { it.scheduledArrivalDay } ?: (currentDay + 1)
+            _changes.value = GameStateChange.OrderScheduled(arrivalDay)
+        }
+        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
     }
 
     fun placeBulkOrder(maxTotalQuantity: Int, casePacksPerItem: Int, categoryFilter: ItemCategory?) {
         val moneyBefore = state.money
-        state = inventoryManager.placeBulkOrder(state, maxTotalQuantity, casePacksPerItem, categoryFilter)
+        val result = inventoryManager.placeBulkOrder(state, maxTotalQuantity, casePacksPerItem, categoryFilter)
+        state = result.state
+        if (result.orderLines.isNotEmpty()) {
+            val currentDay = state.currentTime.dayNumber
+            state = truckManager.scheduleRegularOrderLines(state, result.orderLines, currentDay)
+            val arrivalDay = state.scheduledTrucks
+                .filter { !it.isFreshTruck }.minOfOrNull { it.scheduledArrivalDay } ?: (currentDay + 1)
+            _changes.value = GameStateChange.OrderScheduled(arrivalDay)
+        }
         if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
     }
 
@@ -258,6 +294,8 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             if (newDayNumber != dayManager.lastKnownDayNumber) {
                 state = dayManager.rollOverDay(state, dayManager.lastKnownDayNumber)
                 dayManager.advanceDay(newDayNumber)
+                // Process truck arrivals at the start of each new day
+                state = truckManager.processArrivals(state, newDayNumber)
             }
 
             // Phase 1: Update store state based on time
@@ -305,9 +343,13 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             val freshHandlers = state.hiredEntityRegistry.countByEntity(EntityDef.FRESH_HANDLER)
             val wholeFreshActions = staffManager.advanceFreshHandlerProgress(freshHandlers, delta, multiplier)
             repeat(wholeFreshActions) { stockRandomFreshItemFromBackroom() }
-            
-            // If fresh handlers are idle (no fresh items to stock), attempt auto-ordering
-            if (wholeFreshActions <= 0 && freshHandlers > 0) {
+
+            // If fresh handlers exist but have no fresh items in the backroom to stock,
+            // attempt auto-ordering regardless of how many actions were accumulated.
+            val hasFreshBackroomStock = freshHandlers > 0 && state.inventory.any { (itemId, inv) ->
+                itemMetadataCache.get(itemId)?.isPerishable == true && inv.backroomStock > 0
+            }
+            if (freshHandlers > 0 && !hasFreshBackroomStock) {
                 attemptFreshHandlerAutoOrder()
             }
 
@@ -470,10 +512,15 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
      * Place a fresh bulk order with lower discount tiers.
      */
     fun placeFreshBulkOrder(maxTotalQuantity: Int, casePacksPerItem: Int) {
-        state = inventoryManager.placeFreshBulkOrder(state, maxTotalQuantity, casePacksPerItem, state.currentTier)
-        state.inventory.values.firstOrNull()?.let {
-            _changes.value = GameStateChange.InventoryUpdated(-1, it)
+        val moneyBefore = state.money
+        val result = inventoryManager.placeFreshBulkOrder(state, maxTotalQuantity, casePacksPerItem, state.currentTier)
+        state = result.state
+        if (result.orderLines.isNotEmpty()) {
+            val currentDay = state.currentTime.dayNumber
+            state = truckManager.scheduleFreshOrderLines(state, result.orderLines, currentDay)
+            _changes.value = GameStateChange.OrderScheduled(currentDay + 1)
         }
+        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
     }
 
     /**
@@ -515,10 +562,13 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             val totalCost = item.getCasePackCostAsMoney() * casePacks
 
             if (state.money >= totalCost) {
-                // Success path: buy immediately
-                val invBefore = state.inventory[itemId]
-                state = inventoryManager.buyItemCasePacks(state, itemId, casePacks)
-                // Append to today's metrics
+                // Route through truck system
+                val result = inventoryManager.buyItemCasePacks(state, itemId, casePacks)
+                state = result.state
+                if (result.orderLines.isNotEmpty()) {
+                    val currentDay = state.currentTime.dayNumber
+                    state = truckManager.scheduleFreshOrderLines(state, result.orderLines, currentDay)
+                }
                 state = state.copy(
                     currentDayMetrics = state.currentDayMetrics.copy(
                         autoOrderedFreshItems = state.currentDayMetrics.autoOrderedFreshItems +
@@ -532,9 +582,6 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                     )
                 )
                 _changes.value = GameStateChange.MoneyChanged(state.money)
-                state.inventory[itemId]?.takeIf { it != invBefore }?.let {
-                    _changes.value = GameStateChange.InventoryUpdated(itemId, it)
-                }
             } else {
                 // Failure path: log as incomplete
                 state = state.copy(
@@ -549,7 +596,6 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                                 reason = "Insufficient funds",
                             )
                     ),
-                    // Keep persistent incomplete list up-to-date (deduplicate by itemId)
                     incompleteFreshOrders = state.incompleteFreshOrders.filter { it.itemId != itemId } +
                         com.example.superstoresimulator.domain.IncompleteOrderRequest(
                             itemId = itemId,
@@ -571,15 +617,63 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         val totalCost = item.getCasePackCostAsMoney() * casePacksRequested
         
         if (state.money >= totalCost) {
-            state = inventoryManager.buyItemCasePacks(state, itemId, casePacksRequested)
+            val result = inventoryManager.buyItemCasePacks(state, itemId, casePacksRequested)
+            state = result.state
+            if (result.orderLines.isNotEmpty()) {
+                val currentDay = state.currentTime.dayNumber
+                state = truckManager.scheduleFreshOrderLines(state, result.orderLines, currentDay)
+                _changes.value = GameStateChange.OrderScheduled(currentDay + 1)
+            }
             // Remove from incomplete orders
             state = state.copy(
                 incompleteFreshOrders = state.incompleteFreshOrders.filter { it.itemId != itemId }
             )
-            state.inventory[itemId]?.let {
-                _changes.value = GameStateChange.InventoryUpdated(itemId, it)
-            }
+            _changes.value = GameStateChange.MoneyChanged(state.money)
         }
+    }
+
+    // ── Truck Delivery System ─────────────────────────────────────────────────
+
+    /**
+     * Update truck delivery configuration (delivery days, capacities).
+     * Already-scheduled trucks are untouched.
+     */
+    fun updateTruckConfig(deliveryDays: Set<Int>, regularCapacity: Int, freshCapacity: Int) {
+        state = truckManager.updateConfig(
+            state,
+            TruckConfig(
+                deliveryDays = deliveryDays,
+                regularTruckCapacityCasePacks = regularCapacity,
+                freshTruckCapacityCasePacks = freshCapacity,
+            )
+        )
+    }
+
+    /**
+     * Cancel a pending order line and refund the cost.
+     */
+    fun cancelPendingOrderLine(itemId: Int, truckId: Int) {
+        val moneyBefore = state.money
+        state = truckManager.cancelPendingOrderLine(state, itemId, truckId, state.currentTime.dayNumber)
+        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
+    }
+
+    /**
+     * Remove one case pack for [itemId] from truck [truckId] and refund its cost.
+     */
+    fun decrementOrderLine(itemId: Int, truckId: Int) {
+        val moneyBefore = state.money
+        state = truckManager.decrementOrderLine(state, itemId, truckId, state.currentTime.dayNumber)
+        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
+    }
+
+    /**
+     * Book an on-demand early truck for $100, arriving the next game day.
+     */
+    fun requestEarlyTruck() {
+        val moneyBefore = state.money
+        state = truckManager.requestEarlyTruck(state, state.currentTime.dayNumber)
+        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
     }
 
     /**

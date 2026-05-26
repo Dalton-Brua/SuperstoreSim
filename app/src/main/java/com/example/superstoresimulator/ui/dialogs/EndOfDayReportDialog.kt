@@ -370,6 +370,71 @@ fun EndOfDayReportDialog(
                     Spacer(Modifier.height(20.dp))
                 }
 
+                // ── Deliveries Received section ───────────────────────────
+                if (report.deliveredTrucks.isNotEmpty()) {
+                    var deliveriesExpanded by remember { mutableStateOf(false) }
+                    val totalCasePacks = report.deliveredTrucks.sumOf { it.totalCasePacks }
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                        elevation = CardDefaults.cardElevation(2.dp),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { deliveriesExpanded = !deliveriesExpanded }
+                                .padding(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "🚚 Deliveries Received",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF166534)
+                                )
+                                Text(
+                                    "${report.deliveredTrucks.size} truck(s) · $totalCasePacks cases ${if (deliveriesExpanded) "▲" else "▼"}",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF166534)
+                                )
+                            }
+                            if (deliveriesExpanded) {
+                                Spacer(Modifier.height(8.dp))
+                                HorizontalDivider(color = Color(0xFF166534).copy(alpha = 0.2f), thickness = 1.dp)
+                                Spacer(Modifier.height(8.dp))
+                                report.deliveredTrucks.forEach { truck ->
+                                    val label = when {
+                                        truck.isEarlyTruck -> "Early Truck"
+                                        truck.isFreshTruck -> "Fresh Truck"
+                                        else -> "Regular Truck"
+                                    }
+                                    Text(
+                                        "$label — Day ${truck.arrivalDay + 1} — ${truck.totalCasePacks} cases",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF1F2937),
+                                        modifier = Modifier.padding(vertical = 2.dp)
+                                    )
+                                    truck.lines.forEach { line ->
+                                        Text(
+                                            "  ${line.itemName}: ${line.casePacks} packs (${line.quantity} units)",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF374151)
+                                        )
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(20.dp))
+                }
+
                 // ── Dismiss button ────────────────────────────────────────
                 Button(
                     onClick = onDismiss,

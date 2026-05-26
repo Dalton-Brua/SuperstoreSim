@@ -27,6 +27,9 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -96,6 +99,14 @@ class MainActivity : ComponentActivity() {
                 var showFreshBulkOrderDialog by remember { mutableStateOf(false) }
                 var showIncompleteOrdersDialog by remember { mutableStateOf(false) }
 
+                // Snackbar for truck order confirmations
+                val snackbarHostState = remember { SnackbarHostState() }
+                LaunchedEffect(Unit) {
+                    viewModel.snackbarMessage.collect { message ->
+                        snackbarHostState.showSnackbar(message)
+                    }
+                }
+
                 // Collect UI state from ViewModel's StateFlow
                 val uiState by viewModel.uiState.collectAsState()
 
@@ -137,6 +148,7 @@ class MainActivity : ComponentActivity() {
 
                 Box(modifier = Modifier.statusBarsPadding()) {
                     Scaffold(
+                        snackbarHost = { SnackbarHost(snackbarHostState) },
                         bottomBar = {
                             BottomNavBar(
                                 current = currentScreen,
@@ -230,8 +242,12 @@ class MainActivity : ComponentActivity() {
                                 freshMinStockThreshold = viewModel.currentState().freshAutoOrderConfig.minStockThreshold,
                                 freshCasePacksPerItem = viewModel.currentState().freshAutoOrderConfig.casePacksPerItem,
                                 onFreshAutoOrderConfigChanged = { enabled, threshold, packs ->
-                                    viewModel.onEvent(GameEvent.UpdateFreshAutoOrderConfig(enabled, threshold, packs))
-                                }
+                                     viewModel.onEvent(GameEvent.UpdateFreshAutoOrderConfig(enabled, threshold, packs))
+                                },
+                                truckConfig = viewModel.currentState().truckConfig,
+                                onTruckConfigChanged = { days, regularCap, freshCap ->
+                                    viewModel.onEvent(GameEvent.UpdateTruckConfig(days, regularCap, freshCap))
+                                },
                             )
 
                             Screen.INVENTORY -> InventoryAndFreshScreen(
@@ -243,6 +259,7 @@ class MainActivity : ComponentActivity() {
                                 metricsData = state.metrics.completedDays,
                                 resetTrigger = inventoryResetTrigger,
                                 incompleteFreshOrdersCount = viewModel.currentState().incompleteFreshOrders.size,
+                                deliveries = state.delivery,
                                 onBuyItem = { itemId -> viewModel.onEvent(GameEvent.BuyItem(itemId)) },
                                 onSelectCategory = { category -> viewModel.onEvent(GameEvent.SelectItemCategory(category)) },
                                 onBulkOrder = { maxQty, casePacks, category ->
@@ -250,6 +267,15 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onFreshBulkOrder = { showFreshBulkOrderDialog = true },
                                 onViewIncompleteOrders = { showIncompleteOrdersDialog = true },
+                                onCancelOrderLine = { itemId, truckId ->
+                                    viewModel.onEvent(GameEvent.CancelPendingOrderLine(itemId, truckId))
+                                },
+                                onDecrementOrderLine = { itemId, truckId ->
+                                    viewModel.onEvent(GameEvent.DecrementOrderLine(itemId, truckId))
+                                },
+                                onRequestEarlyTruck = {
+                                    viewModel.onEvent(GameEvent.RequestEarlyTruck)
+                                },
                                 onItemClick = { itemId -> selectedInventoryItemId = itemId },
                                 modifier = Modifier.padding(paddingValues)
                             )
@@ -350,6 +376,15 @@ class MainActivity : ComponentActivity() {
                                     metricsData = state.metrics.completedDays,
                                     shelfBatches = inventoryState?.shelfBatches ?: emptyList(),
                                     backroomBatches = inventoryState?.backroomBatches ?: emptyList(),
+                                    pendingDeliveries = (state.delivery.regularTrucks + listOfNotNull(state.delivery.freshTruck))
+                                        .flatMap { truck -> truck.orderLines }
+                                        .filter { line -> line.itemId == selectedId },
+                                    onCancelOrderLine = { itemId, truckId ->
+                                        viewModel.onEvent(GameEvent.CancelPendingOrderLine(itemId, truckId))
+                                    },
+                                    onDecrementOrderLine = { itemId, truckId ->
+                                        viewModel.onEvent(GameEvent.DecrementOrderLine(itemId, truckId))
+                                    },
                                     onBuyItem = { itemId -> viewModel.onEvent(GameEvent.BuyItem(itemId)) },
                                     onBack = { selectedInventoryItemId = null }
                                 )

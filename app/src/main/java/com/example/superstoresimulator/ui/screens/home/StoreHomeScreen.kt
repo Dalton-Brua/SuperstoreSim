@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.domain.store.StoreState
@@ -69,6 +70,8 @@ fun StoreHomeScreen (
     freshMinStockThreshold: Int = 5,
     freshCasePacksPerItem: Int = 1,
     onFreshAutoOrderConfigChanged: (Boolean, Int, Int) -> Unit = { _, _, _ -> },
+    truckConfig: TruckConfig = TruckConfig(),
+    onTruckConfigChanged: (Set<Int>, Int, Int) -> Unit = { _, _, _ -> },
 ) {
     var showTransactionDialog by remember { mutableStateOf(false) }
     var showPendingRefunds by remember { mutableStateOf(false) }
@@ -303,15 +306,9 @@ fun StoreHomeScreen (
                 freshAutoOrderEnabled = freshAutoOrderEnabled,
                 freshMinStockThreshold = freshMinStockThreshold,
                 freshCasePacksPerItem = freshCasePacksPerItem,
-                onFreshAutoOrderEnableChanged = { enabled ->
-                    onFreshAutoOrderConfigChanged(enabled, freshMinStockThreshold, freshCasePacksPerItem)
-                },
-                onFreshMinStockThresholdChanged = { threshold ->
-                    onFreshAutoOrderConfigChanged(freshAutoOrderEnabled, threshold, freshCasePacksPerItem)
-                },
-                onFreshCasePacksPerItemChanged = { packs ->
-                    onFreshAutoOrderConfigChanged(freshAutoOrderEnabled, freshMinStockThreshold, packs)
-                }
+                onFreshAutoOrderConfigChanged = onFreshAutoOrderConfigChanged,
+                truckConfig = truckConfig,
+                onTruckConfigChanged = onTruckConfigChanged,
             )
         }
 

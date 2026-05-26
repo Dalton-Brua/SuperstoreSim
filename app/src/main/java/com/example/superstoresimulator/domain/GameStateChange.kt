@@ -58,5 +58,9 @@ sealed class GameStateChange {
         val totalExpired: Int,
         val wasteCost: Money
     ) : GameStateChange()
+
+    data class OrderScheduled(
+        val arrivalDay: Int,
+    ) : GameStateChange()
 }
 

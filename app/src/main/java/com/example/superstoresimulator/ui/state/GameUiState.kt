@@ -23,6 +23,7 @@ data class GameUiState(
     val time: TimeUIState? = null,
     val metrics: MetricsUIState = MetricsUIState(),
     val progression: ProgressionUIState = ProgressionUIState(),
+    val delivery: DeliveryUIState = DeliveryUIState(),
 )
 
 data class AppUIState(
@@ -75,6 +76,10 @@ data class InventoryItemUI(
     val shelfLifeDays: Int? = null,
     /** The closest expiration day among all batches (null if no stock or non-perishable). */
     val closestExpirationDay: Int? = null,
+    /** Total case packs across all scheduled trucks for this item (0 = no pending deliveries). */
+    val pendingCasePacks: Int = 0,
+    /** Earliest scheduled arrival day among all trucks carrying this item (null if none). */
+    val earliestArrivalDay: Int? = null,
 )
 
 
@@ -133,4 +138,33 @@ data class ProgressionUIState(
      * or null if the revenue gate for the next tier hasn't been crossed yet.
      */
     val availableTier: ItemUnlockTier? = null,
+)
+
+// ── Truck Delivery UI State ───────────────────────────────────────────────────
+
+data class TruckOrderLineUI(
+    val itemId: Int,
+    val itemName: String,
+    val casePacks: Int,
+    val quantity: Int,
+    val canCancel: Boolean,
+    val truckId: Int = 0,
+)
+
+data class TruckUIState(
+    val truckId: Int,
+    val arrivalDay: Int,
+    val arrivalDayOfWeek: Int,    // 0=Mon…6=Sun  (arrivalDay % 7)
+    val capacityUsed: Int,        // used case packs
+    val capacityTotal: Int,       // max case packs
+    val isFreshTruck: Boolean,
+    val isEarlyTruck: Boolean,
+    val orderLines: List<TruckOrderLineUI>,
+)
+
+data class DeliveryUIState(
+    val regularTrucks: List<TruckUIState> = emptyList(),  // sorted by arrival day
+    val freshTruck: TruckUIState? = null,                 // today's+1 fresh truck, if any
+    val earlyTruckAvailable: Boolean = true,              // false when one already scheduled for tomorrow
+    val earlyTruckCost: Money = Money(10_000L),           // always $100
 )

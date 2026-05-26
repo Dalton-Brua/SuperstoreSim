@@ -144,6 +144,12 @@ class IncrementalUiStateBuilder(private val initialState: GameUiState) {
                 // in the end-of-day report's Shrinkage section. No immediate UI update needed.
                 currentState
             }
+
+            is GameStateChange.OrderScheduled -> {
+                // Truck order confirmation — handled by ViewModel snackbar;
+                // no immediate UI state patch needed here.
+                currentState
+            }
         }
         return currentState
     }

@@ -131,6 +131,13 @@ class BulkOrderTest {
         )
     }
 
+    /** With the truck system orders go to scheduledTrucks, not directly to backroom. */
+    private fun scheduledQtyForItem(engine: GameEngine, itemId: Int): Int =
+        engine.currentState().scheduledTrucks
+            .flatMap { it.orders }
+            .filter { it.itemId == itemId }
+            .sumOf { it.quantity }
+
     // ── Basic order (no discount) ─────────────────────────────────────────────
 
     @Test
@@ -150,10 +157,10 @@ class BulkOrderTest {
 
         val state = engine.currentState()
         assertEquals("Money after order (no discount)", Money(90_800L), state.money)
-        // Item 1: 10 + 6×2 = 22 units in backroom
-        assertEquals("Item 1 backroom after 2 case packs", 22, state.inventory[1]?.backroomStock)
-        // Item 2: 10 + 4×2 = 18 units in backroom
-        assertEquals("Item 2 backroom after 2 case packs", 18, state.inventory[2]?.backroomStock)
+        // Item 1: 2 case packs × 6 items = 12 units scheduled for delivery
+        assertEquals("Item 1 scheduled 12 units", 12, scheduledQtyForItem(engine, 1))
+        // Item 2: 2 case packs × 4 items = 8 units scheduled for delivery
+        assertEquals("Item 2 scheduled 8 units", 8, scheduledQtyForItem(engine, 2))
     }
 
     // ── Category filter ───────────────────────────────────────────────────────
@@ -174,7 +181,7 @@ class BulkOrderTest {
 
         val state = engine.currentState()
         assertEquals("Money after GROCERY-only order", Money(94_000L), state.money)
-        assertEquals("Item 1 (GROCERY) backroom increases by 2 case packs", 22, state.inventory[1]?.backroomStock)
+        assertEquals("Item 1 (GROCERY) scheduled 12 units", 12, scheduledQtyForItem(engine, 1))
         assertEquals("Item 2 (SNACKS) backroom must be unchanged", 10, state.inventory[2]?.backroomStock)
     }
 
@@ -192,8 +199,8 @@ class BulkOrderTest {
 
         val state = engine.currentState()
         assertEquals("Both items ordered: money", Money(90_800L), state.money)
-        assertEquals("Item 1 backroom increases", 22, state.inventory[1]?.backroomStock)
-        assertEquals("Item 2 backroom increases", 18, state.inventory[2]?.backroomStock)
+        assertEquals("Item 1 scheduled 12 units", 12, scheduledQtyForItem(engine, 1))
+        assertEquals("Item 2 scheduled 8 units", 8, scheduledQtyForItem(engine, 2))
     }
 
     // ── Stock threshold filter ─────────────────────────────────────────────────
@@ -229,8 +236,8 @@ class BulkOrderTest {
 
         val state = engine.currentState()
         assertEquals("Money must decrease by exactly one case-pack cost", Money(97_000L), state.money)
-        // 10 + 6×1 = 16
-        assertEquals("Backroom must increase by one case pack", 16, state.inventory[1]?.backroomStock)
+        // 1 case pack × 6 items = 6 units scheduled for delivery
+        assertEquals("6 units scheduled for delivery", 6, scheduledQtyForItem(engine, 1))
     }
 
     // ── Per-item tier gate ─────────────────────────────────────────────────────
@@ -251,7 +258,7 @@ class BulkOrderTest {
 
         val state = engine.currentState()
         assertEquals("Money reflects only TIER_1 item", Money(97_000L), state.money)
-        assertEquals("Item 1 (TIER_1) backroom increases", 16, state.inventory[1]?.backroomStock)
+        assertEquals("Item 1 (TIER_1) scheduled 6 units", 6, scheduledQtyForItem(engine, 1))
         assertEquals("Item 3 (TIER_2) backroom must be unchanged at TIER_1", 10, state.inventory[3]?.backroomStock)
     }
 
@@ -272,8 +279,8 @@ class BulkOrderTest {
 
         val state = engine.currentState()
         assertEquals("Both items ordered: money after order", Money(93_400L), state.money)
-        assertEquals("Item 1 (TIER_1) backroom increases", 16, state.inventory[1]?.backroomStock)
-        assertEquals("Item 3 (TIER_2) backroom increases at TIER_2", 16, state.inventory[3]?.backroomStock)
+        assertEquals("Item 1 (TIER_1) scheduled 6 units", 6, scheduledQtyForItem(engine, 1))
+        assertEquals("Item 3 (TIER_2) scheduled 6 units", 6, scheduledQtyForItem(engine, 3))
     }
 
     // ── Discount boundary: 0% → 10% at 20 cases ──────────────────────────────
@@ -294,8 +301,8 @@ class BulkOrderTest {
         engine.placeBulkOrder(maxTotalQuantity = 20, casePacksPerItem = 19, categoryFilter = null)
 
         assertEquals("No discount at 19 cases: money", Money(943_000L), engine.currentState().money)
-        // backroom: 10 + 6×19 = 124
-        assertEquals("Item 1 backroom at 19 cases", 124, engine.currentState().inventory[1]?.backroomStock)
+        // 19 case packs × 6 items = 114 units scheduled for delivery
+        assertEquals("Item 1 scheduled 114 units", 114, scheduledQtyForItem(engine, 1))
     }
 
     @Test
@@ -314,8 +321,8 @@ class BulkOrderTest {
         engine.placeBulkOrder(maxTotalQuantity = 20, casePacksPerItem = 20, categoryFilter = null)
 
         assertEquals("10% discount at exactly 20 cases: money", Money(946_000L), engine.currentState().money)
-        // backroom: 10 + 6×20 = 130
-        assertEquals("Item 1 backroom at 20 cases", 130, engine.currentState().inventory[1]?.backroomStock)
+        // 20 case packs × 6 items = 120 units scheduled
+        assertEquals("Item 1 scheduled 120 units", 120, scheduledQtyForItem(engine, 1))
     }
 
     // ── Discount boundary: 10% → 15% at 50 cases ─────────────────────────────
@@ -336,8 +343,8 @@ class BulkOrderTest {
         engine.placeBulkOrder(maxTotalQuantity = 20, casePacksPerItem = 49, categoryFilter = null)
 
         assertEquals("10% discount at 49 cases: money", Money(867_700L), engine.currentState().money)
-        // backroom: 10 + 6×49 = 304
-        assertEquals("Item 1 backroom at 49 cases", 304, engine.currentState().inventory[1]?.backroomStock)
+        // 49 case packs × 6 items = 294 units scheduled
+        assertEquals("Item 1 scheduled 294 units", 294, scheduledQtyForItem(engine, 1))
     }
 
     @Test
@@ -356,8 +363,8 @@ class BulkOrderTest {
         engine.placeBulkOrder(maxTotalQuantity = 20, casePacksPerItem = 50, categoryFilter = null)
 
         assertEquals("15% discount at exactly 50 cases: money", Money(872_500L), engine.currentState().money)
-        // backroom: 10 + 6×50 = 310
-        assertEquals("Item 1 backroom at 50 cases", 310, engine.currentState().inventory[1]?.backroomStock)
+        // 50 case packs × 6 items = 300 units scheduled
+        assertEquals("Item 1 scheduled 300 units", 300, scheduledQtyForItem(engine, 1))
     }
 
     // ── Discount boundary: 15% → 25% at 100 cases ────────────────────────────
@@ -378,8 +385,8 @@ class BulkOrderTest {
         engine.placeBulkOrder(maxTotalQuantity = 20, casePacksPerItem = 99, categoryFilter = null)
 
         assertEquals("15% discount at 99 cases: money", Money(747_550L), engine.currentState().money)
-        // backroom: 10 + 6×99 = 604
-        assertEquals("Item 1 backroom at 99 cases", 604, engine.currentState().inventory[1]?.backroomStock)
+        // 99 case packs × 6 items = 594 units scheduled
+        assertEquals("Item 1 scheduled 594 units", 594, scheduledQtyForItem(engine, 1))
     }
 
     @Test
@@ -398,8 +405,8 @@ class BulkOrderTest {
         engine.placeBulkOrder(maxTotalQuantity = 20, casePacksPerItem = 100, categoryFilter = null)
 
         assertEquals("25% discount at exactly 100 cases: money", Money(775_000L), engine.currentState().money)
-        // backroom: 10 + 6×100 = 610
-        assertEquals("Item 1 backroom at 100 cases", 610, engine.currentState().inventory[1]?.backroomStock)
+        // 100 case packs × 6 items = 600 units scheduled
+        assertEquals("Item 1 scheduled 600 units", 600, scheduledQtyForItem(engine, 1))
     }
 
     // ── Guard: insufficient funds ─────────────────────────────────────────────
@@ -508,15 +515,17 @@ class BulkOrderTest {
 
         engine.buyItemToBackroom(1)
 
-        assertEquals("Backroom must increase by one case pack", 16, engine.currentState().inventory[1]?.backroomStock)
+        assertEquals("One case pack (6 units) scheduled for delivery", 6, scheduledQtyForItem(engine, 1))
+        assertEquals("Backroom unchanged — items are in transit", 10, engine.currentState().inventory[1]?.backroomStock)
         assertEquals("Money must decrease by one case pack cost", Money(97_000L), engine.currentState().money)
     }
 
     @Test
-    fun `buyItemCasePacks clamps delivery to full case packs that fit within the cap`() {
-        // backroomStock=10, casePack=6, cap=28 → available=18 → floor(18/6)=3 case packs fit.
-        // Requested 10, but only 3 delivered.
-        // cost = 3_000×3 = 9_000 ¢;  money: 100_000 - 9_000 = 91_000
+    fun `buyItemCasePacks splits across trucks when order exceeds per-truck cap`() {
+        // backroomStock=10, casePack=6 → 1 case pack in backroom. cap=4.
+        // totalCommitted=1, maxPreOrder=MAX_TRUCKS_AHEAD(2)×4=8, remainingAllowable=7.
+        // Requested 10, but only 7 delivered (split as [4,3] across 2 trucks).
+        // cost = 3_000×7 = 21_000 ¢; money: 100_000 - 21_000 = 79_000
         val items = listOf(
             makeItem(id = 1, category = ItemCategory.GROCERY, casePack = 6, unitCostCents = 500),
         )
@@ -526,13 +535,17 @@ class BulkOrderTest {
 
         engine.buyItemCasePacks(1, 10)
 
-        assertEquals("Backroom must increase by only 3 case packs (18 units)", 28, engine.currentState().inventory[1]?.backroomStock)
-        assertEquals("Money must decrease by cost of 3 case packs only", Money(91_000L), engine.currentState().money)
+        assertEquals("7 case packs (42 units) scheduled for delivery", 42, scheduledQtyForItem(engine, 1))
+        assertEquals("Backroom unchanged — items are in transit", 10, engine.currentState().inventory[1]?.backroomStock)
+        assertEquals("Money must decrease by cost of 7 case packs", Money(79_000L), engine.currentState().money)
     }
 
     @Test
-    fun `buyItemCasePacks is a no-op when the backroom is already at or above the cap`() {
-        // backroomStock=10, casePack=6, cap=10 → available=0 → no case packs fit.
+    fun `buyItemCasePacks pre-orders when backroom is at cap but transit is empty`() {
+        // backroomStock=10, casePack=6, cap=1 → 1 case pack in backroom (= cap).
+        // totalCommitted=1, maxPreOrder=MAX_TRUCKS_AHEAD(2)×1=2, remainingAllowable=1.
+        // Can order 1 more case pack (goes on next truck).
+        // cost = 3_000×1 = 3_000 ¢; money: 100_000 - 3_000 = 97_000
         val items = listOf(
             makeItem(id = 1, category = ItemCategory.GROCERY, casePack = 6, unitCostCents = 500),
         )
@@ -542,8 +555,9 @@ class BulkOrderTest {
 
         engine.buyItemCasePacks(1, 5)
 
-        assertEquals("Backroom must be unchanged when no room remains", 10, engine.currentState().inventory[1]?.backroomStock)
-        assertEquals("Money must be unchanged when no room remains", Money(100_000L), engine.currentState().money)
+        assertEquals("1 case pack (6 units) scheduled for delivery", 6, scheduledQtyForItem(engine, 1))
+        assertEquals("Backroom unchanged — items are in transit", 10, engine.currentState().inventory[1]?.backroomStock)
+        assertEquals("Money must decrease by 1 case pack cost", Money(97_000L), engine.currentState().money)
     }
 
     @Test
@@ -567,7 +581,8 @@ class BulkOrderTest {
         engine.placeBulkOrder(maxTotalQuantity = 100, casePacksPerItem = 2, categoryFilter = null)
 
         assertEquals("Item 1 backroom must be unchanged (at cap)", 50, engine.currentState().inventory[1]?.backroomStock)
-        assertEquals("Item 2 backroom must increase by 2 case packs", 18, engine.currentState().inventory[2]?.backroomStock)
+        assertEquals("Item 2: 2 case packs (8 units) scheduled for delivery", 8, scheduledQtyForItem(engine, 2))
+        assertEquals("Item 2 backroom unchanged — delivery in transit", 10, engine.currentState().inventory[2]?.backroomStock)
         assertEquals("Money must reflect only item 2's order", Money(96_800L), engine.currentState().money)
     }
 
@@ -586,7 +601,8 @@ class BulkOrderTest {
 
         engine.placeBulkOrder(maxTotalQuantity = 20, casePacksPerItem = 5, categoryFilter = null)
 
-        assertEquals("Backroom must increase by only 3 case packs (18 units, limited by cap)", 28, engine.currentState().inventory[1]?.backroomStock)
+        assertEquals("3 case packs (18 units) scheduled for delivery", 18, scheduledQtyForItem(engine, 1))
+        assertEquals("Backroom unchanged — delivery in transit", 10, engine.currentState().inventory[1]?.backroomStock)
         assertEquals("Money must reflect only the 3 delivered case packs", Money(91_000L), engine.currentState().money)
     }
 
@@ -609,9 +625,9 @@ class BulkOrderTest {
 
         engine.placeBulkOrder(maxTotalQuantity = 20, casePacksPerItem = 20, categoryFilter = null)
 
-        // Each item: 10 + 3×6 = 28 in backroom
-        assertEquals("Item 1 backroom capped at 28", 28, engine.currentState().inventory[1]?.backroomStock)
-        assertEquals("Item 4 backroom capped at 28", 28, engine.currentState().inventory[4]?.backroomStock)
+        // Each item: 3 case packs (18 units) scheduled for delivery
+        assertEquals("Item 1: 3 case packs (18 units) scheduled for delivery", 18, scheduledQtyForItem(engine, 1))
+        assertEquals("Item 4: 3 case packs (18 units) scheduled for delivery", 18, scheduledQtyForItem(engine, 4))
         assertEquals("No discount applied — only 12 actual cases delivered (< 20 threshold)", Money(64_000L), engine.currentState().money)
     }
 }

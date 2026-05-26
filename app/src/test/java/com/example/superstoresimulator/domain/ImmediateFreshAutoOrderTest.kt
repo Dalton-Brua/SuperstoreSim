@@ -119,20 +119,28 @@ class ImmediateFreshAutoOrderTest {
         engine.tick(10_000L)
     }
 
+    // ── Helpers ─────────────────────────────────────────────────────────────────
+
+    /** Returns total units scheduled across all trucks for the given item. */
+    private fun scheduledQtyForItem(engine: GameEngine, itemId: Int): Int =
+        engine.currentState().scheduledTrucks
+            .flatMap { it.orders }
+            .filter { it.itemId == itemId }
+            .sumOf { it.quantity }
+
     // ── Tests ───────────────────────────────────────────────────────────────────
 
     @Test
-    fun `successful auto-order deducts money and increases backroom immediately`() {
+    fun `successful auto-order deducts money and schedules delivery`() {
         val freshItem = makeFreshItem(id = 1)
         val engine = newEngine(listOf(freshItem))
 
-        // Give the engine enough cash for one case-pack ($6.00 = 600¢)
+        // Hire first (costs 1_500¢), then reset money to just enough for one case-pack (600¢)
+        engine.state = engine.state.copy(money = Money(10_000L))
+        engine.hireEntity(EntityDef.FRESH_HANDLER, EntityType.FRESH_HANDLERS)
         engine.state = engine.state.copy(money = Money(600L))
 
-        // Hire one fresh handler so fresh-handler progress ticks
-        engine.hireEntity(EntityDef.FRESH_HANDLER, EntityType.FRESH_HANDLERS)
-
-        // Empty the backroom so the handler stocks nothing → forced idle → auto-order fires
+        // Empty the backroom so the handler has nothing to stock → idle → auto-order fires
         engine.state = engine.state.copy(
             inventory = engine.state.inventory.mapValues { (_, inv) ->
                 inv.copy(backroomBatches = emptyList())
@@ -140,13 +148,12 @@ class ImmediateFreshAutoOrderTest {
         )
 
         val moneyBefore = engine.state.money
-        val backroomBefore = engine.state.inventory[1]?.backroomStock ?: 0
 
         // Enable auto-ordering with threshold above current stock
         engine.state = engine.state.copy(
             freshAutoOrderConfig = FreshAutoOrderConfig(
                 enabled = true,
-                minStockThreshold = 100, // well above current stock
+                minStockThreshold = 100, // well above current stock (shelfStock=10)
                 casePacksPerItem = 1,
             )
         )
@@ -155,7 +162,7 @@ class ImmediateFreshAutoOrderTest {
 
         val stateAfter = engine.currentState()
 
-        // Money should be deducted by casePackCost = 600¢
+        // Money should be deducted by casePackCost = 600¢ (deducted immediately at order time)
         assertTrue(
             "Money should be deducted after successful auto-order",
             stateAfter.money < moneyBefore
@@ -166,13 +173,18 @@ class ImmediateFreshAutoOrderTest {
             stateAfter.money
         )
 
-        // Backroom should have more stock
-        val backroomAfter = stateAfter.inventory[1]?.backroomStock ?: 0
-        assertTrue(
-            "Backroom stock should increase after successful auto-order",
-            backroomAfter > backroomBefore
+        // With the truck delivery system items are scheduled, not immediately in backroom
+        assertEquals(
+            "One case-pack (6 units) scheduled for delivery",
+            6,
+            scheduledQtyForItem(engine, 1)
         )
-        assertEquals("One case-pack (6 units) added to backroom", backroomBefore + 6, backroomAfter)
+        // Backroom is unchanged — items are in transit
+        assertEquals(
+            "Backroom stock unchanged (items are in transit via truck)",
+            0,
+            stateAfter.inventory[1]?.backroomStock ?: 0
+        )
     }
 
     @Test
@@ -180,6 +192,7 @@ class ImmediateFreshAutoOrderTest {
         val freshItem = makeFreshItem(id = 1)
         val engine = newEngine(listOf(freshItem))
 
+        // Hire first (costs 1_500¢) then proceed — remaining money covers the 600¢ order
         engine.state = engine.state.copy(money = Money(10_000L))
         engine.hireEntity(EntityDef.FRESH_HANDLER, EntityType.FRESH_HANDLERS)
         engine.state = engine.state.copy(
@@ -212,10 +225,11 @@ class ImmediateFreshAutoOrderTest {
         val freshItem = makeFreshItem(id = 1)
         val engine = newEngine(listOf(freshItem))
 
-        // Not enough money for the 600¢ case-pack
-        engine.state = engine.state.copy(money = Money(100L))
+        // Hire first (costs 1_500¢), then drop money below the 600¢ case-pack cost
+        engine.state = engine.state.copy(money = Money(10_000L))
         engine.hireEntity(EntityDef.FRESH_HANDLER, EntityType.FRESH_HANDLERS)
         engine.state = engine.state.copy(
+            money = Money(100L),  // not enough for the 600¢ case-pack
             inventory = engine.state.inventory.mapValues { (_, inv) ->
                 inv.copy(backroomBatches = emptyList())
             },
@@ -263,9 +277,11 @@ class ImmediateFreshAutoOrderTest {
         val freshItem = makeFreshItem(id = 1)
         val engine = newEngine(listOf(freshItem))
 
-        engine.state = engine.state.copy(money = Money(600L))
+        // Hire first (costs 1_500¢), then set money to cover exactly one order (600¢)
+        engine.state = engine.state.copy(money = Money(10_000L))
         engine.hireEntity(EntityDef.FRESH_HANDLER, EntityType.FRESH_HANDLERS)
         engine.state = engine.state.copy(
+            money = Money(600L),
             inventory = engine.state.inventory.mapValues { (_, inv) ->
                 inv.copy(backroomBatches = emptyList())
             },

@@ -5,10 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.GameEngine
 import com.example.superstoresimulator.domain.GameState
+import com.example.superstoresimulator.domain.GameStateChange
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemDataLoader
+import com.example.superstoresimulator.domain.time.GameTime
 import com.example.superstoresimulator.ui.state.AppUIState
 import com.example.superstoresimulator.ui.state.DashboardUIState
+import com.example.superstoresimulator.ui.state.DeliveryUIState
 import com.example.superstoresimulator.ui.state.GameUiState
 import com.example.superstoresimulator.ui.state.HistoryUIState
 import com.example.superstoresimulator.ui.state.MetricsUIState
@@ -16,12 +19,17 @@ import com.example.superstoresimulator.ui.state.ProgressionUIState
 import com.example.superstoresimulator.ui.state.StaffUIState
 import com.example.superstoresimulator.ui.state.TransactionUIState
 import com.example.superstoresimulator.ui.state.TimeUIState
+import com.example.superstoresimulator.ui.state.TruckUIState
+import com.example.superstoresimulator.ui.state.TruckOrderLineUI
 import com.example.superstoresimulator.ui.GameEvent
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.ui.state.mappers.MemoizedInventoryMapper
 import com.example.superstoresimulator.ui.state.builders.IncrementalUiStateBuilder
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -50,6 +58,10 @@ class GameViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<GameUiState?>(null)
 
     val uiState = _uiState.asStateFlow()
+
+    /** One-shot snackbar messages from truck ordering feedback. */
+    private val _snackbarMessage = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val snackbarMessage: SharedFlow<String> = _snackbarMessage.asSharedFlow()
 
     // Cache previous states to detect changes
     // Only rebuild UI state when domain state actually changes
@@ -98,6 +110,16 @@ class GameViewModel @Inject constructor(
                     // that bypassed the builder are not overwritten by a stale patch.
                     val newState = incrementalBuilder!!.applyChange(change, _uiState.value)
                     _uiState.value = newState
+                }
+                // Handle snackbar for order scheduling
+                if (change is GameStateChange.OrderScheduled) {
+                    val day = change.arrivalDay
+                    val dayOfWeekName = when (day % 7) {
+                        0 -> "Monday"; 1 -> "Tuesday"; 2 -> "Wednesday"; 3 -> "Thursday"
+                        4 -> "Friday"; 5 -> "Saturday"; 6 -> "Sunday"
+                        else -> "Day $day"
+                    }
+                    _snackbarMessage.tryEmit("Order placed — arriving $dayOfWeekName, Day ${day + 1}")
                 }
             }
         }
@@ -264,6 +286,26 @@ class GameViewModel @Inject constructor(
                 )
             }
 
+            is GameEvent.UpdateTruckConfig -> {
+                gameEngine.updateTruckConfig(
+                    event.deliveryDays,
+                    event.regularCapacityCasePacks,
+                    event.freshCapacityCasePacks,
+                )
+            }
+
+            is GameEvent.CancelPendingOrderLine -> {
+                gameEngine.cancelPendingOrderLine(event.itemId, event.truckId)
+            }
+
+            is GameEvent.DecrementOrderLine -> {
+                gameEngine.decrementOrderLine(event.itemId, event.truckId)
+            }
+
+            GameEvent.RequestEarlyTruck -> {
+                gameEngine.requestEarlyTruck()
+            }
+
             GameEvent.Tick -> gameEngine.tick(tickDelta)
 
         }
@@ -347,7 +389,8 @@ class GameViewModel @Inject constructor(
                 showEndOfDayReport = domain.showEndOfDayReport,
                 lastReport = domain.lastEndOfDayReport,
             ),
-            progression = buildProgressionUiState(domain, null)
+            progression = buildProgressionUiState(domain, null),
+            delivery = buildDeliveryUiState(domain),
         )
     }
 
@@ -396,7 +439,10 @@ class GameViewModel @Inject constructor(
                 pendingCustomers = domain.pendingCustomers,
                 completedToday = domain.currentDayMetrics.transactionsCompleted,
             ),
-            inventory = inventoryMapper.map(domain.inventory, domain.currentTier, domain.storeConfig.backroomCapPerItem).copy(
+            inventory = inventoryMapper.map(
+                domain.inventory, domain.currentTier, domain.storeConfig.backroomCapPerItem,
+                domain.scheduledTrucks
+            ).copy(
                 selectedCategory = oldUi?.inventory?.selectedCategory,
                 focusedItemId = oldUi?.inventory?.focusedItemId,
             ),
@@ -413,7 +459,7 @@ class GameViewModel @Inject constructor(
             time = TimeUIState(
                 currentTime = domain.currentTime,
                 storeState = domain.storeState,
-                speedMultiplier = domain.storeConfig.gameSpeedMultiplier,  // Already the multiplier (1x, 2x, 4x)
+                speedMultiplier = domain.storeConfig.gameSpeedMultiplier,
                 playerPausedTime = domain.playerPausedTime,
                 playerRole = domain.playerRole,
                 playerCashierProgress = domain.playerCashierProgress,
@@ -428,6 +474,7 @@ class GameViewModel @Inject constructor(
                 lastReport = domain.lastEndOfDayReport,
             ),
             progression = buildProgressionUiState(domain, oldUi?.progression),
+            delivery = buildDeliveryUiState(domain),
         )
     }
 
@@ -460,7 +507,57 @@ class GameViewModel @Inject constructor(
                newDomainState.completedDayMetrics.size != oldDomainState.completedDayMetrics.size ||
                newDomainState.currentTier != oldDomainState.currentTier ||
                newDomainState.totalRevenue != oldDomainState.totalRevenue ||
-               newDomainState.currentStoreSize != oldDomainState.currentStoreSize
+               newDomainState.currentStoreSize != oldDomainState.currentStoreSize ||
+               newDomainState.scheduledTrucks != oldDomainState.scheduledTrucks
+    }
+
+    private fun buildDeliveryUiState(domain: GameState): DeliveryUIState {
+        val currentDay = domain.currentTime.dayNumber
+        val nextDay = currentDay + 1
+
+        fun makeTruckUI(truck: com.example.superstoresimulator.domain.ScheduledTruck): TruckUIState {
+            return TruckUIState(
+                truckId = truck.truckId,
+                arrivalDay = truck.scheduledArrivalDay,
+                arrivalDayOfWeek = truck.scheduledArrivalDay % 7,
+                capacityUsed = truck.usedCapacityCasePacks,
+                capacityTotal = truck.capacityCasePacks,
+                isFreshTruck = truck.isFreshTruck,
+                isEarlyTruck = truck.isEarlyTruck,
+                orderLines = truck.orders
+                    .groupBy { it.itemId }
+                    .map { (itemId, lines) ->
+                        TruckOrderLineUI(
+                            itemId = itemId,
+                            itemName = itemMetadataCache.get(itemId)?.name ?: "Item $itemId",
+                            casePacks = lines.sumOf { it.casePacksCount },
+                            quantity = lines.sumOf { it.quantity },
+                            canCancel = truck.scheduledArrivalDay > currentDay,
+                            truckId = truck.truckId,
+                        )
+                    }
+            )
+        }
+
+        val freshTruck = domain.scheduledTrucks
+            .firstOrNull { it.isFreshTruck && it.scheduledArrivalDay == nextDay }
+            ?.let { makeTruckUI(it) }
+
+        val regularTrucks = domain.scheduledTrucks
+            .filter { !it.isFreshTruck }
+            .sortedBy { it.scheduledArrivalDay }
+            .map { makeTruckUI(it) }
+
+        val earlyTruckAlreadyExists = domain.scheduledTrucks.any {
+            it.isEarlyTruck && it.scheduledArrivalDay == nextDay
+        }
+
+        return DeliveryUIState(
+            regularTrucks = regularTrucks,
+            freshTruck = freshTruck,
+            earlyTruckAvailable = !earlyTruckAlreadyExists,
+            earlyTruckCost = com.example.superstoresimulator.domain.Money(10_000L),
+        )
     }
 
     /**

@@ -226,20 +226,24 @@ class InventoryManagerTest {
     }
 
     // ── buyItemToBackroom ─────────────────────────────────────────────────────
+    // NOTE: buyItemToBackroom now returns BuyResult (money deducted, orderLines produced).
+    // Items are no longer added directly to backroom — check orderLines instead.
 
     @Test
-    fun `buyItemToBackroom adds one case-pack to backroom and deducts cost`() {
+    fun `buyItemToBackroom produces one order line and deducts cost`() {
         val state = stateWith(1 to inv(0, 0))
         val result = manager.buyItemToBackroom(state, itemId = 1)
-        assertEquals(6, result.inventory[1]!!.backroomStock) // casePack = 6
-        assertEquals(state.money - item1CasePackCost, result.money)
+        assertEquals(1, result.orderLines.size)
+        assertEquals(6, result.orderLines[0].quantity) // casePack = 6
+        assertEquals(1, result.orderLines[0].casePacksCount)
+        assertEquals(state.money - item1CasePackCost, result.state.money)
     }
 
     @Test
     fun `buyItemToBackroom increments itemsOrdered metric`() {
         val state = stateWith(1 to inv(0, 0))
         val result = manager.buyItemToBackroom(state, itemId = 1)
-        assertEquals(6, result.currentDayMetrics.itemsOrdered)
+        assertEquals(6, result.state.currentDayMetrics.itemsOrdered)
     }
 
     @Test
@@ -251,7 +255,8 @@ class InventoryManagerTest {
             backroomCap = 2,
         )
         val result = manager.buyItemToBackroom(state, itemId = 1)
-        assertEquals(state, result)
+        assertTrue(result.orderLines.isEmpty())
+        assertEquals(state, result.state)
     }
 
     @Test
@@ -262,49 +267,59 @@ class InventoryManagerTest {
             money = Money(2_999L),
         )
         val result = manager.buyItemToBackroom(state, itemId = 1)
-        assertEquals(state, result)
+        assertTrue(result.orderLines.isEmpty())
+        assertEquals(state, result.state)
     }
 
     // ── buyItemCasePacks ──────────────────────────────────────────────────────
+    // NOTE: buyItemCasePacks now returns BuyResult (money deducted, orderLines produced).
 
     @Test
-    fun `buyItemCasePacks adds correct units for requested case-packs`() {
+    fun `buyItemCasePacks produces order line with correct units and deducts cost`() {
         // 2 case-packs × casePack 6 = 12 units
         val state = stateWith(1 to inv(0, 0))
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 2)
-        assertEquals(12, result.inventory[1]!!.backroomStock)
-        assertEquals(state.money - item1CasePackCost * 2, result.money)
+        assertEquals(1, result.orderLines.size)
+        assertEquals(12, result.orderLines[0].quantity)
+        assertEquals(2, result.orderLines[0].casePacksCount)
+        assertEquals(state.money - item1CasePackCost * 2, result.state.money)
     }
 
     @Test
-    fun `buyItemCasePacks clamps delivery to fit backroom cap`() {
-        // Cap is measured in case-packs.
-        // backroom=10 with casePack=6 => 1 current case-pack.
-        // cap=2 => available=1 case-pack; request 3 => clamp to 1.
+    fun `buyItemCasePacks splits across trucks when order exceeds per-truck cap`() {
+        // cap=2, backroom 10 units (=1 case-pack of 6), transit=0, request 3.
+        // totalCommitted=1, maxPreOrder=MAX_TRUCKS_AHEAD(2)×2=4, remainingAllowable=3 → order all 3.
+        // Split: [cap=2, 1] → 2 lines for 2 separate trucks.
         val state = stateWith(
             1 to inv(0, 10),
             backroomCap = 2,
         )
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 3)
-        assertEquals(16, result.inventory[1]!!.backroomStock)
-        assertEquals(state.money - item1CasePackCost, result.money)
+        assertEquals(2, result.orderLines.size)  // split into 2 lines for 2 trucks
+        assertEquals(3, result.orderLines.sumOf { it.casePacksCount })  // 3 total case packs
+        assertEquals(state.money - item1CasePackCost * 3, result.state.money)
     }
 
     @Test
     fun `buyItemCasePacks is no-op when numCasePacks is zero`() {
         val state = stateWith(1 to inv(0, 0))
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 0)
-        assertEquals(state, result)
+        assertTrue(result.orderLines.isEmpty())
+        assertEquals(state, result.state)
     }
 
     @Test
-    fun `buyItemCasePacks is no-op when backroom is already full`() {
+    fun `buyItemCasePacks can pre-order when backroom is full if truck slots available`() {
+        // backroom at cap (12 units = 2 case packs, cap=2) but transit empty.
+        // Multi-truck: totalCommitted=2, maxPreOrder=4, remaining=2 → order 1 succeeds.
         val state = stateWith(
             1 to inv(0, 12),
             backroomCap = 2,
         )
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 1)
-        assertEquals(state, result)
+        assertEquals(1, result.orderLines.size)
+        assertEquals(1, result.orderLines[0].casePacksCount)
+        assertEquals(state.money - item1CasePackCost, result.state.money)
     }
 
     @Test
@@ -315,16 +330,20 @@ class InventoryManagerTest {
             money = Money(8_999L),
         )
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 3)
-        assertEquals(state, result)
+        assertTrue(result.orderLines.isEmpty())
+        assertEquals(state, result.state)
     }
 
     // ── placeBulkOrder ────────────────────────────────────────────────────────
+    // NOTE: placeBulkOrder now returns BuyResult. Items are scheduled for delivery,
+    // not added directly to backroom. Check orderLines instead of inventory changes.
 
     @Test
     fun `placeBulkOrder is no-op when casePacksPerItem is zero`() {
         val state = stateWith(1 to inv(0, 0))
         val result = manager.placeBulkOrder(state, maxTotalQuantity = 100, casePacksPerItem = 0, categoryFilter = null)
-        assertEquals(state, result)
+        assertTrue(result.orderLines.isEmpty())
+        assertEquals(state, result.state)
     }
 
     @Test
@@ -335,8 +354,8 @@ class InventoryManagerTest {
             2 to inv(0, 0),
         )
         val result = manager.placeBulkOrder(state, maxTotalQuantity = 100, casePacksPerItem = 1, categoryFilter = null)
-        assertTrue(result.inventory[1]!!.backroomStock > 0)
-        assertTrue(result.inventory[2]!!.backroomStock > 0)
+        assertTrue(result.orderLines.any { it.itemId == 1 })
+        assertTrue(result.orderLines.any { it.itemId == 2 })
     }
 
     @Test
@@ -347,9 +366,9 @@ class InventoryManagerTest {
             2 to inv(0, 0),
         )
         val result = manager.placeBulkOrder(state, maxTotalQuantity = 15, casePacksPerItem = 1, categoryFilter = null)
-        // Item 1 unchanged; item 2 received 1 case-pack
-        assertEquals(10, result.inventory[1]!!.backroomStock)
-        assertTrue(result.inventory[2]!!.backroomStock > 0)
+        // Item 1 skipped; item 2 ordered
+        assertTrue(result.orderLines.none { it.itemId == 1 })
+        assertTrue(result.orderLines.any { it.itemId == 2 })
     }
 
     @Test
@@ -361,8 +380,8 @@ class InventoryManagerTest {
             currentTier = ItemUnlockTier.TIER_1,
         )
         val result = manager.placeBulkOrder(state, maxTotalQuantity = 100, casePacksPerItem = 1, categoryFilter = null)
-        assertEquals(0, result.inventory[3]!!.backroomStock)   // tier-blocked
-        assertTrue(result.inventory[1]!!.backroomStock > 0)    // allowed
+        assertTrue(result.orderLines.none { it.itemId == 3 })   // tier-blocked
+        assertTrue(result.orderLines.any { it.itemId == 1 })    // allowed
     }
 
     @Test
@@ -375,8 +394,8 @@ class InventoryManagerTest {
         val result = manager.placeBulkOrder(
             state, maxTotalQuantity = 100, casePacksPerItem = 1, categoryFilter = ItemCategory.GROCERY,
         )
-        assertTrue(result.inventory[1]!!.backroomStock > 0)   // GROCERY — ordered
-        assertEquals(0, result.inventory[2]!!.backroomStock)  // SNACKS — filtered out
+        assertTrue(result.orderLines.any { it.itemId == 1 })          // GROCERY — ordered
+        assertTrue(result.orderLines.none { it.itemId == 2 })         // SNACKS — filtered out
     }
 
     @Test
@@ -403,7 +422,7 @@ class InventoryManagerTest {
 
         val baseCost = Money(3_000L * 20)            // 20 × 3_000 ¢
         val discountedCost = Money((baseCost.cents * 0.9).toLong())
-        assertEquals(startMoney - discountedCost, result.money)
+        assertEquals(startMoney - discountedCost, result.state.money)
     }
 
     @Test
@@ -413,7 +432,8 @@ class InventoryManagerTest {
             money = Money(1L),   // essentially broke
         )
         val result = manager.placeBulkOrder(state, maxTotalQuantity = 100, casePacksPerItem = 1, categoryFilter = null)
-        assertEquals(state, result)
+        assertTrue(result.orderLines.isEmpty())
+        assertEquals(state, result.state)
     }
 
     // ── GameEngine integration tests ──────────────────────────────────────────
@@ -472,43 +492,42 @@ class InventoryManagerTest {
     fun `buyItemToBackroom adds casePack and deducts money (via GameEngine)`() {
         val engine = newGameEngineWithItems()
         setEngineMoneyTo(engine, 10_000L)
-        val initialBackroom = engine.currentState().inventory[1]?.backroomStock ?: 0
         val initialMoney = engine.currentState().money
 
         engine.buyItemToBackroom(1)
 
-        val finalBackroom = engine.currentState().inventory[1]?.backroomStock ?: 0
-        val finalMoney = engine.currentState().money
-        assertTrue("Backroom should increase", finalBackroom > initialBackroom)
-        assertTrue("Money should decrease", finalMoney < initialMoney)
+        // With truck system: money deducted immediately, item scheduled for delivery
+        assertTrue("Money should decrease", engine.currentState().money < initialMoney)
+        assertTrue("Order should be scheduled", engine.currentState().scheduledTrucks.isNotEmpty())
     }
 
     @Test
     fun `buyItemToBackroom is no-op when insufficient funds (via GameEngine)`() {
         val engine = newGameEngineWithItems()
         // Engine starts with 0 money
-        val initialBackroom = engine.currentState().inventory[1]?.backroomStock ?: 0
         val initialMoney = engine.currentState().money
 
         engine.buyItemToBackroom(1)
 
-        val finalBackroom = engine.currentState().inventory[1]?.backroomStock ?: 0
         val finalMoney = engine.currentState().money
-        assertEquals("Backroom should not change", initialBackroom, finalBackroom)
         assertEquals("Money should not change", initialMoney, finalMoney)
+        assertTrue("No truck should be scheduled", engine.currentState().scheduledTrucks.isEmpty())
     }
 
     @Test
     fun `buyItemCasePacks adds multiple case packs (via GameEngine)`() {
         val engine = newGameEngineWithItems()
         setEngineMoneyTo(engine, 50_000L)
-        val initialBackroom = engine.currentState().inventory[1]?.backroomStock ?: 0
 
         engine.buyItemCasePacks(1, 3)
 
-        val finalBackroom = engine.currentState().inventory[1]?.backroomStock ?: 0
-        // item_1 has casePack=6, so 3 case packs = +18 units
-        assertTrue("Backroom should increase by 18", finalBackroom >= initialBackroom + 18)
+        // With truck system: check scheduled quantity, not backroom directly
+        val scheduledQty = engine.currentState().scheduledTrucks
+            .flatMap { it.orders }
+            .filter { it.itemId == 1 }
+            .sumOf { it.quantity }
+        // item_1 has casePack=6, so 3 case packs = 18 units scheduled
+        assertEquals("Should schedule 18 units for delivery", 18, scheduledQty)
     }
 
     @Test

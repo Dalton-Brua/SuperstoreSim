@@ -28,6 +28,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
@@ -292,7 +293,7 @@ private fun InventoryListScreen(
             items(filteredItems) { item ->
                 InventoryItemCard(
                     item = item.copy(name = itemNames.value[item.id] ?: item.name),
-                    canAffordBuy = money >= item.unitCost,
+                    canAffordBuy = money >= item.casePackCost,
                     onBuy = { onBuyItem(item.id) },
                     onClick = { onItemClick(item.id) }
                 )
@@ -373,6 +374,9 @@ internal fun InventoryItemDetailScreen(
     metricsData: List<DailyMetrics>,
     shelfBatches: List<ItemBatch> = emptyList(),
     backroomBatches: List<ItemBatch> = emptyList(),
+    pendingDeliveries: List<com.example.superstoresimulator.ui.state.TruckOrderLineUI> = emptyList(),
+    onCancelOrderLine: (itemId: Int, truckId: Int) -> Unit = { _, _ -> },
+    onDecrementOrderLine: (itemId: Int, truckId: Int) -> Unit = { _, _ -> },
     onBuyItem: (Int) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
@@ -944,7 +948,60 @@ internal fun InventoryItemDetailScreen(
                     metricsData = metricsData
                 )
             }
-            
+
+            // Pending Deliveries card (shown only when there are pending lines for this item)
+            if (pendingDeliveries.isNotEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(Color.White),
+                        elevation = CardDefaults.cardElevation(2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "🚚 Pending Deliveries",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1E293B)
+                            )
+                            pendingDeliveries.forEach { line ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    val dow = line.truckId % 7  // proxy for display; full info in DeliveriesScreen
+                                    Text(
+                                        text = "${line.casePacks} cases · ${line.quantity} units",
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF1E293B),
+                                    )
+                                    if (line.canCancel) {
+                                        if (line.casePacks > 1) {
+                                            FilterChip(
+                                                selected = false,
+                                                onClick = { onDecrementOrderLine(item.id, line.truckId) },
+                                                label = { Text("Cancel 1", fontSize = 11.sp) },
+                                            )
+                                        }
+                                        FilterChip(
+                                            selected = false,
+                                            onClick = { onCancelOrderLine(item.id, line.truckId) },
+                                            label = { Text("Cancel", fontSize = 11.sp) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Order button
             item {
                 Button(
@@ -1241,62 +1298,49 @@ fun InventoryAndFreshScreen(
     resetTrigger: Int = 0,
     initialTab: Int = 0,
     incompleteFreshOrdersCount: Int = 0,
+    deliveries: com.example.superstoresimulator.ui.state.DeliveryUIState = com.example.superstoresimulator.ui.state.DeliveryUIState(),
     onTabChanged: (Int) -> Unit = {},
     onBuyItem: (Int) -> Unit,
     onSelectCategory: (ItemCategory?) -> Unit,
     onBulkOrder: (maxTotalQuantity: Int, casePacksPerItem: Int, categoryFilter: ItemCategory?) -> Unit = { _, _, _ -> },
     onFreshBulkOrder: () -> Unit = {},
     onViewIncompleteOrders: () -> Unit = {},
+    onCancelOrderLine: (itemId: Int, truckId: Int) -> Unit = { _, _ -> },
+    onDecrementOrderLine: (itemId: Int, truckId: Int) -> Unit = { _, _ -> },
+    onRequestEarlyTruck: () -> Unit = {},
     onItemClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Only show Fresh tab if TIER_2 or above (first perishables unlock)
     val showFreshTab = currentTier.unlockAmount >= ItemUnlockTier.TIER_2.unlockAmount
-    
-    // If Fresh tab is not available, just show the inventory screen directly
-    if (!showFreshTab) {
-        InventoryScreen(
-            state = state,
-            money = money,
-            itemMetadataCache = itemMetadataCache,
-            currentTier = currentTier,
-            metricsData = metricsData,
-            resetTrigger = resetTrigger,
-            onBuyItem = onBuyItem,
-            onSelectCategory = onSelectCategory,
-            onBulkOrder = onBulkOrder,
-            onItemClick = onItemClick,
-            modifier = modifier
-        )
-        return
-    }
-    
-    val tabs = listOf("Inventory", "Fresh")
-    
+
+    // Deliveries tab is always visible (truck system replaces instant delivery for all tiers)
+    val tabs = if (showFreshTab) listOf("Inventory", "Fresh", "Deliveries") else listOf("Inventory", "Deliveries")
+
     // Pager state for tab navigation
     val pagerState = rememberPagerState(
-        pageCount = { 2 },
-        initialPage = initialTab
+        pageCount = { tabs.size },
+        initialPage = initialTab.coerceIn(0, tabs.size - 1)
     )
     val coroutineScope = rememberCoroutineScope()
-    
+
     // Track selected tab
-    var selectedTab by remember { mutableIntStateOf(initialTab) }
-    
+    var selectedTab by remember { mutableIntStateOf(initialTab.coerceIn(0, tabs.size - 1)) }
+
     // Update selectedTab when initialTab changes from outside
     LaunchedEffect(initialTab) {
-        if (selectedTab != initialTab) {
-            selectedTab = initialTab
-            if (pagerState.currentPage != initialTab) {
-                pagerState.animateScrollToPage(initialTab)
+        val clamped = initialTab.coerceIn(0, tabs.size - 1)
+        if (selectedTab != clamped) {
+            selectedTab = clamped
+            if (pagerState.currentPage != clamped) {
+                pagerState.animateScrollToPage(clamped)
             }
         }
     }
-    
+
     // Update selectedTab when user swipes to a different page
     LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
         if (!pagerState.isScrollInProgress) {
-            // User finished swiping to a new page
             if (selectedTab != pagerState.currentPage) {
                 selectedTab = pagerState.currentPage
                 onTabChanged(pagerState.currentPage)
@@ -1323,7 +1367,7 @@ fun InventoryAndFreshScreen(
             tabs.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTab == index,
-                    onClick = { 
+                    onClick = {
                         selectedTab = index
                         onTabChanged(index)
                         coroutineScope.launch {
@@ -1341,8 +1385,11 @@ fun InventoryAndFreshScreen(
             state = pagerState,
             modifier = Modifier.fillMaxSize()
         ) { page ->
-            when (page) {
-                0 -> InventoryScreen(
+            // Tab layout depends on whether Fresh tab is visible:
+            //   showFreshTab=true  → 0=Inventory, 1=Fresh, 2=Deliveries
+            //   showFreshTab=false → 0=Inventory, 1=Deliveries
+            when {
+                page == 0 -> InventoryScreen(
                     state = state,
                     money = money,
                     itemMetadataCache = itemMetadataCache,
@@ -1354,7 +1401,7 @@ fun InventoryAndFreshScreen(
                     onBulkOrder = onBulkOrder,
                     onItemClick = onItemClick
                 )
-                1 -> FreshScreen(
+                showFreshTab && page == 1 -> FreshScreen(
                     items = state.items,
                     money = money,
                     currentDay = currentDay,
@@ -1362,6 +1409,14 @@ fun InventoryAndFreshScreen(
                     onItemClick = onItemClick,
                     onFreshBulkOrder = onFreshBulkOrder,
                     onViewIncompleteOrders = onViewIncompleteOrders
+                )
+                else -> DeliveriesScreen(
+                    deliveries = deliveries,
+                    money = money,
+                    currentDay = currentDay,
+                    onCancelOrderLine = onCancelOrderLine,
+                    onDecrementOrderLine = onDecrementOrderLine,
+                    onRequestEarlyTruck = onRequestEarlyTruck,
                 )
             }
         }
