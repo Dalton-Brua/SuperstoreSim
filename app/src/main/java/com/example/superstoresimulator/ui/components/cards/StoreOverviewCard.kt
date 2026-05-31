@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,7 +17,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,7 +30,8 @@ import com.example.superstoresimulator.ui.theme.TextSecondary
 fun StoreOverviewCard(
     cash: Money,
     totalEmployees: Int,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    activeEmployees: Int = totalEmployees,
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -48,7 +47,7 @@ fun StoreOverviewCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 CashMetric(cash)
-                EmployeeMetric(totalEmployees)
+                EmployeeMetric(totalEmployees = totalEmployees, activeEmployees = activeEmployees)
             }
         }
     }
@@ -68,14 +67,17 @@ private fun CashMetric(cash: Money) {
 }
 
 @Composable
-private fun EmployeeMetric(totalEmployees: Int) {
+private fun EmployeeMetric(totalEmployees: Int, activeEmployees: Int = totalEmployees) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.People, null,  Modifier.size(20.dp), Primary)
+            Icon(Icons.Default.People, null, Modifier.size(20.dp), Primary)
             Spacer(Modifier.width(4.dp))
         }
         Text("$totalEmployees", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = PrimaryDark)
-        Text("Employees", color = TextSecondary, fontSize = 12.sp)
+        if (activeEmployees < totalEmployees) {
+            Text("$activeEmployees active / $totalEmployees total", color = TextSecondary, fontSize = 12.sp)
+        } else {
+            Text("Employees", color = TextSecondary, fontSize = 12.sp)
+        }
     }
 }
-

@@ -47,7 +47,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.Screen
 import com.example.superstoresimulator.domain.items.ItemDao
@@ -230,18 +229,18 @@ class MainActivity : ComponentActivity() {
                                 onSkipDay = { viewModel.onEvent(GameEvent.SkipDay) },
                                 onUpgradeStore = { viewModel.onEvent(GameEvent.UpgradeStoreSize) },
                                 onUnlockNextTier = { viewModel.onEvent(GameEvent.UnlockNextTier) },
-                                onNavigateToUnlocks = { 
-                                    val targetIndex = mainScreens.indexOf(Screen.STAFF)
-                                    if (targetIndex != -1) {
-                                        isNavigatingProgrammatically = true
-                                        selectedStaffTab = 1  // 1 = Unlocks tab
-                                        currentScreen = Screen.STAFF
-                                        coroutineScope.launch {
-                                            pagerState.animateScrollToPage(targetIndex)
-                                            isNavigatingProgrammatically = false
-                                        }
-                                    }
-                                },
+                                 onNavigateToUnlocks = {
+                                     val targetIndex = mainScreens.indexOf(Screen.STAFF)
+                                     if (targetIndex != -1) {
+                                         isNavigatingProgrammatically = true
+                                         selectedStaffTab = 2  // 2 = Unlocks tab (Staff=0, Schedule=1, Unlocks=2)
+                                         currentScreen = Screen.STAFF
+                                         coroutineScope.launch {
+                                             pagerState.animateScrollToPage(targetIndex)
+                                             isNavigatingProgrammatically = false
+                                         }
+                                     }
+                                 },
                                 onSave = { viewModel.onEvent(GameEvent.SaveGame) },
                                 onReset = { viewModel.onEvent(GameEvent.ResetGame) },
                                 freshAutoOrderEnabled = viewModel.currentState().freshAutoOrderConfig.enabled,
@@ -255,10 +254,19 @@ class MainActivity : ComponentActivity() {
                                 onTruckConfigChanged = { days, regularCap, freshCap ->
                                     viewModel.onEvent(GameEvent.UpdateTruckConfig(days, regularCap, freshCap))
                                 },
-                                onPurchaseExtraTruckSlot = {
-                                    viewModel.onEvent(GameEvent.PurchaseExtraTruckSlot)
-                                },
-                            )
+                                 onPurchaseExtraTruckSlot = {
+                                     viewModel.onEvent(GameEvent.PurchaseExtraTruckSlot)
+                                 },
+                                 onPurchaseRegister = {
+                                     viewModel.onEvent(GameEvent.PurchaseRegister)
+                                 },
+                                 onAssignPlayerToRegister = { registerId ->
+                                     viewModel.onEvent(GameEvent.AssignPlayerToRegister(registerId))
+                                 },
+                                 onAssignCashierToRegister = { cashierId, registerId ->
+                                     viewModel.onEvent(GameEvent.AssignCashierToRegister(cashierId, registerId))
+                                 },
+                             )
 
                             Screen.INVENTORY -> InventoryAndFreshScreen(
                                 state = state.inventory,
@@ -290,20 +298,23 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(paddingValues)
                             )
 
-                            Screen.STAFF -> StaffAndUnlocksScreen(
-                                staffState = state.staff,
-                                progression = state.progression,
-                                money = state.app.money,
-                                initialTab = selectedStaffTab,
-                                onTabChanged = { tab -> selectedStaffTab = tab },
-                                onSelectStaffType = { type ->
-                                    viewModel.onEvent(GameEvent.SelectStaffType(type))
-                                    currentScreen = Screen.STAFF_ENTITY_LIST
-                                },
-                                onUnlockNextTier = { viewModel.onEvent(GameEvent.UnlockNextTier) },
-                                modifier = Modifier.padding(paddingValues)
-                            )
-                                
+                             Screen.STAFF -> StaffAndUnlocksScreen(
+                                 staffState = state.staff,
+                                 progression = state.progression,
+                                 money = state.app.money,
+                                 initialTab = selectedStaffTab,
+                                 onTabChanged = { tab -> selectedStaffTab = tab },
+                                 onSelectStaffDef = { def ->
+                                     viewModel.onEvent(GameEvent.SelectStaffDef(def))
+                                     currentScreen = Screen.STAFF_ENTITY_LIST
+                                 },
+                                 onUnlockNextTier = { viewModel.onEvent(GameEvent.UnlockNextTier) },
+                                 onUpdateShift = { entityId, newStartHour ->
+                                     viewModel.onEvent(GameEvent.UpdateShift(entityId, newStartHour))
+                                 },
+                                 modifier = Modifier.padding(paddingValues)
+                             )
+
                             Screen.HISTORY -> SalesHistoryScreen(
                                 state = state.history,
                                 itemDao = itemDao,
@@ -347,14 +358,13 @@ class MainActivity : ComponentActivity() {
                             EntityTypeDetailScreen(
                                 state = state.staff,
                                 money = state.app.money,
-                                type = state.staff.selectedType,
+                                def = state.staff.selectedDef,
                                 currentTier = state.progression.currentTier,
-                                onHire = { def ->
-                                    viewModel.onEvent(GameEvent.HireStaff(def, state.staff.selectedType )) },
+                                onHire = { def -> viewModel.onEvent(GameEvent.HireStaff(def)) },
                                 onFire = { id -> viewModel.onEvent(GameEvent.FireStaff(id)) },
-                                onUpgrade = { id -> viewModel.onEvent(GameEvent.UpgradeStaff(id)) },
+                                onUpgrade = { id -> viewModel.onEvent(GameEvent.PromoteStaff(id)) },
                                 onBack = {
-                                    viewModel.onEvent(GameEvent.SelectStaffType(EntityType.NONE))
+                                    viewModel.onEvent(GameEvent.SelectStaffDef(null))
                                     currentScreen = Screen.STAFF
                                 }
                             )

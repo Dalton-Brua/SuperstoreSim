@@ -1,7 +1,6 @@
 package com.example.superstoresimulator.domain
 
 import com.example.superstoresimulator.domain.Entities.EntityDef
-import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemDao
@@ -181,7 +180,15 @@ class StockRandomItemFromBackroomTest {
     @Test
     fun testTickWithStockerTriggersStocking() {
         setMoney(10_000L)
-        gameEngine.hireEntity(EntityDef.STOCKER, EntityType.STOCKERS)
+        gameEngine.hireEntity(EntityDef.STOCKER)
+
+        // Phase 1 made staff schedule-aware: the hired stocker gets a Morning shift
+        // (startHour = 6) and only accumulates work during hours 6–14.  The engine
+        // starts at GameTime(0) (midnight, hour 0), so we must advance to 6:30 AM
+        // (GameTime(390)) before running the stocking ticks.
+        // loadState() syncs both state.currentTime and the internal TimeManager so
+        // the first tick doesn't overwrite the offset.
+        gameEngine.loadState(gameEngine.state.copy(currentTime = com.example.superstoresimulator.domain.time.GameTime(390)))
 
         val shelfsBefore    = gameEngine.currentState().inventory.mapValues { (_, v) -> v.shelfStock }
         val backroomsBefore = gameEngine.currentState().inventory.mapValues { (_, v) -> v.backroomStock }
@@ -205,7 +212,7 @@ class StockRandomItemFromBackroomTest {
         setMoney(100_000L)
 
         // ── 1 stocker, 10 ticks → 10 × 0.1 = 1 stock ──────────────────────
-        gameEngine.hireEntity(EntityDef.STOCKER, EntityType.STOCKERS)
+        gameEngine.hireEntity(EntityDef.STOCKER)
         val backroomBefore1 = gameEngine.currentState().inventory.values.sumOf { it.backroomStock }
 
         repeat(10) { gameEngine.tick(1_000) }
@@ -214,7 +221,7 @@ class StockRandomItemFromBackroomTest {
             gameEngine.currentState().inventory.values.sumOf { it.backroomStock }
 
         // ── add 2nd stocker, 10 more ticks → 10 × 0.2 = 2 stocks ──────────
-        gameEngine.hireEntity(EntityDef.STOCKER, EntityType.STOCKERS)
+        gameEngine.hireEntity(EntityDef.STOCKER)
         val backroomBefore2 = gameEngine.currentState().inventory.values.sumOf { it.backroomStock }
 
         repeat(10) { gameEngine.tick(1_000) }
@@ -242,7 +249,7 @@ class StockRandomItemFromBackroomTest {
 
         // Hire stocker and run 50 ticks → 50 × 0.1 = 5 case-pack stocks
         setMoney(10_000L)
-        gameEngine.hireEntity(EntityDef.STOCKER, EntityType.STOCKERS)
+        gameEngine.hireEntity(EntityDef.STOCKER)
         repeat(50) { gameEngine.tick(1_000) }
 
         val newShelf1 = gameEngine.currentState().inventory[1]?.shelfStock ?: 0
@@ -272,7 +279,7 @@ class StockRandomItemFromBackroomTest {
             gameEngine.currentState().inventory.values.all { it.backroomStock == 0 })
 
         setMoney(10_000L)
-        gameEngine.hireEntity(EntityDef.STOCKER, EntityType.STOCKERS)
+        gameEngine.hireEntity(EntityDef.STOCKER)
         val shelvesBefore = gameEngine.currentState().inventory.mapValues { (_, v) -> v.shelfStock }
 
         // Stocker fires stock actions but finds nothing in the backroom — shelves unchanged
@@ -300,7 +307,7 @@ class StockRandomItemFromBackroomTest {
     @Test
     fun testStockingWithInventoryConsistency() {
         setMoney(10_000L)
-        gameEngine.hireEntity(EntityDef.STOCKER, EntityType.STOCKERS)
+        gameEngine.hireEntity(EntityDef.STOCKER)
 
         val totalBefore = gameEngine.currentState().inventory.values
             .sumOf { it.shelfStock + it.backroomStock }

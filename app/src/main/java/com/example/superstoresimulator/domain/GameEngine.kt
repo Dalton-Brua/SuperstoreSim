@@ -1,7 +1,7 @@
 package com.example.superstoresimulator.domain
 
 import com.example.superstoresimulator.domain.Entities.EntityDef
-import com.example.superstoresimulator.domain.Entities.EntityType
+import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.Transactions.TransactionEngine
 import com.example.superstoresimulator.domain.delivery.TruckManager
 import com.example.superstoresimulator.domain.expiration.SpoilageManager
@@ -29,6 +29,11 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     private val txEngine = TransactionEngine(cache = itemMetadataCache)
+
+    private companion object {
+        const val XP_PER_TRANSACTION = 5
+        const val XP_PER_STOCK_ACTION = 1
+    }
     private val timeManager = TimeManager()
     private val trafficManager = TrafficManager()
     private val progressionManager = ProgressionManager()
@@ -82,12 +87,13 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                     backroomBatches = listOf(startingBatch),
                 )
             }
-            // state = state.copy(inventory = inventory)
-            state = state.copy(inventory = inventory,
-                money = Money(10_000_000L),
+            //state = state.copy(inventory = inventory)
+            state = state.copy(
+                inventory = inventory,
+                money = Money(5_000_000),
                 currentTier = ItemUnlockTier.TIER_2,
                 currentStoreSize = StoreSize.SMALL_GROCERY,
-                storeConfig = StoreConfig(backroomCapPerItem = StoreSize.SMALL_GROCERY.backroomCapPerItem))
+                storeConfig = StoreConfig(backroomCapPerItem = StoreSize.SMALL_GROCERY.backroomCapPerItem)) // For testing progression and unlocked items
         }
     }
     
@@ -168,16 +174,23 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
 
     // Transaction operations
     fun startTransaction() {
-        // Only start a new transaction if one is not already in progress.
+        // Only start a new transaction if one is not already in progress on the default register.
         // Previously had a second unconditional `if (storeState != CLOSED)` call here
         // which caused startNewTransaction to fire twice, skipping every other ID.
-        if (!state.transactionActive && state.storeState != StoreState.CLOSED) {
-            state = txEngine.startNewTransaction(state)
+        val defaultRegisterId = state.registers.firstOrNull()?.registerId ?: 0
+        val register = state.registers.findRegisterById(defaultRegisterId)
+        if (register != null && !register.transactionActive && state.storeState != StoreState.CLOSED) {
+            state = txEngine.startNewTransaction(state, defaultRegisterId)
         }
     }
-    fun ringUpItem(itemId: Int) {
+
+    /**
+     * Ring up a specific item on a specific register, tracking daily metrics.
+     * This is the authoritative ring-up path — all other ring-up helpers delegate here.
+     */
+    private fun ringUpItemAndTrackMetrics(itemId: Int, registerId: Int) {
         val prevCompleted = state.totalTransactionsCompleted
-        state = txEngine.ringUpSingleItem(state, itemId)
+        state = txEngine.ringUpSingleItem(state, itemId, registerId)
         // If a transaction just completed, record it in today's accumulator
         if (state.totalTransactionsCompleted > prevCompleted && state.salesHistory.isNotEmpty()) {
             val tx = state.salesHistory.last()
@@ -226,21 +239,51 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                     soldItemEvents = acc.soldItemEvents + soldEvents,
                 )
             )
+
+            // Grant XP to the hired cashier assigned to this register (not the player).
+            val reg = state.registers.findRegisterById(tx.registerId)
+            val cashierId = reg?.assignedCashierId
+            if (cashierId != null) {
+                state = state.copy(
+                    hiredEntityRegistry = state.hiredEntityRegistry.grantXp(cashierId, XP_PER_TRANSACTION)
+                )
+            }
         }
     }
 
-    fun ringUpItem() {
-        val lines = state.currentTransaction.lines
-
-        // Exclude lines that are already fully rung OR already marked lost to OOS
+    /**
+     * Ring up a random un-rung line from the active transaction on [registerId].
+     * Used by AI cashiers during the tick.
+     */
+    private fun ringUpItemOnRegister(registerId: Int) {
+        val register = state.registers.findRegisterById(registerId) ?: return
+        val lines = register.currentTransaction.lines
         val ringable = lines.filter { it.rungQty < it.quantity && !it.lostToOutOfStock }
         if (ringable.isEmpty()) return
-
-        // Pick one at random
         val randomLine = ringable.random()
+        ringUpItemAndTrackMetrics(randomLine.itemId, registerId)
+    }
 
-        // Ring up that specific item
-        ringUpItem(randomLine.itemId)
+    /**
+     * Public: ring up [itemId] on the player's assigned register (or register 0 as fallback).
+     * Called from [GameViewModel] when the player manually taps an item.
+     */
+    fun ringUpItem(itemId: Int) {
+        val registerId = state.playerAssignedRegisterId
+            ?: state.registers.firstOrNull()?.registerId
+            ?: return
+        ringUpItemAndTrackMetrics(itemId, registerId)
+    }
+
+    /**
+     * Public: ring up a random item on the player's active register.
+     * Kept for compatibility with event-based ring-up (GameEvent.RingUp).
+     */
+    fun ringUpItem() {
+        val registerId = state.playerAssignedRegisterId
+            ?: state.registers.firstOrNull()?.registerId
+            ?: return
+        ringUpItemOnRegister(registerId)
     }
 
     fun processRefund(refundId: Int) {
@@ -259,14 +302,40 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     fun processRefundLine(refundId: Int, itemId: Int, qty: Int = 1) {
         state = txEngine.processRefundLine(state, refundId, itemId, qty)
     }
-    fun hireEntity(def: EntityDef, type: EntityType) {
-        state = staffManager.hireEntity(state, def, type)
+    fun hireEntity(def: EntityDef) {
+        state = staffManager.hireEntity(state, def)
+        if (def == EntityDef.CASHIER) {
+            var updatedRegisters = state.registers
+            val unassignedCashiers = state.hiredEntityRegistry.hiredEntities.filter { entity ->
+                entity.entityDefinition == EntityDef.CASHIER &&
+                    updatedRegisters.none { reg -> reg.assignedCashierId == entity.id }
+            }
+            for (cashier in unassignedCashiers) {
+                val freeRegister = updatedRegisters.firstOrNull { it.assignedCashierId == null }
+                if (freeRegister != null) {
+                    updatedRegisters = updatedRegisters.updateRegister(
+                        freeRegister.copy(assignedCashierId = cashier.id)
+                    )
+                }
+            }
+            if (updatedRegisters != state.registers) {
+                state = state.copy(registers = updatedRegisters)
+            }
+        }
     }
-    fun upgradeEntity(entityId: Int) {
-        state = staffManager.upgradeEntity(state, entityId)
+    fun promoteEntity(entityId: Int) {
+        state = staffManager.promoteEntity(state, entityId)
     }
     fun fireEntity(entityId: Int) {
         state = staffManager.fireEntity(state, entityId)
+        // Unassign the employee from any register they were covering.
+        val updatedRegisters = state.registers.map { register ->
+            if (register.assignedCashierId == entityId) register.copy(assignedCashierId = null)
+            else register
+        }
+        if (updatedRegisters != state.registers) {
+            state = state.copy(registers = updatedRegisters)
+        }
     }
 
     /**
@@ -303,6 +372,16 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             if (newDayNumber != dayManager.lastKnownDayNumber) {
                 state = dayManager.rollOverDay(state, dayManager.lastKnownDayNumber)
                 dayManager.advanceDay(newDayNumber)
+                // Clear any transactions left open at midnight (e.g. from skip-day) and
+                // reset cashier progress accumulators so stale fractional work doesn't
+                // carry into the new day.
+                state = state.copy(
+                    registers = state.registers.map { it.copy(
+                        currentTransaction = Transaction(),
+                        transactionActive = false,
+                    )}
+                )
+                staffManager.reset()
                 // Process truck arrivals at the start of each new day
                 state = truckManager.processArrivals(state, newDayNumber)
             }
@@ -318,6 +397,36 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             val multiplier = state.storeConfig.gameSpeedMultiplier
             val currentHour = state.currentTime.hour
 
+            // Unassign cashiers whose shift has ended so the register becomes free for reassignment.
+             val registersAfterShiftCheck = state.registers.map { reg ->
+                 val assignedId = reg.assignedCashierId ?: return@map reg
+                 val shift = state.staffSchedules.firstOrNull { it.entityId == assignedId }
+                 if (shift != null && !shift.isOnShift(currentHour)) reg.copy(assignedCashierId = null)
+                 else reg
+             }
+             if (registersAfterShiftCheck != state.registers) {
+                 state = state.copy(registers = registersAfterShiftCheck)
+             }
+
+             // Reassign unassigned on-shift cashiers to free registers
+             var registersAfterReassignment = state.registers
+             val unassignedOnShiftCashiers = state.hiredEntityRegistry.hiredEntities.filter { cashier ->
+                 cashier.entityDefinition == EntityDef.CASHIER &&
+                 registersAfterReassignment.none { reg -> reg.assignedCashierId == cashier.id } &&
+                 state.staffSchedules.firstOrNull { it.entityId == cashier.id }?.isOnShift(currentHour) != false
+             }
+             for (cashier in unassignedOnShiftCashiers) {
+                 val freeRegister = registersAfterReassignment.firstOrNull { it.assignedCashierId == null }
+                 if (freeRegister != null) {
+                     registersAfterReassignment = registersAfterReassignment.updateRegister(
+                         freeRegister.copy(assignedCashierId = cashier.id)
+                     )
+                 }
+             }
+             if (registersAfterReassignment != state.registers) {
+                 state = state.copy(registers = registersAfterReassignment)
+             }
+
             // Phase 2: Traffic arrivals — add to the waiting queue (don't start directly)
             if (state.storeState == StoreState.OPEN) {
                 val newCustomers = trafficManager.update(state, delta)
@@ -326,42 +435,62 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 }
             }
 
-            // Phase 2: Dequeue the next waiting customer when the register is free
-            if (state.storeState == StoreState.OPEN &&
-                !state.transactionActive &&
-                state.pendingCustomers > 0
-            ) {
-                val basketSize = (2..5).random()
-                state = txEngine.generateRandomTransaction(state, basketSize)
-                // Only decrement if the transaction actually started
-                if (state.transactionActive) {
-                    state = state.copy(pendingCustomers = (state.pendingCustomers - 1).coerceAtLeast(0))
+            // Phase 3: Dequeue waiting customers to free, staffed registers.
+            // Iterate over all registers; each staffed idle register absorbs one customer.
+            if (state.storeState == StoreState.OPEN && state.pendingCustomers > 0) {
+                val registerIds = state.registers.map { it.registerId }
+                for (registerId in registerIds) {
+                    if (state.pendingCustomers <= 0) break
+                    val reg = state.registers.findRegisterById(registerId) ?: continue
+                    if (reg.transactionActive) continue
+                    if (!isRegisterMannedAndOnShift(registerId, state, currentHour)) continue
+                    val basketSize = (2..5).random()
+                    state = txEngine.generateRandomTransaction(state, basketSize, registerId)
+                    if (state.registers.findRegisterById(registerId)?.transactionActive == true) {
+                        state = state.copy(pendingCustomers = (state.pendingCustomers - 1).coerceAtLeast(0))
+                    }
                 }
             }
 
-            // Process hired cashiers — ring up items in the active transaction.
-            // activeCashiers is a weighted Float: FAST_CASHIER counts as 2.0, on-shift only.
+            // Phase 3: Process hired cashiers per register.
+            // Each register's assigned (or pool) cashier advances that register's transaction.
             if (state.storeState == StoreState.OPEN) {
-                val activeCashiers = StaffManager.activeWeightedCount(
-                    EntityType.CASHIERS, currentHour, state.staffSchedules, state.hiredEntityRegistry
-                )
-                val wholeItems = staffManager.advanceCashierProgress(activeCashiers, delta, multiplier)
-                repeat(wholeItems) { ringUpItem() }
+                val registerIds = state.registers.map { it.registerId }
+                for (registerId in registerIds) {
+                    val reg = state.registers.findRegisterById(registerId) ?: continue
+                    if (!reg.transactionActive) continue
+                    val cashierWeight = getCashierWeightForRegister(registerId, state, currentHour)
+                    if (cashierWeight <= 0f) continue
+                    val actions = staffManager.advanceCashierProgressForRegister(
+                        registerId, cashierWeight, delta, multiplier
+                    )
+                    repeat(actions) { ringUpItemOnRegister(registerId) }
+                }
             }
 
             // Process hired stockers — weighted, on-shift only.
             val activeStockers = StaffManager.activeWeightedCount(
-                EntityType.STOCKERS, currentHour, state.staffSchedules, state.hiredEntityRegistry
+                EntityDef.STOCKER, currentHour, state.staffSchedules, state.hiredEntityRegistry
             )
             val wholeStockActions = staffManager.advanceStockerProgress(activeStockers, delta, multiplier)
             repeat(wholeStockActions) { stockRandomItemFromBackroom() }
+            if (wholeStockActions > 0) {
+                state = state.copy(
+                    hiredEntityRegistry = state.hiredEntityRegistry.grantXpToAll(EntityDef.STOCKER, wholeStockActions * XP_PER_STOCK_ACTION)
+                )
+            }
 
             // Process fresh handlers — weighted, on-shift only.
             val activeFreshHandlers = StaffManager.activeWeightedCount(
-                EntityType.FRESH_HANDLERS, currentHour, state.staffSchedules, state.hiredEntityRegistry
+                EntityDef.FRESH_HANDLER, currentHour, state.staffSchedules, state.hiredEntityRegistry
             )
             val wholeFreshActions = staffManager.advanceFreshHandlerProgress(activeFreshHandlers, delta, multiplier)
             repeat(wholeFreshActions) { stockRandomFreshItemFromBackroom() }
+            if (wholeFreshActions > 0) {
+                state = state.copy(
+                    hiredEntityRegistry = state.hiredEntityRegistry.grantXpToAll(EntityDef.FRESH_HANDLER, wholeFreshActions * XP_PER_STOCK_ACTION)
+                )
+            }
 
             // If fresh handlers are active but have no fresh items in the backroom to stock,
             // attempt auto-ordering regardless of how many actions were accumulated.
@@ -373,6 +502,13 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             }
 
             // Phase 2: Process player work (mutually exclusive roles)
+            // If player is a cashier but has no register yet, try to claim a free one.
+            if (state.playerRole == PlayerRole.CASHIER && state.playerAssignedRegisterId == null) {
+                val freeReg = state.registers.firstOrNull { it.assignedCashierId == null }
+                if (freeReg != null) {
+                    state = state.copy(playerAssignedRegisterId = freeReg.registerId)
+                }
+            }
             when (state.playerRole) {
                 PlayerRole.CASHIER -> performPlayerCashierWork(delta)
                 PlayerRole.STOCKER -> performPlayerStockerWork(delta)
@@ -390,19 +526,37 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     }
 
     /**
-     * Player working as cashier: rings up items in the active transaction.
-     * Progress math delegated to [PlayerActionHandler.calculateCashierWork];
-     * ring-ups are performed here because they mutate live state between iterations.
+     * Player working as cashier: rings up items on the player's assigned register.
+     *
+     * If no register is explicitly assigned ([GameState.playerAssignedRegisterId] is null),
+     * falls back to the first register for backward compatibility with single-register games.
+     *
+     * Guard: if the player is explicitly assigned to a register that already has a hired
+     * cashier, no player work is performed on that register (the cashier covers it).
      */
     private fun performPlayerCashierWork(deltaSeconds: Double) {
+        val registerId = state.playerAssignedRegisterId ?: return
+
+        val register = state.registers.findRegisterById(registerId) ?: return
+
+        // If the player explicitly picked this register but a cashier is already on it, skip.
+        if (state.playerAssignedRegisterId != null && register.assignedCashierId != null) {
+            state = state.copy(playerCashierProgress = 0f)
+            return
+        }
+
         val result = playerActionHandler.calculateCashierWork(state, deltaSeconds)
         var actionsLeft = result.actionsToTake
-        while (actionsLeft > 0 && state.transactionActive) {
-            ringUpItem()
+        while (actionsLeft > 0) {
+            val currentRegister = state.registers.findRegisterById(registerId) ?: break
+            if (!currentRegister.transactionActive) break
+            ringUpItemOnRegister(registerId)
             actionsLeft--
         }
         // Discard leftover progress if the transaction ended during this work cycle.
-        val finalProgress = if (state.transactionActive) result.newProgress else 0f
+        val finalProgress =
+            if (state.registers.findRegisterById(registerId)?.transactionActive == true) result.newProgress
+            else 0f
         state = state.copy(playerCashierProgress = finalProgress)
     }
 
@@ -429,6 +583,166 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
      */
     private fun handleStoreStateChange(newState: StoreState) {
         state = storeController.handleStoreStateChange(state, newState, trafficManager)
+    }
+
+    // ── Register helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Returns true when [registerId] has at least one worker that can serve customers:
+     * - A hired cashier explicitly assigned to it who is currently on shift, OR
+     * - The player assigned to it with [PlayerRole.CASHIER] active, OR
+     * - Manager mode: when [PlayerRole.NONE], unassigned on-shift cashiers are dynamically
+     *   allocated to unassigned registers (in register-id order) by the player acting as manager.
+     * - (Backward compat) Any on-shift cashier if this is the only register and it has
+     *   no explicit assignment (mirrors pre-Phase-3 behaviour for single-register saves).
+     */
+    private fun isRegisterMannedAndOnShift(
+        registerId: Int,
+        state: GameState,
+        currentHour: Int,
+    ): Boolean {
+        val register = state.registers.findRegisterById(registerId) ?: return false
+
+        // Player-assigned check
+        if (state.playerAssignedRegisterId == registerId && state.playerRole == PlayerRole.CASHIER) {
+            return true
+        }
+
+        // Explicit cashier assignment check
+        val assignedId = register.assignedCashierId
+        if (assignedId != null) {
+            val shift = state.staffSchedules.firstOrNull { it.entityId == assignedId }
+            return shift?.isOnShift(currentHour) == true
+        }
+
+        // Manager mode: player with NONE role acts as manager, dynamically assigning
+        // unassigned on-shift cashiers to unassigned registers (in register-id order).
+        if (state.playerRole == PlayerRole.NONE) {
+            val unassignedCount = StaffManager.unassignedOnShiftCashierCount(
+                currentHour, state.staffSchedules, state.hiredEntityRegistry, state.registers
+            )
+            if (unassignedCount <= 0) return false
+            val unassignedRegisters = state.registers
+                .filter { it.assignedCashierId == null }
+                .sortedBy { it.registerId }
+            val indexInUnassigned = unassignedRegisters.indexOfFirst { it.registerId == registerId }
+            return indexInUnassigned in 0 until unassignedCount
+        }
+
+        // Backward-compat fallback: single register with no assignment →
+        // any on-shift cashier staffs it (matches pre-Phase-3 behaviour).
+        if (state.registers.size == 1) {
+            return StaffManager.activeWeightedCount(
+                EntityDef.CASHIER, currentHour, state.staffSchedules, state.hiredEntityRegistry
+            ) > 0f || state.playerRole == PlayerRole.CASHIER
+        }
+
+        return false
+    }
+
+    /**
+     * Returns the total cashier throughput weight available for [registerId].
+     *
+     * - For explicitly assigned registers: weight of the assigned cashier (if on shift).
+     * - Manager mode: pool weight (unassigned on-shift cashiers) divided evenly across
+     *   the manned unassigned registers (capped to the number of available cashiers).
+     * - Backward-compat single-register fallback: sum of all on-shift cashiers.
+     */
+    private fun getCashierWeightForRegister(
+        registerId: Int,
+        state: GameState,
+        currentHour: Int,
+    ): Float {
+        val register = state.registers.findRegisterById(registerId) ?: return 0f
+        val assignedId = register.assignedCashierId
+
+        if (assignedId != null) {
+            val cashier = try {
+                state.hiredEntityRegistry.getById(assignedId)
+            } catch (e: NoSuchElementException) {
+                return 0f
+            }
+            val shift = state.staffSchedules.firstOrNull { it.entityId == assignedId }
+            return if (shift?.isOnShift(currentHour) == true)
+                cashier.throughputWeight
+            else 0f
+        }
+
+        // Manager mode: divide the unassigned cashier pool weight across the manned
+        // unassigned registers (number of manned registers ≤ number of cashiers).
+        if (state.playerRole == PlayerRole.NONE) {
+            val unassignedCount = StaffManager.unassignedOnShiftCashierCount(
+                currentHour, state.staffSchedules, state.hiredEntityRegistry, state.registers
+            )
+            if (unassignedCount <= 0) return 0f
+            val unassignedRegisters = state.registers
+                .filter { it.assignedCashierId == null }
+                .sortedBy { it.registerId }
+            val mannedCount = minOf(unassignedCount, unassignedRegisters.size)
+            val indexInUnassigned = unassignedRegisters.indexOfFirst { it.registerId == registerId }
+            if (indexInUnassigned !in 0 until mannedCount) return 0f
+            val totalWeight = StaffManager.unassignedOnShiftCashierWeight(
+                currentHour, state.staffSchedules, state.hiredEntityRegistry, state.registers
+            )
+            return totalWeight / mannedCount
+        }
+
+        // Backward-compat: single register with no assignment → global pool
+        if (state.registers.size == 1) {
+            return StaffManager.activeWeightedCount(
+                EntityDef.CASHIER, currentHour, state.staffSchedules, state.hiredEntityRegistry
+            )
+        }
+
+        return 0f
+    }
+
+    // ── Register management ───────────────────────────────────────────────────
+
+    /**
+     * Purchase one additional register, subject to store-size cap and affordability.
+     * Delegates guards and state mutation to [StoreController.purchaseRegister].
+     */
+    fun purchaseRegister() {
+        val moneyBefore = state.money
+        state = storeController.purchaseRegister(state)
+        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
+    }
+
+    /**
+     * Assign (or unassign) a hired cashier to a register.
+     *
+     * Guards:
+     * - [cashierId] must belong to an existing entity when non-null.
+     * - The cashier must not already be assigned to a different register.
+     * - [registerId] must exist.
+     */
+    fun assignCashierToRegister(cashierId: Int?, registerId: Int) {
+        val register = state.registers.findRegisterById(registerId) ?: return
+        if (cashierId != null) {
+            // Validate cashier exists
+            try { state.hiredEntityRegistry.getById(cashierId) } catch (e: NoSuchElementException) { return }
+            // Must not be assigned elsewhere
+            if (state.registers.any { it.registerId != registerId && it.assignedCashierId == cashierId }) return
+        }
+        state = state.copy(
+            registers = state.registers.updateRegister(register.copy(assignedCashierId = cashierId))
+        )
+    }
+
+    /**
+     * Assign (or unassign) the player to a register.
+     *
+     * Guards:
+     * - Non-null [registerId] must exist.
+     * - Cannot assign player to a register that already has a hired cashier.
+     */
+    fun assignPlayerToRegister(registerId: Int?) {
+        if (registerId != null) {
+            val register = state.registers.findRegisterById(registerId) ?: return
+            if (register.assignedCashierId != null) return
+        }
+        state = state.copy(playerAssignedRegisterId = registerId)
     }
 
     /**

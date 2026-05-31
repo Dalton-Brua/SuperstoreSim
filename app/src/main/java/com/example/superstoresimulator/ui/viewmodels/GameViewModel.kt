@@ -2,8 +2,8 @@ package com.example.superstoresimulator.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.GameEngine
+import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.GameStateChange
 import com.example.superstoresimulator.domain.items.ItemDao
@@ -40,6 +40,10 @@ import javax.inject.Inject
 import com.example.superstoresimulator.di.TickDelta
 import java.util.Locale
 import android.content.Context
+import com.example.superstoresimulator.ui.state.RegisterUIState
+import com.example.superstoresimulator.ui.state.RegistersUIState
+import com.example.superstoresimulator.ui.state.StaffScheduleEntryUI
+import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.persistence.GameStateRepository
 import com.example.superstoresimulator.domain.inventory.InventoryState
 
@@ -161,8 +165,8 @@ class GameViewModel @Inject constructor(
             GameEvent.StartTransaction -> gameEngine.startTransaction()
             is GameEvent.StockItem -> gameEngine.stockItemFromBackroom(event.itemId)
             is GameEvent.BuyItem -> gameEngine.buyItemToBackroom(event.itemId)
-            is GameEvent.HireStaff -> gameEngine.hireEntity(event.entityDef, event.entityType)
-            is GameEvent.UpgradeStaff -> gameEngine.upgradeEntity(event.entityId)
+            is GameEvent.HireStaff -> gameEngine.hireEntity(event.entityDef)
+            is GameEvent.PromoteStaff -> gameEngine.promoteEntity(event.entityId)
             is GameEvent.FireStaff -> gameEngine.fireEntity(event.entityId)
             is GameEvent.ChangeStoreName -> gameEngine.updateStoreName(event.name)
             is GameEvent.ProcessRefund -> gameEngine.processRefund(event.refundId)
@@ -221,15 +225,15 @@ class GameViewModel @Inject constructor(
                 return  // Pure-UI: no engine call needed
             }
 
-            is GameEvent.SelectStaffType -> {
+            is GameEvent.SelectStaffDef -> {
                 _uiState.update { state ->
                     state?.copy(
                         staff = state.staff.copy(
-                            selectedType = event.staffType
+                            selectedDef = event.staffDef
                         )
                     ) ?: return@update null
                 }
-                return // No need to update UI state from engine for this event, it's purely a UI selection
+                return
             }
             is GameEvent.SelectItemCategory -> {
                 _uiState.update { state ->
@@ -324,6 +328,17 @@ class GameViewModel @Inject constructor(
                 gameEngine.updateShift(event.entityId, clampedHour)
             }
 
+            // Register System (Phase 3)
+            GameEvent.PurchaseRegister -> {
+                gameEngine.purchaseRegister()
+            }
+            is GameEvent.AssignCashierToRegister -> {
+                gameEngine.assignCashierToRegister(event.cashierId, event.registerId)
+            }
+            is GameEvent.AssignPlayerToRegister -> {
+                gameEngine.assignPlayerToRegister(event.registerId)
+            }
+
             GameEvent.Tick -> gameEngine.tick(tickDelta)
 
         }
@@ -358,6 +373,7 @@ class GameViewModel @Inject constructor(
     }
     // Map domain GameState to UI-level GameUiState
     private fun initialUiState(domain: GameState): GameUiState {
+        val scheduleEntries = buildStaffScheduleEntries(domain)
         return GameUiState(
             app = AppUIState(
                 storeName = domain.storeName,
@@ -367,7 +383,8 @@ class GameViewModel @Inject constructor(
             ),
             dashboard = DashboardUIState(
                 money = domain.money,
-                totalStaff = domain.hiredEntityRegistry.totalCount()
+                totalStaff = domain.hiredEntityRegistry.totalCount(),
+                activeStaff = countActiveStaff(domain),
             ),
             transactions = TransactionUIState(
                 current = domain.currentTransaction,
@@ -384,7 +401,9 @@ class GameViewModel @Inject constructor(
             ),
             staff = StaffUIState(
                 registry = domain.hiredEntityRegistry,
-                selectedType = EntityType.NONE,
+                selectedDef = null,
+                scheduleEntries = scheduleEntries,
+                currentHour = domain.currentTime.hour,
             ),
             history = HistoryUIState(
                 salesHistory = domain.salesHistory,
@@ -409,6 +428,7 @@ class GameViewModel @Inject constructor(
             ),
             progression = buildProgressionUiState(domain, null),
             delivery = buildDeliveryUiState(domain),
+            registers = buildRegistersUiState(domain),
         )
     }
 
@@ -437,6 +457,7 @@ class GameViewModel @Inject constructor(
     }
 
     private fun toUiState(domain: GameState, oldUi: GameUiState?): GameUiState {
+        val scheduleEntries = buildStaffScheduleEntries(domain)
         return GameUiState(
             app = AppUIState(
                 storeName = domain.storeName,
@@ -446,7 +467,8 @@ class GameViewModel @Inject constructor(
             ),
             dashboard = DashboardUIState(
                 money = domain.money,
-                totalStaff = domain.hiredEntityRegistry.totalCount()
+                totalStaff = domain.hiredEntityRegistry.totalCount(),
+                activeStaff = countActiveStaff(domain),
             ),
             transactions = TransactionUIState(
                 current = domain.currentTransaction,
@@ -466,9 +488,13 @@ class GameViewModel @Inject constructor(
             ),
             staff = (oldUi?.staff?.copy(
                 registry = domain.hiredEntityRegistry,
+                scheduleEntries = scheduleEntries,
+                currentHour = domain.currentTime.hour,
             )) ?: StaffUIState(
                 registry = domain.hiredEntityRegistry,
-                selectedType = EntityType.NONE,
+                selectedDef = null,
+                scheduleEntries = scheduleEntries,
+                currentHour = domain.currentTime.hour,
             ),
             history = HistoryUIState(
                 salesHistory = domain.salesHistory,
@@ -493,6 +519,7 @@ class GameViewModel @Inject constructor(
             ),
             progression = buildProgressionUiState(domain, oldUi?.progression),
             delivery = buildDeliveryUiState(domain),
+            registers = buildRegistersUiState(domain),
         )
     }
 
@@ -509,11 +536,10 @@ class GameViewModel @Inject constructor(
         return newDomainState.money != oldDomainState.money ||
                newDomainState.inventory != oldDomainState.inventory ||
                newDomainState.currentTime != oldDomainState.currentTime ||
-               newDomainState.currentTransaction != oldDomainState.currentTransaction ||
+               newDomainState.registers != oldDomainState.registers ||
                newDomainState.hiredEntityRegistry != oldDomainState.hiredEntityRegistry ||
                newDomainState.storeState != oldDomainState.storeState ||
                newDomainState.storeName != oldDomainState.storeName ||
-               newDomainState.transactionActive != oldDomainState.transactionActive ||
                newDomainState.totalTransactionsCompleted != oldDomainState.totalTransactionsCompleted ||
                newDomainState.totalTaxCollected != oldDomainState.totalTaxCollected ||
                newDomainState.salesHistory != oldDomainState.salesHistory ||
@@ -527,7 +553,95 @@ class GameViewModel @Inject constructor(
                newDomainState.totalRevenue != oldDomainState.totalRevenue ||
                newDomainState.currentStoreSize != oldDomainState.currentStoreSize ||
                newDomainState.scheduledTrucks != oldDomainState.scheduledTrucks ||
-               newDomainState.truckConfig != oldDomainState.truckConfig
+               newDomainState.truckConfig != oldDomainState.truckConfig ||
+               newDomainState.staffSchedules != oldDomainState.staffSchedules ||
+               newDomainState.playerAssignedRegisterId != oldDomainState.playerAssignedRegisterId ||
+               newDomainState.ownedRegisterCount != oldDomainState.ownedRegisterCount
+    }
+
+    // ── Register & Schedule UI State Builders ────────────────────────────────────
+
+    private fun countActiveStaff(domain: GameState): Int {
+        val currentHour = domain.currentTime.hour
+        val shiftMap = domain.staffSchedules.associateBy { it.entityId }
+        return domain.hiredEntityRegistry.hiredEntities.count { entity ->
+            // If no shift defined, employee is treated as always on (no restriction set yet)
+            shiftMap[entity.id]?.isOnShift(currentHour) ?: true
+        }
+    }
+
+    private fun buildRegistersUiState(domain: GameState): RegistersUIState {
+        val currentHour = domain.currentTime.hour
+        val currentDay = domain.currentTime.dayNumber
+        val playerAssigReg = domain.playerAssignedRegisterId
+
+        val todayByRegister = domain.salesHistory
+            .filter { it.gameDayNumber == currentDay && it.id > 0 }
+            .groupBy { it.registerId }
+
+        val registerUiList = domain.registers.map { reg ->
+            val cashierId = reg.assignedCashierId
+            val cashier = cashierId?.let { id ->
+                domain.hiredEntityRegistry.hiredEntities.firstOrNull { it.id == id }
+            }
+            val cashierShift = cashierId?.let { id ->
+                domain.staffSchedules.firstOrNull { it.entityId == id }
+            }
+            // If no shift is defined for the cashier, treat them as always on
+            val cashierOnShift = cashierShift?.isOnShift(currentHour) ?: (cashierId != null)
+            val isPlayerAssigned = reg.registerId == playerAssigReg
+            val todayTxs = todayByRegister[reg.registerId] ?: emptyList()
+
+            RegisterUIState(
+                registerId = reg.registerId,
+                assignedCashierName = cashier?.name,
+                assignedCashierId = cashierId,
+                isPlayerAssigned = isPlayerAssigned,
+                transactionActive = reg.transactionActive,
+                isManned = (cashierId != null && cashierOnShift) || isPlayerAssigned,
+                cashierOnShift = cashierOnShift,
+                dailyTransactions = todayTxs.size,
+                dailyRevenue = todayTxs.fold(Money.ZERO) { acc, tx -> acc + tx.totalEarned },
+            )
+        }
+
+        val maxRegs = domain.currentStoreSize.maxRegisters
+        val canPurchase = domain.ownedRegisterCount < maxRegs &&
+            domain.money >= StoreSize.nextRegisterCost(domain.ownedRegisterCount)
+
+        return RegistersUIState(
+            registers = registerUiList,
+            ownedCount = domain.ownedRegisterCount,
+            maxRegisters = maxRegs,
+            nextRegisterCost = StoreSize.nextRegisterCost(domain.ownedRegisterCount),
+            canPurchase = canPurchase,
+            playerAssignedRegisterId = playerAssigReg,
+        )
+    }
+
+    private fun buildStaffScheduleEntries(domain: GameState): List<StaffScheduleEntryUI> {
+        val currentHour = domain.currentTime.hour
+        val shiftMap = domain.staffSchedules.associateBy { it.entityId }
+
+        // Build reverse lookup: cashier entity id → register id
+        val cashierRegisterMap = domain.registers
+            .filter { it.assignedCashierId != null }
+            .associate { it.assignedCashierId!! to it.registerId }
+
+        return domain.hiredEntityRegistry.hiredEntities.map { entity ->
+            val shift = shiftMap[entity.id]
+            val isOnShift = shift?.isOnShift(currentHour) ?: true
+
+            StaffScheduleEntryUI(
+                entityId = entity.id,
+                entityName = entity.name,
+                entityTypeName = entity.entityDefinition.displayName,
+                startHour = shift?.startHour,
+                endHour = shift?.endHour,
+                isOnShift = isOnShift,
+                assignedRegisterId = cashierRegisterMap[entity.id],
+            )
+        }
     }
 
     private fun buildDeliveryUiState(domain: GameState): DeliveryUIState {

@@ -1,7 +1,6 @@
 package com.example.superstoresimulator.domain
 
 import com.example.superstoresimulator.domain.Entities.EntityDef
-import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemDao
@@ -106,6 +105,23 @@ class ImmediateFreshAutoOrderTest {
     }
 
     /**
+     * Advance the engine's game time to 6:30 AM (GameTime(390)) so that staff on
+     * the default Morning shift (startHour=6, covers 6–14) are on-shift.
+     *
+     * Phase 1 made staff work schedule-aware: hired staff only accumulate progress
+     * during their shift hours.  The engine starts at GameTime(0) (midnight, hour 0),
+     * which is before any legal shift start (minimum 6).  Without this call, all
+     * tick-driven staff work is a no-op in tests.
+     *
+     * [loadState] is used because it syncs both [GameState.currentTime] and
+     * the internal [TimeManager] in one call, preventing the TimeManager from
+     * overwriting our time offset on the very next tick.
+     */
+    private fun advanceToShiftHour(engine: GameEngine) {
+        engine.loadState(engine.state.copy(currentTime = com.example.superstoresimulator.domain.time.GameTime(390)))
+    }
+
+    /**
      * Force a fresh-handler idle tick without actually stocking:
      * clear backroom of all fresh items so stockRandomFreshItemFromBackroom is a
      * no-op, then tick long enough for the fresh-handler accumulator to produce ≥1
@@ -137,7 +153,9 @@ class ImmediateFreshAutoOrderTest {
 
         // Hire first (costs 1_500¢), then reset money to just enough for one case-pack (600¢)
         engine.state = engine.state.copy(money = Money(10_000L))
-        engine.hireEntity(EntityDef.FRESH_HANDLER, EntityType.FRESH_HANDLERS)
+        engine.hireEntity(EntityDef.FRESH_HANDLER)
+        // Advance to morning shift so the fresh handler is on-shift when ticks run.
+        advanceToShiftHour(engine)
         engine.state = engine.state.copy(money = Money(600L))
 
         // Empty the backroom so the handler has nothing to stock → idle → auto-order fires
@@ -194,7 +212,9 @@ class ImmediateFreshAutoOrderTest {
 
         // Hire first (costs 1_500¢) then proceed — remaining money covers the 600¢ order
         engine.state = engine.state.copy(money = Money(10_000L))
-        engine.hireEntity(EntityDef.FRESH_HANDLER, EntityType.FRESH_HANDLERS)
+        engine.hireEntity(EntityDef.FRESH_HANDLER)
+        // Advance to morning shift so the fresh handler is on-shift when ticks run.
+        advanceToShiftHour(engine)
         engine.state = engine.state.copy(
             inventory = engine.state.inventory.mapValues { (_, inv) ->
                 inv.copy(backroomBatches = emptyList())
@@ -227,7 +247,9 @@ class ImmediateFreshAutoOrderTest {
 
         // Hire first (costs 1_500¢), then drop money below the 600¢ case-pack cost
         engine.state = engine.state.copy(money = Money(10_000L))
-        engine.hireEntity(EntityDef.FRESH_HANDLER, EntityType.FRESH_HANDLERS)
+        engine.hireEntity(EntityDef.FRESH_HANDLER)
+        // Advance to morning shift so the fresh handler is on-shift when ticks run.
+        advanceToShiftHour(engine)
         engine.state = engine.state.copy(
             money = Money(100L),  // not enough for the 600¢ case-pack
             inventory = engine.state.inventory.mapValues { (_, inv) ->
@@ -279,7 +301,9 @@ class ImmediateFreshAutoOrderTest {
 
         // Hire first (costs 1_500¢), then set money to cover exactly one order (600¢)
         engine.state = engine.state.copy(money = Money(10_000L))
-        engine.hireEntity(EntityDef.FRESH_HANDLER, EntityType.FRESH_HANDLERS)
+        engine.hireEntity(EntityDef.FRESH_HANDLER)
+        // Advance to morning shift so the fresh handler is on-shift when ticks run.
+        advanceToShiftHour(engine)
         engine.state = engine.state.copy(
             money = Money(600L),
             inventory = engine.state.inventory.mapValues { (_, inv) ->
@@ -318,7 +342,7 @@ class ImmediateFreshAutoOrderTest {
         val engine = newEngine(listOf(dryItem))
 
         engine.state = engine.state.copy(money = Money(10_000L))
-        engine.hireEntity(EntityDef.FRESH_HANDLER, EntityType.FRESH_HANDLERS)
+        engine.hireEntity(EntityDef.FRESH_HANDLER)
         engine.state = engine.state.copy(
             inventory = engine.state.inventory.mapValues { (_, inv) ->
                 inv.copy(backroomBatches = emptyList())
@@ -347,7 +371,7 @@ class ImmediateFreshAutoOrderTest {
         val engine = newEngine(listOf(freshItem))
 
         engine.state = engine.state.copy(money = Money(10_000L))
-        engine.hireEntity(EntityDef.FRESH_HANDLER, EntityType.FRESH_HANDLERS)
+        engine.hireEntity(EntityDef.FRESH_HANDLER)
         engine.state = engine.state.copy(
             inventory = engine.state.inventory.mapValues { (_, inv) ->
                 inv.copy(backroomBatches = emptyList())

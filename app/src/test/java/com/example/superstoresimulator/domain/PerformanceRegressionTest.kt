@@ -1,7 +1,6 @@
 package com.example.superstoresimulator.domain
 
 import com.example.superstoresimulator.domain.Entities.EntityDef
-import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.Item
@@ -111,11 +110,11 @@ class PerformanceRegressionTest {
         var registry = HiredEntityRegistry()
         
         repeat(cashierCount) {
-            registry = registry.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+            registry = registry.hireEntity(EntityDef.CASHIER)
         }
         
         repeat(stockerCount) {
-            registry = registry.hireEntity(EntityDef.STOCKER, EntityType.STOCKERS)
+            registry = registry.hireEntity(EntityDef.STOCKER)
         }
         
         return registry

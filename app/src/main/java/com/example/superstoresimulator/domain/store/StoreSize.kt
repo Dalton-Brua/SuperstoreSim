@@ -20,6 +20,8 @@ enum class StoreSize(
     val backroomCapPerItem: Int,  // In CASE PACKS, not units
     val trafficMultiplier: Float,  // Customer traffic multiplier
     val upgradeCost: Money? = null,  // null for starting size
+    /** Maximum number of registers that can be owned at this store size. */
+    val maxRegisters: Int,
 ) {
     MOM_AND_POP(
         displayName = "Mom & Pop Store",
@@ -27,7 +29,8 @@ enum class StoreSize(
         shelfCapacity = 2_000,
         backroomCapPerItem = 2,          // 2 case packs per item
         trafficMultiplier = 1.0f,        // Baseline traffic
-        upgradeCost = null                // Starting size
+        upgradeCost = null,              // Starting size
+        maxRegisters = 1
     ),
     SMALL_GROCERY(
         displayName = "Small Grocery",
@@ -35,7 +38,8 @@ enum class StoreSize(
         shelfCapacity = 5_000,
         backroomCapPerItem = 5,          // 5 case packs per item (2.5x)
         trafficMultiplier = 2.0f,        // 2× traffic
-        upgradeCost = Money(100_000)     // $1,000 to upgrade
+        upgradeCost = Money(100_000),    // $1,000 to upgrade
+        maxRegisters = 2
     ),
     GROCERY_STORE(
         displayName = "Grocery Store",
@@ -43,7 +47,8 @@ enum class StoreSize(
         shelfCapacity = 10_000,
         backroomCapPerItem = 10,         // 10 case packs per item (5x)
         trafficMultiplier = 4.0f,        // 4× traffic (3² = 3×3)
-        upgradeCost = Money(2_000_000)   // $20,000 to upgrade
+        upgradeCost = Money(2_000_000),  // $20,000 to upgrade
+        maxRegisters = 3
     ),
     SUPERSTORE(
         displayName = "Superstore",
@@ -51,7 +56,8 @@ enum class StoreSize(
         shelfCapacity = 20_000,
         backroomCapPerItem = 30,         // 30 case packs per item (15x)
         trafficMultiplier = 8.0f,       // 8× traffic (3³ = 9×3)
-        upgradeCost = Money(20_000_000)  // $200,000 to upgrade
+        upgradeCost = Money(20_000_000), // $200,000 to upgrade
+        maxRegisters = 5
     ),
     SUPERCENTER(
         displayName = "Supercenter",
@@ -59,7 +65,8 @@ enum class StoreSize(
         shelfCapacity = 40_000,
         backroomCapPerItem = 999,        // Effectively unlimited case packs
         trafficMultiplier = 16.0f,       // 16× traffic (3⁴ = 27×3)
-        upgradeCost = Money(100_000_000) // $1,000,000 to upgrade
+        upgradeCost = Money(100_000_000), // $1,000,000 to upgrade
+        maxRegisters = 8
     );
 
     companion object {
@@ -68,6 +75,22 @@ enum class StoreSize(
         fun nextSize(current: StoreSize): StoreSize? {
             val idx = ordered.indexOf(current)
             return if (idx >= 0 && idx < ordered.size - 1) ordered[idx + 1] else null
+        }
+
+        /**
+         * Cost to purchase one additional register.
+         * [ownedCount] is the number already owned (before this purchase).
+         *
+         *  1 → 2 : $200
+         *  2 → 3 : $500
+         *  3 → 4 : $1,000
+         *  4+    : $2,000 each
+         */
+        fun nextRegisterCost(ownedCount: Int): Money = when (ownedCount) {
+            1    -> Money(20_000L)   // $200
+            2    -> Money(50_000L)   // $500
+            3    -> Money(100_000L)  // $1,000
+            else -> Money(200_000L)  // $2,000
         }
     }
 }

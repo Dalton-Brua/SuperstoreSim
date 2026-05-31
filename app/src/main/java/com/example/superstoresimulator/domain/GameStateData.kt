@@ -13,6 +13,30 @@ import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreState
 import java.util.Locale
 
+// ── Register System ────────────────────────────────────────────────────────────
+
+/**
+ * Holds the per-register transaction state.
+ *
+ * [assignedCashierId] links a hired cashier (by their entity id) to this register.
+ * A null value means no cashier is explicitly assigned; the register can still be
+ * staffed by the player if [GameState.playerAssignedRegisterId] points here.
+ */
+data class RegisterState(
+    val registerId: Int,
+    val assignedCashierId: Int? = null,
+    val currentTransaction: Transaction = Transaction(),
+    val transactionActive: Boolean = false,
+)
+
+/** ID-based lookup — never use index arithmetic on the registers list. */
+fun List<RegisterState>.findRegisterById(registerId: Int): RegisterState? =
+    firstOrNull { it.registerId == registerId }
+
+/** Returns a new list with the matching register replaced by [updated]. */
+fun List<RegisterState>.updateRegister(updated: RegisterState): List<RegisterState> =
+    map { if (it.registerId == updated.registerId) updated else it }
+
 // ── Staff Scheduling ─────────────────────────────────────────────────────────
 
 /**
@@ -118,11 +142,8 @@ data class GameState(
 
     val money: Money = Money(0), // (Dollars, Cents)
 
-    val currentTransaction: Transaction = Transaction(),
-
     val hiredEntityRegistry: HiredEntityRegistry = HiredEntityRegistry(),
 
-    val transactionActive: Boolean = false,
     val totalTransactionsCompleted: Int = 0,
     val salesHistory: List<Transaction> = emptyList(),
 
@@ -174,7 +195,25 @@ data class GameState(
 
     // Staff scheduling
     val staffSchedules: List<StaffShift> = emptyList(),
-)
+
+    // ── Register System ───────────────────────────────────────────────────────
+    /** All owned registers.  Starts with a single register (id=0). */
+    val registers: List<RegisterState> = listOf(RegisterState(registerId = 0)),
+    /** Number of registers purchased (always equals registers.size). */
+    val ownedRegisterCount: Int = 1,
+    /** Register id the player has claimed as cashier, or null if unassigned. */
+    val playerAssignedRegisterId: Int? = null,
+) {
+    // ── Backward-compat read-only shims ──────────────────────────────────────
+    // These delegate to the first register so all code that reads
+    // state.currentTransaction / state.transactionActive continues to compile
+    // without modification.  They are READ-ONLY — write paths must go through
+    // the registers list via updateRegister().
+    val currentTransaction: Transaction
+        get() = registers.firstOrNull()?.currentTransaction ?: Transaction()
+    val transactionActive: Boolean
+        get() = registers.firstOrNull()?.transactionActive ?: false
+}
 
 
 @JvmInline

@@ -32,13 +32,13 @@ import com.example.superstoresimulator.ui.components.CustomerQueueIndicator
 import com.example.superstoresimulator.ui.components.PlayerRoleButtons
 import com.example.superstoresimulator.ui.components.buttons.PendingRefundsButton
 import com.example.superstoresimulator.ui.components.panels.SettingsPanel
+import com.example.superstoresimulator.ui.components.cards.RegistersCard
 import com.example.superstoresimulator.ui.components.cards.StoreSizeCard
 import com.example.superstoresimulator.ui.components.cards.StoreOverviewCard
 import com.example.superstoresimulator.ui.components.cards.TierProgressCard
-import com.example.superstoresimulator.ui.components.cards.TransactionSummaryCard
 import com.example.superstoresimulator.ui.components.common.TimeDisplayBar
 import com.example.superstoresimulator.ui.dialogs.PendingRefundsDialog
-import com.example.superstoresimulator.ui.dialogs.TransactionDetailDialog
+import com.example.superstoresimulator.ui.dialogs.RegisterDetailDialog
 import com.example.superstoresimulator.ui.state.GameUiState
 import com.example.superstoresimulator.ui.theme.IconBlue
 import com.example.superstoresimulator.ui.theme.LightBackground
@@ -74,10 +74,13 @@ fun StoreHomeScreen (
     currentStoreSize: com.example.superstoresimulator.domain.store.StoreSize = com.example.superstoresimulator.domain.store.StoreSize.MOM_AND_POP,
     onTruckConfigChanged: (Set<Int>, Int, Int) -> Unit = { _, _, _ -> },
     onPurchaseExtraTruckSlot: () -> Unit = {},
+    onPurchaseRegister: () -> Unit = {},
+    onAssignPlayerToRegister: (registerId: Int?) -> Unit = {},
+    onAssignCashierToRegister: (cashierId: Int?, registerId: Int) -> Unit = { _, _ -> },
 ) {
-    var showTransactionDialog by remember { mutableStateOf(false) }
     var showPendingRefunds by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var selectedRegisterId by remember { mutableStateOf<Int?>(null) }
 
     Box {
         LazyColumn(
@@ -123,80 +126,37 @@ fun StoreHomeScreen (
             item {
                 StoreOverviewCard(
                     cash = state.dashboard.money,
-                    totalEmployees = state.dashboard.totalStaff
+                    totalEmployees = state.dashboard.totalStaff,
+                    activeEmployees = state.dashboard.activeStaff
                 )
             }
 
-            // Transaction card
+            // Customer queue indicator
             item {
                 val storeState = state.time?.storeState
-                val hasTransactionToday = state.transactions.isActive || state.transactions.completedToday > 0
-                val showCard = storeState != StoreState.CLOSED && hasTransactionToday
-
-                // Customer queue — only relevant when the store is open
                 if (storeState == StoreState.OPEN) {
                     CustomerQueueIndicator(
                         pendingCustomers = state.transactions.pendingCustomers,
                         transactionActive = state.transactions.isActive,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-
-                if (showCard) {
-                    val fulfillableLines = state.transactions.current.lines.filter { !it.lostToOutOfStock }
-                    val totalRung = fulfillableLines.sumOf { it.rungQty }
-                    val totalRequired = fulfillableLines.sumOf { it.quantity }
-                    TransactionSummaryCard(
-                        transactionId = state.transactions.current.id,
-                        totalRung = totalRung,
-                        totalRequired = totalRequired,
-                        onClick = { showTransactionDialog = true },
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
-                } else {
-                    // Placeholder — tell the player why there is nothing to show
-                    val isClosed = storeState == StoreState.CLOSED
-                    val placeholderIcon = if (isClosed) Icons.Default.Lock else Icons.Default.AccessTime
-                    val placeholderTitle = if (isClosed) "Store is closed" else "Waiting for customers…"
-                    val placeholderSub = if (isClosed)
-                        "Transactions will appear here once the store opens."
-                    else
-                        "The first customer of the day hasn't arrived yet."
-
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp),
-                        colors = CardDefaults.cardColors(containerColor = PlaceholderSurface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            Icon(
-                                imageVector = placeholderIcon,
-                                contentDescription = null,
-                                tint = if (isClosed) TextMuted else IconBlue,
-                                modifier = Modifier.size(32.dp)
-                            )
-                            Column {
-                                Text(
-                                    text = placeholderTitle,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 15.sp,
-                                    color = if (isClosed) TextSecondary else PrimaryDark
-                                )
-                                Text(
-                                    text = placeholderSub,
-                                    fontSize = 12.sp,
-                                    color = TextMuted
-                                )
-                            }
-                        }
-                    }
                 }
+            }
+
+            // Registers card
+            item {
+                val cashierEntries = state.staff.scheduleEntries.filter {
+                    it.entityTypeName.lowercase().contains("cashier")
+                }
+                RegistersCard(
+                    registersState = state.registers,
+                    cashierEntries = cashierEntries,
+                    onAssignPlayer = onAssignPlayerToRegister,
+                    onAssignCashier = onAssignCashierToRegister,
+                    onPurchaseRegister = onPurchaseRegister,
+                    onRegisterClick = { register -> selectedRegisterId = register.registerId },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
             }
 
             // Tier progress card (NEW - card style)
@@ -339,15 +299,15 @@ fun StoreHomeScreen (
         }
 
         // Dialogs
-        if (showTransactionDialog) {
-            TransactionDetailDialog(
-                transactionLines = state.transactions.current.lines,
+        val selectedRegisterLive = state.registers.registers.find { it.registerId == selectedRegisterId }
+        if (selectedRegisterId != null && selectedRegisterLive != null) {
+            RegisterDetailDialog(
+                register = selectedRegisterLive,
+                state = state,
                 itemDao = itemDao,
-                onDismiss = { showTransactionDialog = false },
-                onViewItem = { itemId ->
-                    onViewItem(itemId)
-                    onNavigateToInventory()
-                },
+                onDismiss = { selectedRegisterId = null },
+                onAssignCashier = onAssignCashierToRegister,
+                onAssignPlayer = onAssignPlayerToRegister,
             )
         }
 

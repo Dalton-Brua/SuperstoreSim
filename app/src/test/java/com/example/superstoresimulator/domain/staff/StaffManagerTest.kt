@@ -1,8 +1,8 @@
 package com.example.superstoresimulator.domain.staff
 
 import com.example.superstoresimulator.domain.Entities.EntityDef
-import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
+import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.GameEngine
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
@@ -12,6 +12,7 @@ import com.example.superstoresimulator.domain.items.ItemWithName
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -85,7 +86,7 @@ class StaffManagerTest {
      * [EntityDef.CASHIER], returning both the state and the hired entity's id (1).
      */
     private fun stateWithOneCashier(moneyCents: Long): GameState {
-        val registry = HiredEntityRegistry().hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        val registry = HiredEntityRegistry().hireEntity(EntityDef.CASHIER)
         return GameState(money = Money(moneyCents), hiredEntityRegistry = registry)
     }
 
@@ -94,7 +95,7 @@ class StaffManagerTest {
     @Test
     fun `hireEntity adds one entity to the registry`() {
         val state = GameState(money = Money(50_000L))
-        val result = staffManager.hireEntity(state, EntityDef.CASHIER, EntityType.CASHIERS)
+        val result = staffManager.hireEntity(state, EntityDef.CASHIER)
         assertEquals(1, result.hiredEntityRegistry.totalCount())
     }
 
@@ -102,7 +103,7 @@ class StaffManagerTest {
     fun `hireEntity deducts the hire cost from money`() {
         val startMoney = Money(50_000L)
         val state = GameState(money = startMoney)
-        val result = staffManager.hireEntity(state, EntityDef.CASHIER, EntityType.CASHIERS)
+        val result = staffManager.hireEntity(state, EntityDef.CASHIER)
         assertEquals(startMoney - EntityDef.CASHIER.cost, result.money)
     }
 
@@ -110,7 +111,7 @@ class StaffManagerTest {
     fun `hireEntity returns state unchanged when money is insufficient`() {
         // CASHIER costs 1_500 ¢; player has 1_499 ¢
         val state = GameState(money = Money(1_499L))
-        val result = staffManager.hireEntity(state, EntityDef.CASHIER, EntityType.CASHIERS)
+        val result = staffManager.hireEntity(state, EntityDef.CASHIER)
         assertEquals(0, result.hiredEntityRegistry.totalCount())
         assertEquals(Money(1_499L), result.money)
     }
@@ -118,7 +119,7 @@ class StaffManagerTest {
     @Test
     fun `hireEntity money guard uses strict less-than — exact cost succeeds`() {
         val state = GameState(money = EntityDef.CASHIER.cost)
-        val result = staffManager.hireEntity(state, EntityDef.CASHIER, EntityType.CASHIERS)
+        val result = staffManager.hireEntity(state, EntityDef.CASHIER)
         assertEquals(1, result.hiredEntityRegistry.totalCount())
         assertEquals(Money.ZERO, result.money)
     }
@@ -126,41 +127,45 @@ class StaffManagerTest {
     // ── upgradeEntity ─────────────────────────────────────────────────────────
 
     @Test
-    fun `upgradeEntity advances entity definition to FAST_CASHIER`() {
+    fun `upgradeEntity advances tier to FAST`() {
         val state = stateWithOneCashier(moneyCents = 100_000L)
         val entityId = 1
-        val result = staffManager.upgradeEntity(state, entityId)
+        val result = staffManager.promoteEntity(state, entityId)
         val upgraded = result.hiredEntityRegistry.getById(entityId)
-        assertEquals(EntityDef.FAST_CASHIER, upgraded.entityDefinition)
+        assertEquals(Tier.FAST, upgraded.tier)
+        assertEquals(EntityDef.CASHIER, upgraded.entityDefinition)
     }
 
     @Test
     fun `upgradeEntity deducts the upgrade cost from money`() {
         val startMoney = Money(100_000L)
         val state = stateWithOneCashier(moneyCents = startMoney.cents)
-        val result = staffManager.upgradeEntity(state, entityId = 1)
-        assertEquals(startMoney - EntityDef.FAST_CASHIER.cost, result.money)
+        val result = staffManager.promoteEntity(state, entityId = 1)
+        val upgradeCost = Money(10_000) // BASE → FAST upgrade cost
+        assertEquals(startMoney - upgradeCost, result.money)
     }
 
     @Test
     fun `upgradeEntity returns state unchanged when money is insufficient`() {
-        // FAST_CASHIER costs 10_000 ¢; player has 9_999 ¢
+        // BASE→FAST costs 10,000 ¢; player has 9,999 ¢
         val state = stateWithOneCashier(moneyCents = 9_999L)
-        val before = state.hiredEntityRegistry.getById(1).entityDefinition
-        val result = staffManager.upgradeEntity(state, entityId = 1)
-        val after = result.hiredEntityRegistry.getById(1).entityDefinition
-        assertEquals("Entity definition must not change on failed upgrade", before, after)
+        val before = state.hiredEntityRegistry.getById(1).tier
+        val result = staffManager.promoteEntity(state, entityId = 1)
+        val after = result.hiredEntityRegistry.getById(1).tier
+        assertEquals("Tier must not change on failed upgrade", before, after)
         assertEquals(Money(9_999L), result.money)
     }
 
     @Test
     fun `upgradeEntity does not touch money when already at max tier`() {
-        // Hire a FAST_CASHIER directly (already at max — nextUpgrade is null)
-        val registry = HiredEntityRegistry().hireEntity(EntityDef.FAST_CASHIER, EntityType.CASHIERS)
-        val state = GameState(money = Money(5_000L), hiredEntityRegistry = registry)
-        val result = staffManager.upgradeEntity(state, entityId = 1)
-        // Cost is Money(0) for a max-tier entity; money unchanged
-        assertEquals(Money(5_000L), result.money)
+        val registry = HiredEntityRegistry().hireEntity(EntityDef.CASHIER)
+        // Manually put entity at MANAGER tier
+        val upgraded = registry.promoteEntity(1).promoteEntity(1)
+        val state = GameState(money = Money(5_000L), hiredEntityRegistry = upgraded)
+        assertThrows(IllegalStateException::class.java) {
+            state.hiredEntityRegistry.getById(1).upgradeCost
+        }
+        assertEquals(Tier.MANAGER, state.hiredEntityRegistry.getById(1).tier)
     }
 
     // ── fireEntity ────────────────────────────────────────────────────────────
@@ -182,8 +187,8 @@ class StaffManagerTest {
     @Test
     fun `fireEntity only removes the targeted entity when multiple are hired`() {
         val registry = HiredEntityRegistry()
-            .hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)  // id = 1
-            .hireEntity(EntityDef.STOCKER, EntityType.STOCKERS)  // id = 2
+            .hireEntity(EntityDef.CASHIER)  // id = 1
+            .hireEntity(EntityDef.STOCKER)  // id = 2
         val state = GameState(money = Money(50_000L), hiredEntityRegistry = registry)
         val result = staffManager.fireEntity(state, entityId = 1)
         assertEquals(1, result.hiredEntityRegistry.totalCount())
@@ -201,50 +206,51 @@ class StaffManagerTest {
     }
 
     @Test
-    fun `advanceCashierProgress returns 0 on first half-second tick with 1 cashier`() {
-        // 0.5 items/s × 1 cashier × 0.5 s × 1× speed = 0.25 — below 1.0
+    fun `advanceCashierProgress returns 0 on first small tick with 1 cashier`() {
+        // 2.0 items/s × 1 cashier × 0.1 s × 1× speed = 0.2 — below 1.0
         val result = staffManager.advanceCashierProgress(
-            cashierCount = 1f, delta = 0.5, multiplier = 1.0f,
+            cashierCount = 1f, delta = 0.1, multiplier = 1.0f,
         )
         assertEquals(0, result)
     }
 
     @Test
-    fun `advanceCashierProgress returns 1 after two one-second ticks with 1 cashier`() {
-        // Tick 1: 0.5 accumulated → 0 whole
-        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 1.0, multiplier = 1.0f)
-        // Tick 2: 0.5 + 0.5 = 1.0 accumulated → 1 whole
+    fun `advanceCashierProgress returns 1 after accumulating past 1 item`() {
+        // 2.0 items/s × 1 cashier × 0.3 s = 0.6 → 0 whole
+        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 0.3, multiplier = 1.0f)
+        // 0.6 + 0.6 = 1.2 → 1 whole, 0.2 remainder
         val result = staffManager.advanceCashierProgress(
-            cashierCount = 1f, delta = 1.0, multiplier = 1.0f,
+            cashierCount = 1f, delta = 0.3, multiplier = 1.0f,
         )
         assertEquals(1, result)
     }
 
     @Test
     fun `advanceCashierProgress retains fractional remainder between ticks`() {
-        // 0.5 items/s × 1 cashier × 1.0 s × 1× = 0.5 → 0 whole, 0.5 remainder
-        // 0.5 + 0.5 = 1.0 → 1 whole, 0.0 remainder
-        // 0.0 + 0.5 = 0.5 → 0 whole again
-        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 1.0, multiplier = 1.0f) // 0 whole, 0.5 left
-        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 1.0, multiplier = 1.0f) // 1 whole, 0.0 left
-        val third = staffManager.advanceCashierProgress(cashierCount = 1f, delta = 1.0, multiplier = 1.0f)
-        assertEquals("Third tick should give 0 whole actions (0.5 remainder)", 0, third)
+        // 2.0 × 1 × 0.3 = 0.6 → 0 whole, 0.6 left
+        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 0.3, multiplier = 1.0f)
+        // 0.6 + 0.6 = 1.2 → 1 whole, 0.2 left
+        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 0.3, multiplier = 1.0f)
+        // 0.2 + 0.6 = 0.8 → 0 whole
+        val third = staffManager.advanceCashierProgress(cashierCount = 1f, delta = 0.3, multiplier = 1.0f)
+        assertEquals("Third tick should give 0 whole actions (0.8 < 1.0)", 0, third)
     }
 
     @Test
     fun `advanceCashierProgress respects game-speed multiplier`() {
-        // At 4× speed a single 0.5-second tick gives 0.5 × 1 × 0.5 × 4 = 1.0 → 1 whole
+        // 2.0 × 1 × 0.1 × 4 = 0.8 < 1.0 → 0; second tick: 0.8+0.8 = 1.6 → 1
+        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 0.1, multiplier = 4.0f)
         val result = staffManager.advanceCashierProgress(
-            cashierCount = 1f, delta = 0.5, multiplier = 4.0f,
+            cashierCount = 1f, delta = 0.1, multiplier = 4.0f,
         )
         assertEquals(1, result)
     }
 
     @Test
     fun `advanceCashierProgress scales with cashier count`() {
-        // 0.5 items/s × 4 cashiers × 0.5 s × 1× = 1.0 → 1 whole
+        // 2.0 items/s × 4 cashiers × 0.13 s × 1× = 1.04 → 1 whole
         val result = staffManager.advanceCashierProgress(
-            cashierCount = 4f, delta = 0.5, multiplier = 1.0f,
+            cashierCount = 4f, delta = 0.13, multiplier = 1.0f,
         )
         assertEquals(1, result)
     }
@@ -338,7 +344,7 @@ class StaffManagerTest {
         setEngineMoneyTo(engine, 10_000L)
         val initialCount = engine.currentState().hiredEntityRegistry.totalCount()
 
-        engine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        engine.hireEntity(EntityDef.CASHIER)
 
         val finalCount = engine.currentState().hiredEntityRegistry.totalCount()
         assertEquals("Registry count should increase by 1", initialCount + 1, finalCount)
@@ -350,7 +356,7 @@ class StaffManagerTest {
         setEngineMoneyTo(engine, 10_000L)
         val initialMoney = engine.currentState().money
 
-        engine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        engine.hireEntity(EntityDef.CASHIER)
 
         val finalMoney = engine.currentState().money
         assertTrue("Money should decrease after hiring", finalMoney < initialMoney)
@@ -362,7 +368,7 @@ class StaffManagerTest {
         // Engine starts with 0 money
         val initialCount = engine.currentState().hiredEntityRegistry.totalCount()
 
-        engine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        engine.hireEntity(EntityDef.CASHIER)
 
         val finalCount = engine.currentState().hiredEntityRegistry.totalCount()
         assertEquals("Registry count should not change", initialCount, finalCount)
@@ -373,12 +379,12 @@ class StaffManagerTest {
         val engine = newGameEngine()
         setEngineMoneyTo(engine, 20_000L)
 
-        engine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        engine.hireEntity(EntityDef.CASHIER)
         val stateAfterHire = engine.currentState()
 
         if (stateAfterHire.hiredEntityRegistry.totalCount() > 0) {
             val entityId = stateAfterHire.hiredEntityRegistry.getNextEntityId() - 1
-            engine.upgradeEntity(entityId)
+            engine.promoteEntity(entityId)
 
             val upgradedEntity = engine.currentState().hiredEntityRegistry.getById(entityId)
             assertNotNull("Entity should still exist after upgrade", upgradedEntity)
@@ -390,7 +396,7 @@ class StaffManagerTest {
         val engine = newGameEngine()
         setEngineMoneyTo(engine, 10_000L)
 
-        engine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        engine.hireEntity(EntityDef.CASHIER)
         val stateAfterHire = engine.currentState()
         val initialCount = stateAfterHire.hiredEntityRegistry.totalCount()
 

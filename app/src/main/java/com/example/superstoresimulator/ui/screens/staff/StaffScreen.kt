@@ -42,7 +42,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Entities.EntityDef
-import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Entities.HiredEntity
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
@@ -59,7 +58,7 @@ import kotlinx.coroutines.launch
 fun StaffScreen(
     state: StaffUIState,
     money: Money,
-    onSelectStaffType: (EntityType) -> Unit,
+    onSelectStaffDef: (EntityDef?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -77,11 +76,11 @@ fun StaffScreen(
         Spacer(Modifier.height(20.dp))
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(EntityType.allEntityTypes.filter { it != EntityType.NONE }) { type ->
+            items(EntityDef.allEntities) { def ->
                 StaffTypeCard(
-                    type = type,
-                    count = state.registry.countByType(type),
-                    onClick = { onSelectStaffType(type) }
+                    def = def,
+                    count = state.registry.countByDef(def),
+                    onClick = { onSelectStaffDef(def) }
                 )
             }
             item {
@@ -90,9 +89,10 @@ fun StaffScreen(
         }
     }
 }
+
 @Composable
 fun StaffTypeCard(
-    type: EntityType,
+    def: EntityDef,
     count: Int,
     onClick: () -> Unit
 ) {
@@ -110,33 +110,29 @@ fun StaffTypeCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-
-            // Title row
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Icon(
-                    imageVector = type.icon,
+                    imageVector = def.icon,
                     contentDescription = null,
                     tint = Color(0xFF3B82F6),
                     modifier = Modifier.size(36.dp)
                 )
                 Text(
-                    text = type.displayName,
+                    text = def.displayName,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = PrimaryDark
                 )
             }
-
-            // Stats row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text("Hired: $count", fontSize = 14.sp, color = Color(0xFF475569))
-                Text(type.description, fontSize = 14.sp, color = Color(0xFF475569))
+                Text(def.roleDescription, fontSize = 14.sp, color = Color(0xFF475569))
             }
         }
     }
@@ -146,21 +142,17 @@ fun StaffTypeCard(
 fun EntityTypeDetailScreen(
     state: StaffUIState,
     money: Money,
-    type: EntityType,
+    def: EntityDef?,
     currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
     onHire: (EntityDef) -> Unit,
     onFire: (Int) -> Unit,
     onUpgrade: (Int) -> Unit,
     onBack: () -> Unit
 ) {
-    // Guard: selectedType hasn't been set yet (brief first-frame race with NONE default)
-    val hireable = type.entities.firstOrNull()
-    if (type == EntityType.NONE || hireable == null) return
+    if (def == null) return
 
-    val entities = state.registry.getByType(type)
-    
-    // Check if Fresh Handlers require tier gating
-    val isFreshHandlers = type.key == "FRESH_HANDLERS"
+    val entities = state.registry.getByDef(def)
+    val isFreshHandlers = def.key == "fresh_handler"
     val canHireFreshHandlers = currentTier.unlockAmount >= ItemUnlockTier.TIER_2.unlockAmount
 
     Column(
@@ -172,9 +164,9 @@ fun EntityTypeDetailScreen(
     ) {
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(type.icon, contentDescription = null, modifier = Modifier.size(32.dp), tint = Primary)
+            Icon(def.icon, contentDescription = null, modifier = Modifier.size(32.dp), tint = Primary)
             Spacer(Modifier.width(12.dp))
-            Text(type.displayName, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = PrimaryDark)
+            Text(def.displayName, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = PrimaryDark)
         }
 
         Spacer(Modifier.height(12.dp))
@@ -197,8 +189,8 @@ fun EntityTypeDetailScreen(
         }
 
         Button(
-            onClick = { onHire(hireable) },
-            enabled = money >= hireable.cost && (!isFreshHandlers || canHireFreshHandlers),
+            onClick = { onHire(def) },
+            enabled = money >= def.cost && (!isFreshHandlers || canHireFreshHandlers),
             colors = GameButtonStyles.primaryBlueColor(),
             shape = GameButtonStyles.Shape,
             border = GameButtonStyles.PrimaryBorder,
@@ -208,7 +200,7 @@ fun EntityTypeDetailScreen(
                 disabledElevation = 0.dp
             )
         ) {
-            Text("Hire ${hireable.displayName}", color = Color.White)
+            Text("Hire ${def.displayName}", color = Color.White)
         }
 
         Spacer(Modifier.height(20.dp))
@@ -221,7 +213,7 @@ fun EntityTypeDetailScreen(
                 HiredEntityCard(
                     entity = entity,
                     onFire = { onFire(entity.id) },
-                    canAffordUpgrade = money > (entity.entityDefinition.nextUpgrade?.cost ?: Money.ZERO),
+                    canAffordUpgrade = entity.canPromote && money >= entity.upgradeCost,
                     onUpgrade = { onUpgrade(entity.id) }
                 )
             }
@@ -248,87 +240,104 @@ fun HiredEntityCard(
     onUpgrade: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val tierLabel = when (entity.tier) {
+        com.example.superstoresimulator.domain.Entities.Tier.BASE -> entity.entityDefinition.displayName
+        com.example.superstoresimulator.domain.Entities.Tier.FAST -> "Fast ${entity.entityDefinition.displayName}"
+        com.example.superstoresimulator.domain.Entities.Tier.MANAGER -> "Dept. Manager"
+    }
+    val tierColor = when (entity.tier) {
+        com.example.superstoresimulator.domain.Entities.Tier.BASE -> Color(0xFF3B82F6)
+        com.example.superstoresimulator.domain.Entities.Tier.FAST -> Color(0xFF8B5CF6)
+        com.example.superstoresimulator.domain.Entities.Tier.MANAGER -> Color(0xFFD97706)
+    }
+    val xpForNextLevel = HiredEntity.XP_THRESHOLDS.getOrNull(entity.level - 1) ?: Int.MAX_VALUE
+    val xpAtCurrentLevel = if (entity.level > 1) HiredEntity.XP_THRESHOLDS[entity.level - 2] else 0
+    val xpProgress = if (entity.level >= HiredEntity.MAX_LEVEL) 1f else {
+        ((entity.xp - xpAtCurrentLevel).toFloat() / (xpForNextLevel - xpAtCurrentLevel)).coerceIn(0f, 1f)
+    }
+    val canPromote = entity.canPromote && canAffordUpgrade
+    val atMaxTier = entity.tier == com.example.superstoresimulator.domain.Entities.Tier.MANAGER
+
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min),
+        modifier = modifier.fillMaxWidth().height(IntrinsicSize.Min),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-
-            // Title row (icon + name)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Icon(
-                    imageVector = entity.entityType.icon,
+                    imageVector = entity.entityDefinition.icon,
                     contentDescription = null,
-                    tint = Color(0xFF3B82F6),
+                    tint = tierColor,
                     modifier = Modifier.size(36.dp)
                 )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = entity.name, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Surface(
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                            color = tierColor.copy(alpha = 0.12f),
+                        ) {
+                            Text(
+                                text = tierLabel,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = tierColor,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                        Text(
+                            text = "Lv ${entity.level}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF475569),
+                        )
+                    }
+                }
+            }
 
-                Column {
-                    Text(
-                        text = entity.name,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Text(
-                        text = "ID: ${entity.id}",
-                        fontSize = 14.sp,
-                        color = Color(0xFF475569)
-                    )
-
-                    // ⭐ NEW: Entity type label (Cashier, Fast Cashier, etc.)
-                    Text(
-                        text = entity.entityDefinition.displayName,   // or entity.entityType.displayName
-                        fontSize = 14.sp,
-                        color = Color(0xFF3B82F6),
-                        fontWeight = FontWeight.SemiBold
+            // XP bar
+            if (!atMaxTier || entity.level < HiredEntity.MAX_LEVEL) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(
+                            text = if (entity.level >= HiredEntity.MAX_LEVEL) "Max level" else "XP: ${entity.xp} / $xpForNextLevel",
+                            fontSize = 11.sp,
+                            color = Color(0xFF475569),
+                        )
+                        Text(text = entity.trait.description, fontSize = 11.sp, color = Color(0xFF475569))
+                    }
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { xpProgress },
+                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                        color = tierColor,
+                        trackColor = Color(0xFFE2E8F0),
                     )
                 }
             }
 
-            // Stats row (trait + type description)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = entity.trait.description,
-                    fontSize = 14.sp,
-                    color = Color(0xFF475569)
-                )
-                Text(
-                    text = entity.entityType.description,
-                    fontSize = 14.sp,
-                    color = Color(0xFF475569)
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val promoteLabel = when {
+                    atMaxTier -> "Max Tier"
+                    !entity.canPromote -> "Promote (Lv ${HiredEntity.PROMOTE_UNLOCK_LEVEL} req.)"
+                    else -> "Promote (${entity.upgradeCost})"
+                }
                 Button(
                     onClick = { onUpgrade(entity.id) },
                     modifier = Modifier.weight(1f),
                     colors = GameButtonStyles.primaryBlueColor(),
                     shape = GameButtonStyles.Shape,
                     border = GameButtonStyles.PrimaryBorder,
-                    enabled = canAffordUpgrade
+                    enabled = canPromote && !atMaxTier
                 ) {
-                    Text("Upgrade")
+                    Text(promoteLabel, fontSize = 12.sp)
                 }
-
                 OutlinedButton(
                     onClick = { onFire(entity.id) },
                     modifier = Modifier.weight(1f),
@@ -338,15 +347,13 @@ fun HiredEntityCard(
                 ) {
                     Text("Fire")
                 }
-
-
             }
         }
     }
 }
 
 /**
- * Container that hosts the Staff and Unlocks tabs together so the bottom
+ * Container that hosts the Staff, Schedule, and Unlocks tabs together so the bottom
  * nav bar stays at exactly 5 items.
  */
 @Composable
@@ -357,33 +364,33 @@ fun StaffAndUnlocksScreen(
     modifier: Modifier = Modifier,
     initialTab: Int = 0,
     onTabChanged: (Int) -> Unit,
-    onSelectStaffType: (EntityType) -> Unit,
-    onUnlockNextTier: () -> Unit
-) {
-    val tabs = listOf("Staff", "Unlocks")
-    
+    onSelectStaffDef: (EntityDef?) -> Unit,
+    onUnlockNextTier: () -> Unit,
+    onUpdateShift: (entityId: Int, newStartHour: Int) -> Unit = { _, _ -> },
+) {    val tabs = listOf("Staff", "Schedule", "Unlocks")
+
     // Pager state for tab navigation
     val pagerState = rememberPagerState(
-        pageCount = { 2 },
+        pageCount = { 3 },
         initialPage = initialTab
     )
     val coroutineScope = rememberCoroutineScope()
-    
+
     // Track selected tab - start with initialTab and update from pager or external changes
     var selectedTab by remember { mutableIntStateOf(initialTab) }
-    
+
     // Immediately update selectedTab when initialTab changes (e.g., from tier card navigation)
     if (selectedTab != initialTab) {
         selectedTab = initialTab
     }
-    
+
     // Sync pager to selectedTab when it changes
     LaunchedEffect(selectedTab) {
         if (pagerState.currentPage != selectedTab) {
             pagerState.animateScrollToPage(selectedTab)
         }
     }
-    
+
     // Update selectedTab when user swipes to a different page
     LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
         if (!pagerState.isScrollInProgress && selectedTab != pagerState.currentPage) {
@@ -411,7 +418,7 @@ fun StaffAndUnlocksScreen(
             tabs.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTab == index,
-                    onClick = { 
+                    onClick = {
                         selectedTab = index
                         onTabChanged(index)
                         coroutineScope.launch {
@@ -433,9 +440,13 @@ fun StaffAndUnlocksScreen(
                 0 -> StaffScreen(
                     state = staffState,
                     money = money,
-                    onSelectStaffType = onSelectStaffType
+                    onSelectStaffDef = onSelectStaffDef
                 )
-                1 -> UnlocksScreen(
+                1 -> ScheduleScreen(
+                    scheduleEntries = staffState.scheduleEntries,
+                    onUpdateShift = onUpdateShift,
+                )
+                2 -> UnlocksScreen(
                     progression = progression,
                     money = money,
                     onUnlockNextTier = onUnlockNextTier,

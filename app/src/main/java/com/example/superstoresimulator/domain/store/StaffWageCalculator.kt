@@ -29,16 +29,8 @@ object StaffWageCalculator {
     fun calculateTotalWages(registry: HiredEntityRegistry): Money {
         return registry.hiredEntities.fold(Money.ZERO) { acc, entity ->
             val traitMultiplier = if (entity.trait == EntityTrait.EFFICIENT) 0.9 else 1.0
-            val dailyWage = entity.entityDefinition.hourlyWage * 8 * traitMultiplier
+            val dailyWage = entity.hourlyWage * 8 * traitMultiplier
             acc + dailyWage
         }
-    }
-
-    /**
-     * Get the daily wage for a specific entity definition (without trait modifier).
-     * Used for cost preview before hire.
-     */
-    fun getWageForEntity(entityDef: EntityDef): Money {
-        return entityDef.hourlyWage * 8
     }
 }

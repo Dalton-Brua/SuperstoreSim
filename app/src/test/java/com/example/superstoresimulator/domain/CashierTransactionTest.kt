@@ -1,7 +1,6 @@
 package com.example.superstoresimulator.domain
 
 import com.example.superstoresimulator.domain.Entities.EntityDef
-import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemDao
@@ -129,7 +128,7 @@ class CashierTransactionTest {
      */
     private fun setupStoreWithCashier(moneyInCents: Long): GameState {
         setMoney(moneyInCents)                                          // writes through to engine
-        gameEngine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        gameEngine.hireEntity(EntityDef.CASHIER)
         return gameEngine.currentState()
     }
 
@@ -157,7 +156,7 @@ class CashierTransactionTest {
     fun testCashierProcessesTransaction() {
         // Hire cashier — requires engine money, not a local copy
         setMoney(10_000L)
-        gameEngine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        gameEngine.hireEntity(EntityDef.CASHIER)
         val moneyAfterHire = gameEngine.currentState().money
 
         // GameEngine.init auto-started a transaction; ring up all items
@@ -172,20 +171,19 @@ class CashierTransactionTest {
     fun testFastCashierProcessesFaster() {
         // Hire cost 1_500 ¢ + upgrade cost 10_000 ¢ = 11_500 ¢ minimum
         setMoney(20_000L)
-        gameEngine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        gameEngine.hireEntity(EntityDef.CASHIER)
         val state = gameEngine.currentState()
 
         if (state.hiredEntityRegistry.totalCount() > 0) {
             val cashierId = state.hiredEntityRegistry.getNextEntityId() - 1
-            gameEngine.upgradeEntity(cashierId)
+            gameEngine.promoteEntity(cashierId)
 
             val cashierAfter = gameEngine.currentState().hiredEntityRegistry.getById(cashierId)
 
-            assertEquals("Cashier should be upgraded to FAST_CASHIER",
-                EntityDef.FAST_CASHIER, cashierAfter.entityDefinition)
-            // Fast Cashier costs more than a plain Cashier
-            assertTrue("Fast Cashier must be more expensive than Cashier",
-                cashierAfter.entityDefinition.cost > EntityDef.CASHIER.cost)
+            assertEquals("Cashier should advance to FAST tier",
+                com.example.superstoresimulator.domain.Entities.Tier.FAST, cashierAfter.tier)
+            assertTrue("FAST tier wage must exceed BASE tier wage",
+                cashierAfter.hourlyWage > EntityDef.CASHIER.baseWage)
         }
     }
 
@@ -209,7 +207,7 @@ class CashierTransactionTest {
     @Test
     fun testTransactionClosesAfterCompletion() {
         setMoney(10_000L)
-        gameEngine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        gameEngine.hireEntity(EntityDef.CASHIER)
 
         // Open the store so startTransaction() passes the storeState != CLOSED guard,
         // then verify a transaction is active before ringing up.
@@ -227,7 +225,7 @@ class CashierTransactionTest {
     @Test
     fun testCanStartNewTransactionAfterCompletion() {
         setMoney(10_000L)
-        gameEngine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        gameEngine.hireEntity(EntityDef.CASHIER)
 
         // Complete the auto-started transaction
         completeActiveTransaction()
@@ -265,7 +263,7 @@ class CashierTransactionTest {
     @Test
     fun testTransactionProcessingRequiresOpenStore() {
         setMoney(10_000L)
-        gameEngine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        gameEngine.hireEntity(EntityDef.CASHIER)
         val moneyWithClosedStore = gameEngine.currentState().money
 
         // Ring up without opening the store — works on the active init transaction
@@ -281,7 +279,7 @@ class CashierTransactionTest {
     @Test
     fun testTransactionCounterIncrementsOnCompletion() {
         setMoney(10_000L)
-        gameEngine.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+        gameEngine.hireEntity(EntityDef.CASHIER)
 
         val initialCount = gameEngine.currentState().totalTransactionsCompleted
 

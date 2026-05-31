@@ -5,9 +5,12 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.Entities.HiredEntity
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.Entities.EntityDef
-import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Entities.EntityTrait
+import com.example.superstoresimulator.domain.Entities.Tier
+import com.example.superstoresimulator.domain.FreshAutoOrderConfig
+import com.example.superstoresimulator.domain.IncompleteOrderRequest
 import com.example.superstoresimulator.domain.PendingOrderLine
+import com.example.superstoresimulator.domain.RegisterState
 import com.example.superstoresimulator.domain.ScheduledTruck
 import com.example.superstoresimulator.domain.StaffShift
 import com.example.superstoresimulator.domain.TruckConfig
@@ -46,6 +49,7 @@ object GameStateSerializer {
         // Basic fields
         json.put("storeName", state.storeName)
         json.put("money", state.money.cents)
+        // Legacy flat fields kept so old builds can still open new save files.
         json.put("transactionActive", state.transactionActive)
         json.put("totalTransactionsCompleted", state.totalTransactionsCompleted)
         json.put("totalTaxCollected", state.totalTaxCollected.cents)
@@ -67,7 +71,7 @@ object GameStateSerializer {
         json.put("storeState", state.storeState.name)
         json.put("storeConfig", serializeStoreConfig(state.storeConfig))
         
-        // Current transaction
+        // Legacy flat current transaction (register 0) for old-build compat.
         json.put("currentTransaction", serializeTransaction(state.currentTransaction))
         
         // Sales history
@@ -126,6 +130,34 @@ object GameStateSerializer {
         }
         json.put("staffSchedules", schedulesArray)
 
+        // ── Register system ──────────────────────────────────────────────────
+        val registersArray = JSONArray()
+        state.registers.forEach { reg ->
+            registersArray.put(serializeRegisterState(reg))
+        }
+        json.put("registers", registersArray)
+        json.put("ownedRegisterCount", state.ownedRegisterCount)
+        if (state.playerAssignedRegisterId != null) {
+            json.put("playerAssignedRegisterId", state.playerAssignedRegisterId)
+        }
+
+        // ── Fresh auto-order system ──────────────────────────────────────────
+        json.put("freshAutoOrderConfig", JSONObject().apply {
+            put("enabled", state.freshAutoOrderConfig.enabled)
+            put("minStockThreshold", state.freshAutoOrderConfig.minStockThreshold)
+            put("casePacksPerItem", state.freshAutoOrderConfig.casePacksPerItem)
+        })
+        val incompleteOrdersArray = JSONArray()
+        state.incompleteFreshOrders.forEach { req ->
+            incompleteOrdersArray.put(JSONObject().apply {
+                put("itemId", req.itemId)
+                put("casePacksRequested", req.casePacksRequested)
+                put("requestedOnDay", req.requestedOnDay)
+                put("reason", req.reason)
+            })
+        }
+        json.put("incompleteFreshOrders", incompleteOrdersArray)
+
         return json.toString()
     }
 
@@ -136,7 +168,6 @@ object GameStateSerializer {
             GameState(
                 storeName = json.getString("storeName"),
                 money = Money(json.getLong("money")),
-                transactionActive = json.getBoolean("transactionActive"),
                 totalTransactionsCompleted = json.getInt("totalTransactionsCompleted"),
                 totalTaxCollected = Money(json.getLong("totalTaxCollected")),
                 nextRefundId = json.getInt("nextRefundId"),
@@ -154,7 +185,6 @@ object GameStateSerializer {
                 currentTime = GameTime(json.getLong("currentTime")),
                 storeState = StoreState.valueOf(json.getString("storeState")),
                 storeConfig = deserializeStoreConfig(json.getJSONObject("storeConfig")),
-                currentTransaction = deserializeTransaction(json.getJSONObject("currentTransaction")),
                 salesHistory = deserializeTransactionList(json.getJSONArray("salesHistory")),
                 pendingRefunds = deserializeRefundRequestList(json.getJSONArray("pendingRefunds")),
                 inventory = deserializeInventory(json.getJSONObject("inventory")),
@@ -162,12 +192,12 @@ object GameStateSerializer {
                 currentDayMetrics = if (json.has("currentDayMetrics")) {
                     deserializeDailyMetricsAccumulator(json.getJSONObject("currentDayMetrics"))
                 } else {
-                    DailyMetricsAccumulator()  // Default empty accumulator
+                    DailyMetricsAccumulator()
                 },
                 completedDayMetrics = if (json.has("completedDayMetrics")) {
                     deserializeDailyMetricsList(json.getJSONArray("completedDayMetrics"))
                 } else {
-                    emptyList()  // Default empty list
+                    emptyList()
                 },
                 lastEndOfDayReport = if (json.has("lastEndOfDayReport")) {
                     deserializeDailyMetrics(json.getJSONObject("lastEndOfDayReport"))
@@ -190,7 +220,49 @@ object GameStateSerializer {
                                 entityId = shiftJson.getInt("entityId"),
                                 startHour = startHour,
                             )
-                        } else null  // skip invalid entries from stale saves
+                        } else null
+                    }
+                } else emptyList(),
+                // ── Register system (3.5 backward-compat migration) ──────────
+                registers = if (json.has("registers")) {
+                    val arr = json.getJSONArray("registers")
+                    (0 until arr.length()).map { deserializeRegisterState(arr.getJSONObject(it)) }
+                } else {
+                    // Old save: reconstruct register 0 from legacy flat fields.
+                    listOf(
+                        RegisterState(
+                            registerId = 0,
+                            assignedCashierId = null,
+                            currentTransaction = deserializeTransaction(
+                                json.optJSONObject("currentTransaction") ?: JSONObject()
+                            ),
+                            transactionActive = json.optBoolean("transactionActive", false),
+                        )
+                    )
+                },
+                ownedRegisterCount = json.optInt("ownedRegisterCount", 1),
+                playerAssignedRegisterId = if (json.has("playerAssignedRegisterId") &&
+                    !json.isNull("playerAssignedRegisterId")
+                ) json.getInt("playerAssignedRegisterId") else null,
+                // ── Fresh auto-order system ──────────────────────────────────
+                freshAutoOrderConfig = if (json.has("freshAutoOrderConfig")) {
+                    val cfg = json.getJSONObject("freshAutoOrderConfig")
+                    FreshAutoOrderConfig(
+                        enabled = cfg.optBoolean("enabled", true),
+                        minStockThreshold = cfg.optInt("minStockThreshold", 5),
+                        casePacksPerItem = cfg.optInt("casePacksPerItem", 1),
+                    )
+                } else FreshAutoOrderConfig(),
+                incompleteFreshOrders = if (json.has("incompleteFreshOrders")) {
+                    val arr = json.getJSONArray("incompleteFreshOrders")
+                    (0 until arr.length()).map { i ->
+                        val o = arr.getJSONObject(i)
+                        IncompleteOrderRequest(
+                            itemId = o.getInt("itemId"),
+                            casePacksRequested = o.getInt("casePacksRequested"),
+                            requestedOnDay = o.getInt("requestedOnDay"),
+                            reason = o.optString("reason", ""),
+                        )
                     }
                 } else emptyList(),
             )
@@ -199,6 +271,27 @@ object GameStateSerializer {
             null
         }
     }
+
+    // ── Register System ────────────────────────────────────────────────────────
+
+    private fun serializeRegisterState(reg: RegisterState): JSONObject =
+        JSONObject().apply {
+            put("registerId", reg.registerId)
+            if (reg.assignedCashierId != null) put("assignedCashierId", reg.assignedCashierId)
+            put("currentTransaction", serializeTransaction(reg.currentTransaction))
+            put("transactionActive", reg.transactionActive)
+        }
+
+    private fun deserializeRegisterState(json: JSONObject): RegisterState =
+        RegisterState(
+            registerId = json.getInt("registerId"),
+            assignedCashierId = if (json.has("assignedCashierId") && !json.isNull("assignedCashierId"))
+                json.getInt("assignedCashierId") else null,
+            currentTransaction = deserializeTransaction(
+                json.optJSONObject("currentTransaction") ?: JSONObject()
+            ),
+            transactionActive = json.optBoolean("transactionActive", false),
+        )
 
     private fun serializeStoreConfig(config: StoreConfig): JSONObject {
         return JSONObject().apply {
@@ -228,8 +321,8 @@ object GameStateSerializer {
             put("subtotal", tx.subtotal.cents)
             put("tax", tx.tax.cents)
             put("totalEarned", tx.totalEarned.cents)
-            // Serialize completedAt as null - we don't need to persist the exact instant
-            // The transaction is either in progress (null) or completed
+            put("registerId", tx.registerId)
+            put("gameDayNumber", tx.gameDayNumber)
             val linesArray = JSONArray()
             tx.lines.forEach { line ->
                 linesArray.put(serializeTransactionLine(line))
@@ -240,18 +333,19 @@ object GameStateSerializer {
 
     private fun deserializeTransaction(json: JSONObject): Transaction {
         val lines = mutableListOf<TransactionLine>()
-        val linesArray = json.getJSONArray("lines")
+        val linesArray = json.optJSONArray("lines") ?: JSONArray()
         for (i in 0 until linesArray.length()) {
             lines.add(deserializeTransactionLine(linesArray.getJSONObject(i)))
         }
-        // completedAt will be null for saved transactions - this is fine as it's only used for display
         return Transaction(
-            id = json.getInt("id"),
+            id = json.optInt("id", 0),
             lines = lines,
-            subtotal = Money(json.getLong("subtotal")),
-            tax = Money(json.getLong("tax")),
-            totalEarned = Money(json.getLong("totalEarned")),
-            completedAt = null
+            subtotal = Money(json.optLong("subtotal", 0L)),
+            tax = Money(json.optLong("tax", 0L)),
+            totalEarned = Money(json.optLong("totalEarned", 0L)),
+            completedAt = null,
+            registerId = json.optInt("registerId", 0),
+            gameDayNumber = json.optInt("gameDayNumber", 0),
         )
     }
 
@@ -436,27 +530,35 @@ object GameStateSerializer {
             put("id", entity.id)
             put("name", entity.name)
             put("entityDefKey", entity.entityDefinition.key)
-            put("entityTypeDisplayName", entity.entityType.displayName)
             put("trait", entity.trait.name)
+            put("tier", entity.tier.name)
+            put("xp", entity.xp)
+            put("level", entity.level)
         }
     }
 
     private fun deserializeHiredEntity(json: JSONObject): HiredEntity {
         val defKey = json.getString("entityDefKey")
-        val typeDisplayName = json.getString("entityTypeDisplayName")
-        
-        // Find the entity definition and type from the companions
-        val entityDef = EntityDef.allEntities.find { it.key == defKey } 
+        val entityDef = EntityDef.allEntities.find { it.key == defKey }
             ?: throw IllegalStateException("Unknown entity definition: $defKey")
-        val entityType = EntityType.allEntityTypes.find { it.displayName == typeDisplayName }
-            ?: throw IllegalStateException("Unknown entity type: $typeDisplayName")
-        
+        val trait = try {
+            EntityTrait.valueOf(json.getString("trait"))
+        } catch (_: IllegalArgumentException) {
+            EntityTrait.EFFICIENT
+        }
+        val tier = try {
+            Tier.valueOf(json.optString("tier", Tier.BASE.name))
+        } catch (_: IllegalArgumentException) {
+            Tier.BASE
+        }
         return HiredEntity(
             id = json.getInt("id"),
             name = json.getString("name"),
             entityDefinition = entityDef,
-            entityType = entityType,
-            trait = EntityTrait.valueOf(json.getString("trait"))
+            trait = trait,
+            tier = tier,
+            xp = json.optInt("xp", 0),
+            level = json.optInt("level", 1),
         )
     }
 

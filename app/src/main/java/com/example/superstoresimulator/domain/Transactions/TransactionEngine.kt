@@ -5,6 +5,9 @@ import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.RefundLine
 import com.example.superstoresimulator.domain.RefundRequest
+import com.example.superstoresimulator.domain.RegisterState
+import com.example.superstoresimulator.domain.findRegisterById
+import com.example.superstoresimulator.domain.updateRegister
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
@@ -19,7 +22,16 @@ class TransactionEngine(
     private val cache: ItemMetadataCache? = null,
 ) {
 
-    fun startNewTransaction(state: GameState): GameState {
+    /** Default register id: the first register in the list (or 0 if empty). */
+    private fun defaultRegisterId(state: GameState): Int =
+        state.registers.firstOrNull()?.registerId ?: 0
+
+    fun startNewTransaction(
+        state: GameState,
+        registerId: Int = state.registers.firstOrNull()?.registerId ?: 0,
+    ): GameState {
+        val register = state.registers.findRegisterById(registerId) ?: return state
+
         val currentTierAmount = state.currentTier.unlockAmount
         val availableItemIds = state.inventory.keys.filter { itemId ->
             val itemTier = cache?.get(itemId)?.tier ?: ItemUnlockTier.TIER_1
@@ -53,15 +65,21 @@ class TransactionEngine(
         val tax = Money.Companion.fromDollars(subtotal.toDouble() * salesTaxRate)
         val totalEarned = subtotal + tax
 
+        val newTransaction = Transaction(
+            id = register.currentTransaction.id + 1,
+            lines = lines,
+            subtotal = subtotal,
+            tax = tax,
+            totalEarned = totalEarned
+        )
+
         return state.copy(
-            currentTransaction = Transaction(
-                id = state.currentTransaction.id + 1,
-                lines = lines,
-                subtotal = subtotal,
-                tax = tax,
-                totalEarned = totalEarned
-            ),
-            transactionActive = true
+            registers = state.registers.updateRegister(
+                register.copy(
+                    currentTransaction = newTransaction,
+                    transactionActive = true,
+                )
+            )
         )
     }
 
@@ -70,13 +88,17 @@ class TransactionEngine(
      *
      * Unlike [startNewTransaction], this method:
      * - Accepts a pre-determined [itemCount] from the customer's basket size
-     * - Is a **no-op** when a transaction is already active — the arriving customer
-     *   is held off until the current one completes
+     * - Is a **no-op** when a transaction is already active on the target register
      * - Returns [state] unchanged if inventory is empty
      */
-    fun generateRandomTransaction(state: GameState, itemCount: Int): GameState {
-        // Don't interrupt an active transaction
-        if (state.transactionActive) return state
+    fun generateRandomTransaction(
+        state: GameState,
+        itemCount: Int,
+        registerId: Int = state.registers.firstOrNull()?.registerId ?: 0,
+    ): GameState {
+        val register = state.registers.findRegisterById(registerId) ?: return state
+        // Don't interrupt an active transaction on this register
+        if (register.transactionActive) return state
 
         val currentTierAmount = state.currentTier.unlockAmount
         val availableItemIds = state.inventory.keys.filter { itemId ->
@@ -105,59 +127,69 @@ class TransactionEngine(
         val tax = Money.Companion.fromDollars(subtotal.toDouble() * salesTaxRate)
         val totalEarned = subtotal + tax
 
+        val newTransaction = Transaction(
+            id = register.currentTransaction.id + 1,
+            lines = lines,
+            subtotal = subtotal,
+            tax = tax,
+            totalEarned = totalEarned
+        )
+
         return state.copy(
-            currentTransaction = Transaction(
-                id = state.currentTransaction.id + 1,
-                lines = lines,
-                subtotal = subtotal,
-                tax = tax,
-                totalEarned = totalEarned
-            ),
-            transactionActive = true
+            registers = state.registers.updateRegister(
+                register.copy(
+                    currentTransaction = newTransaction,
+                    transactionActive = true,
+                )
+            )
         )
     }
 
     /**
-     * Ring up exactly one item (one unit on one line).
+     * Ring up exactly one item (one unit on one line) on the specified register.
      */
-    fun ringUpSingleItem(state: GameState, itemId: Int): GameState {
-        val prev = state
+    fun ringUpSingleItem(
+        state: GameState,
+        itemId: Int,
+        registerId: Int = state.registers.firstOrNull()?.registerId ?: 0,
+    ): GameState {
+        val register = state.registers.findRegisterById(registerId) ?: return state
 
-        val lines = prev.currentTransaction.lines.toMutableList()
+        val lines = register.currentTransaction.lines.toMutableList()
         if (lines.isEmpty()) {
-            return startNewTransaction(prev)
+            return startNewTransaction(state, registerId)
         }
 
         // Find the specific line for this item
         val lineIndex = lines.indexOfFirst { it.itemId == itemId }
-        if (lineIndex == -1) return prev
+        if (lineIndex == -1) return state
 
         val line = lines[lineIndex]
 
         // Skip lines already fully rung or already marked lost to OOS
-        if (line.rungQty >= line.quantity || line.lostToOutOfStock) return prev
+        if (line.rungQty >= line.quantity || line.lostToOutOfStock) return state
 
         // If shelf stock is zero, mark the remaining quantity as lost (out-of-stock)
         // rather than blocking the transaction — the cashier moves on to the next item.
         if ((state.inventory[line.itemId]?.shelfStock ?: 0) == 0) {
             lines[lineIndex] = line.copy(lostToOutOfStock = true)
             return if (isTransactionComplete(lines)) {
-                completeTransaction(prev, lines, prev.inventory)
+                completeTransaction(state, lines, state.inventory, registerId)
             } else {
-                updatePartialTransaction(prev, lines, prev.inventory)
+                updatePartialTransaction(state, lines, state.inventory, registerId)
             }
         }
 
-        val updatedInventory = consumeShelfStock(prev.inventory, itemId)
+        val updatedInventory = consumeShelfStock(state.inventory, itemId)
 
         // Increment rungQty for this specific line
         val updatedLines = incrementRungQty(lines, lineIndex)
 
         // Finish or continue the transaction
         return if (isTransactionComplete(updatedLines)) {
-            completeTransaction(prev, updatedLines, updatedInventory)
+            completeTransaction(state, updatedLines, updatedInventory, registerId)
         } else {
-            updatePartialTransaction(prev, updatedLines, updatedInventory)
+            updatePartialTransaction(state, updatedLines, updatedInventory, registerId)
         }
     }
 
@@ -200,25 +232,34 @@ class TransactionEngine(
     private fun completeTransaction(
         prev: GameState,
         lines: List<TransactionLine>,
-        inventory: Map<Int, InventoryState>
+        inventory: Map<Int, InventoryState>,
+        registerId: Int,
     ): GameState {
+        val register = prev.registers.findRegisterById(registerId) ?: return prev
+
         val historyEntry = buildTransaction(
-            id = prev.currentTransaction.id,
-            transactionLines = lines
+            id = register.currentTransaction.id,
+            transactionLines = lines,
+            registerId = registerId,
+            gameDayNumber = prev.currentTime.dayNumber,
         )
 
         var newState = prev.copy(
             totalTransactionsCompleted = prev.totalTransactionsCompleted + 1,
             money = prev.money + historyEntry.totalEarned,
             totalRevenue = prev.totalRevenue + historyEntry.totalEarned,
-            currentTransaction = prev.currentTransaction.copy(lines = lines),
             inventory = inventory,
             salesHistory = prev.salesHistory + historyEntry,
             totalTaxCollected = prev.totalTaxCollected + historyEntry.tax,
-            transactionActive = false
+            registers = prev.registers.updateRegister(
+                register.copy(
+                    currentTransaction = register.currentTransaction.copy(lines = lines),
+                    transactionActive = false,
+                )
+            ),
         )
 
-        newState = maybeGenerateRefund(newState, lines, inventory)
+        newState = maybeGenerateRefund(newState, lines, inventory, historyEntry.id)
         return newState
     }
 
@@ -226,11 +267,17 @@ class TransactionEngine(
     private fun updatePartialTransaction(
         prev: GameState,
         lines: List<TransactionLine>,
-        inventory: Map<Int, InventoryState>
+        inventory: Map<Int, InventoryState>,
+        registerId: Int,
     ): GameState {
+        val register = prev.registers.findRegisterById(registerId) ?: return prev
         return prev.copy(
-            currentTransaction = prev.currentTransaction.copy(lines = lines),
-            inventory = inventory
+            inventory = inventory,
+            registers = prev.registers.updateRegister(
+                register.copy(
+                    currentTransaction = register.currentTransaction.copy(lines = lines)
+                )
+            ),
         )
     }
 
@@ -274,7 +321,9 @@ class TransactionEngine(
     // Replace Instant.now() with getCurrentTime()
     private fun buildTransaction(
         id: Int,
-        transactionLines: List<TransactionLine>
+        transactionLines: List<TransactionLine>,
+        registerId: Int = 0,
+        gameDayNumber: Int = 0,
     ): Transaction {
         val lines = transactionLines.map { line ->
             if (line.lostToOutOfStock) {
@@ -298,18 +347,22 @@ class TransactionEngine(
             subtotal = subtotal,
             tax = tax,
             totalEarned = totalEarned,
-            completedAt = getCurrentTime()
+            completedAt = getCurrentTime(),
+            registerId = registerId,
+            gameDayNumber = gameDayNumber,
         )
     }
 
 
     /**
      * Maybe create a pending RefundRequest and adjust inventory accordingly.
+     * [completedTransactionId] is the id of the just-completed transaction (from its historyEntry).
      */
     private fun maybeGenerateRefund(
         state: GameState,
         lines: List<TransactionLine>,
-        inventory: Map<Int, InventoryState>
+        inventory: Map<Int, InventoryState>,
+        completedTransactionId: Int,
     ): GameState {
         if (random.nextDouble() >= refundChance) return state
 
@@ -370,7 +423,7 @@ class TransactionEngine(
         val refundRequest = RefundRequest(
             id = state.nextRefundId,
             timestamp = System.currentTimeMillis(),
-            originalTransactionId = state.currentTransaction.id,
+            originalTransactionId = completedTransactionId,
             lines = refundLines.map { rl ->
                 RefundLine(
                     itemId = rl.itemId,

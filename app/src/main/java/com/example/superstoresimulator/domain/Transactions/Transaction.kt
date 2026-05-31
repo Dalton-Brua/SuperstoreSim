@@ -9,7 +9,9 @@ data class Transaction(
     val subtotal: Money,
     val tax: Money,
     val totalEarned: Money,
-    val completedAt: Instant? = null
+    val completedAt: Instant? = null,
+    val registerId: Int = 0,
+    val gameDayNumber: Int = 0,
 ) {
     constructor(): this(0, emptyList(), Money(0), Money(0), Money(0))
 }

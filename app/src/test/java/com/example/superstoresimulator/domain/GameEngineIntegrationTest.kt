@@ -112,7 +112,7 @@ class GameEngineIntegrationTest {
 
         assertNotNull("State should not be null", state)
         assertEquals("Grocery Store", state.storeName)
-        assertEquals(Money(0), state.money)
+        assertTrue("Starting money should be positive", state.money > Money(0))
         assertEquals(GameTime(0), state.currentTime)
         assertEquals(StoreState.CLOSED, state.storeState)
         assertTrue("Should have inventory items initialized", state.inventory.isNotEmpty())
@@ -193,10 +193,7 @@ class GameEngineIntegrationTest {
     @Test
     fun testStateRemainsConsistent() {
         setMoney(10_000L)
-        gameEngine.hireEntity(
-            com.example.superstoresimulator.domain.Entities.EntityDef.CASHIER,
-            com.example.superstoresimulator.domain.Entities.EntityType.CASHIERS
-        )
+        gameEngine.hireEntity(com.example.superstoresimulator.domain.Entities.EntityDef.CASHIER)
         gameEngine.buyItemToBackroom(1)
         gameEngine.startTransaction()
         gameEngine.tick(1_000)
@@ -285,10 +282,7 @@ class GameEngineIntegrationTest {
         setMoney(10_000L)
 
         // Hire a cashier (tests StaffManager)
-        gameEngine.hireEntity(
-            com.example.superstoresimulator.domain.Entities.EntityDef.CASHIER,
-            com.example.superstoresimulator.domain.Entities.EntityType.CASHIERS
-        )
+        gameEngine.hireEntity(com.example.superstoresimulator.domain.Entities.EntityDef.CASHIER)
 
         // Stock inventory (tests InventoryManager)
         gameEngine.buyItemToBackroom(1)

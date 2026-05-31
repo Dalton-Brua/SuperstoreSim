@@ -43,9 +43,7 @@ class TransactionEngineTest {
 
         baseState = GameState(
             money = Money.fromDollars(1000.0),
-            inventory = inventory,
-            currentTransaction = Transaction(),
-            transactionActive = false
+            inventory = inventory
         )
     }
 

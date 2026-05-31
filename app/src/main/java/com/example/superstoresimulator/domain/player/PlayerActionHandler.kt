@@ -48,10 +48,19 @@ class PlayerActionHandler {
      */
     fun setPlayerRole(state: GameState, role: PlayerRole): GameState {
         val newRole = if (state.playerRole == role) PlayerRole.NONE else role
+
+        val newAssignedRegisterId = when (newRole) {
+            PlayerRole.CASHIER -> state.registers
+                .firstOrNull { it.assignedCashierId == null }
+                ?.registerId
+            else -> null
+        }
+
         return state.copy(
             playerRole = newRole,
             playerCashierProgress = 0f,
             playerStockerProgress = 0f,
+            playerAssignedRegisterId = newAssignedRegisterId,
         )
     }
 

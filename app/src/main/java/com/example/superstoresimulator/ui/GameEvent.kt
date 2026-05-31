@@ -1,7 +1,6 @@
 package com.example.superstoresimulator.ui
 
 import com.example.superstoresimulator.domain.Entities.EntityDef
-import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.player.PlayerRole
 
@@ -14,13 +13,13 @@ sealed interface GameEvent {
     data class BuyItem(val itemId: Int) : GameEvent
     data class SelectItemCategory(val category: ItemCategory?) : GameEvent
     data class FocusInventoryItem(val itemId: Int?) : GameEvent
-    data class HireStaff(val entityDef: EntityDef, val entityType: EntityType) : GameEvent
-    data class UpgradeStaff(val entityId: Int) : GameEvent
+    data class HireStaff(val entityDef: EntityDef) : GameEvent
+    data class PromoteStaff(val entityId: Int) : GameEvent
     data class FireStaff(val entityId: Int) : GameEvent
     data class ChangeStoreName(val name: String) : GameEvent
     data class ProcessRefund(val refundId: Int) : GameEvent
     data class ProcessRefundLine(val refundId: Int, val itemId: Int, val quantity: Int) : GameEvent
-    data class SelectStaffType(val staffType: EntityType) : GameEvent
+    data class SelectStaffDef(val staffDef: EntityDef?) : GameEvent
 
     data class SetGameSpeed(val multiplier: Float) : GameEvent
     data object ToggleStore : GameEvent
@@ -108,4 +107,21 @@ sealed interface GameEvent {
      * layer also validates the range and silently ignores invalid values.
      */
     data class UpdateShift(val entityId: Int, val newStartHour: Int) : GameEvent
+
+    // Register System (Phase 3)
+    /** Purchase one additional register (subject to store-size cap and affordability). */
+    data object PurchaseRegister : GameEvent
+
+    /**
+     * Assign (or unassign) a hired cashier to/from a register.
+     * Pass [cashierId] = null to clear the assignment.
+     */
+    data class AssignCashierToRegister(val cashierId: Int?, val registerId: Int) : GameEvent
+
+    /**
+     * Assign (or unassign) the player as cashier on a specific register.
+     * Pass [registerId] = null to unassign.
+     * Guard: cannot assign to a register that already has a hired cashier.
+     */
+    data class AssignPlayerToRegister(val registerId: Int?) : GameEvent
 }

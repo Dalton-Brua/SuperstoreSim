@@ -3,10 +3,7 @@ package com.example.superstoresimulator.domain.Entities
 data class HiredEntityRegistry(
     private val entities: List<HiredEntity> = emptyList(),
     private var nextEntityId: Int = 1
-
 ) {
-    
-    /** Public accessor for the hired entities list (used by wage calculator and other systems). */
     val hiredEntities: List<HiredEntity> get() = entities
 
     private val firstNames = listOf(
@@ -24,7 +21,6 @@ data class HiredEntityRegistry(
         "Isla", "Freya", "Eliza", "Juliet", "Margo", "Daphne", "Tessa", "Mira", "Celeste"
     )
 
-
     private val lastNames = listOf(
         "Smith", "Johnson", "Williams", "Brown", "Jones",
         "Garcia", "Miller", "Davis", "Rodriguez", "Martinez",
@@ -33,53 +29,70 @@ data class HiredEntityRegistry(
         "Lee", "Perez", "Thompson", "White", "Harris",
         "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson"
     )
-    private fun randomName(): String {
-        return "${firstNames.random()} ${lastNames.random()}"
-    }
 
-    fun countByEntity(def: EntityDef): Int =
-        entities.count { it.entityDefinition == def }
+    private fun randomName(): String = "${firstNames.random()} ${lastNames.random()}"
 
-    fun countByType(type: EntityType): Int =
-        entities.count { it.entityType == type }
+    fun countByDef(def: EntityDef): Int = entities.count { it.entityDefinition == def }
 
     fun totalCount(): Int = entities.size
 
-    fun hireEntity(definition: EntityDef, type: EntityType): HiredEntityRegistry {
-
+    fun hireEntity(definition: EntityDef): HiredEntityRegistry {
+        val trait = EntityTrait.entries.random()
+        val startLevel = if (trait == EntityTrait.VETERAN) 3 else 1
+        val startXp = if (trait == EntityTrait.VETERAN) HiredEntity.XP_THRESHOLDS[1] else 0
         val newEntity = HiredEntity(
             id = nextEntityId,
             name = randomName(),
             entityDefinition = definition,
-            entityType = type,
-            trait = EntityTrait.entries.random()
+            trait = trait,
+            level = startLevel,
+            xp = startXp,
         )
-
-        return copy(
-            entities = entities + newEntity,
-            nextEntityId = nextEntityId + 1
-        )
+        return copy(entities = entities + newEntity, nextEntityId = nextEntityId + 1)
     }
 
-    fun upgradeEntity(entityId: Int): HiredEntityRegistry {
+    fun promoteEntity(entityId: Int): HiredEntityRegistry {
         val updatedList = entities.map { entity ->
-            if (entity.id == entityId) {
-                entity.copy(entityDefinition = entity.entityDefinition.nextUpgrade?: entity.entityDefinition) // Use nextUpgrade unless null, then do nothing
-            } else entity
+            if (entity.id == entityId) entity.upgrade() else entity
         }
-
         return copy(entities = updatedList)
     }
 
     fun fireEntity(entityId: Int): HiredEntityRegistry =
         copy(entities = entities.filterNot { it.id == entityId })
 
-    fun getById(entityId: Int) : HiredEntity =
-        entities.first { it.id == entityId }
-    fun getByType(type: EntityType): List<HiredEntity> =
-        entities.filter { it.entityType == type }
-    fun getNextEntityId() : Int {
-        return nextEntityId
+    fun getById(entityId: Int): HiredEntity = entities.first { it.id == entityId }
+
+    fun getByDef(def: EntityDef): List<HiredEntity> =
+        entities.filter { it.entityDefinition == def }
+
+    fun getNextEntityId(): Int = nextEntityId
+
+    fun grantXp(entityId: Int, rawAmount: Int): HiredEntityRegistry {
+        val updatedList = entities.map { entity ->
+            if (entity.id != entityId) return@map entity
+            val multiplier = entity.trait.xpMultiplier
+            val gained = (rawAmount * multiplier).toInt().coerceAtLeast(1)
+            val newXp = entity.xp + gained
+            val newLevel = computeLevel(newXp)
+            entity.copy(xp = newXp, level = newLevel)
+        }
+        return copy(entities = updatedList)
     }
 
+    fun grantXpToAll(def: EntityDef, rawAmount: Int): HiredEntityRegistry {
+        var updated = this
+        entities.filter { it.entityDefinition == def }.forEach { entity ->
+            updated = updated.grantXp(entity.id, rawAmount)
+        }
+        return updated
+    }
+
+    private fun computeLevel(xp: Int): Int {
+        var level = 1
+        for (threshold in HiredEntity.XP_THRESHOLDS) {
+            if (xp >= threshold) level++ else break
+        }
+        return level.coerceAtMost(HiredEntity.MAX_LEVEL)
+    }
 }

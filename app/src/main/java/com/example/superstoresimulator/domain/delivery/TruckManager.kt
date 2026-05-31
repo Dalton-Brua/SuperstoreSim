@@ -40,18 +40,7 @@ class TruckManager(private val cache: ItemMetadataCache) {
         currentDay: Int,
     ): GameState {
         if (lines.isEmpty()) return state
-        var workingState = state
-        var remaining = lines
-
-        while (remaining.isNotEmpty()) {
-            workingState = assignLinesToNextRegularTruck(workingState, remaining, currentDay)
-            // Determine how many lines were actually placed by checking state change
-            // Since we can't directly return placed/unplaced, handle overflow by loop
-            // Actually, we need to rethink: assignLinesToNextRegularTruck should place
-            // as many as fit and return state. We track what's left by checking capacity.
-            break  // assignLinesToNextRegularTruck handles all lines including overflow
-        }
-        return workingState
+        return assignLinesToNextRegularTruck(state, lines, currentDay)
     }
 
     private fun assignLinesToNextRegularTruck(
@@ -59,52 +48,53 @@ class TruckManager(private val cache: ItemMetadataCache) {
         lines: List<PendingOrderLine>,
         currentDay: Int,
     ): GameState {
-        var trucks = state.scheduledTrucks.toMutableList()
+        val trucks = state.scheduledTrucks.toMutableList()
         var nextId = state.nextTruckId
         var remainingLines = lines.toMutableList()
-
-        // Per-item backroom cap: each truck should deliver at most this many case packs
-        // of any single item, enabling multi-truck splitting for large orders.
-        val perItemCap = state.storeConfig.backroomCapPerItem
 
         // Look for early truck first (if one exists for tomorrow)
         val earlyTruck = trucks.find {
             it.isEarlyTruck && it.scheduledArrivalDay == currentDay + 1
         }
-
         if (earlyTruck != null) {
-            val (updatedEarly, leftover) = fillTruck(earlyTruck, remainingLines, perItemCap)
+            val (updatedEarly, leftover) = fillTruck(earlyTruck, remainingLines)
             val idx = trucks.indexOf(earlyTruck)
             trucks[idx] = updatedEarly
+            if (leftover.isEmpty()) {
+                return state.copy(scheduledTrucks = trucks, nextTruckId = nextId)
+            }
             remainingLines = leftover.toMutableList()
         }
 
-        // Place remaining on regular trucks (find existing ones with space, create new if needed).
-        // Track trucks whose per-item cap is saturated for all pending lines so we never
-        // re-select them and enter an infinite loop.
-        val perItemSaturated = mutableSetOf<Int>() // truckIds that can't accept any more of remainingLines
-
+        // Place remaining lines on regular trucks, creating new trucks as needed.
+        // Splitting is based purely on truck capacity — the per-item cap enforcement
+        // happens at order time in InventoryManager, not here.
         while (remainingLines.isNotEmpty()) {
-            val candidate = trucks.filter { !it.isFreshTruck && !it.isEarlyTruck }
-                .firstOrNull { it.remainingCapacityCasePacks > 0 && it.truckId !in perItemSaturated }
+            val candidate = trucks
+                .filter { !it.isFreshTruck && !it.isEarlyTruck }
+                .firstOrNull { it.remainingCapacityCasePacks > 0 }
 
             if (candidate != null) {
-                val (updated, leftover) = fillTruck(candidate, remainingLines, perItemCap)
+                val (updated, leftover) = fillTruck(candidate, remainingLines)
                 val idx = trucks.indexOf(candidate)
                 trucks[idx] = updated
-                if (leftover.size == remainingLines.size) {
-                    // Nothing was placed — per-item cap is full for all remaining lines on this truck.
-                    // Mark it as saturated so we don't select it again for these lines.
-                    perItemSaturated.add(candidate.truckId)
-                } else {
-                    // Progress was made; reset saturation tracking and update remaining lines.
-                    perItemSaturated.clear()
-                    if (leftover.isEmpty()) break
-                    remainingLines = leftover.toMutableList()
+                when {
+                    leftover.isEmpty() -> break
+                    leftover.size < remainingLines.size -> {
+                        // Progress made — continue with the remaining lines
+                        remainingLines = leftover.toMutableList()
+                    }
+                    else -> {
+                        // No progress despite candidate having capacity: every remaining line
+                        // individually exceeds the truck's remaining space. Safety break to
+                        // prevent an infinite loop; these lines cannot be placed.
+                        break
+                    }
                 }
             } else {
                 // No eligible truck with capacity — create a new regular truck on the next delivery day.
-                val lastRegularDay = trucks.filter { !it.isFreshTruck && !it.isEarlyTruck }
+                val lastRegularDay = trucks
+                    .filter { !it.isFreshTruck && !it.isEarlyTruck }
                     .maxOfOrNull { it.scheduledArrivalDay }
                 val baseDay = if (lastRegularDay != null && lastRegularDay > currentDay) lastRegularDay else currentDay
                 val arrivalDay = findNextDeliveryDay(baseDay, state.truckConfig.deliveryDays)
@@ -114,7 +104,6 @@ class TruckManager(private val cache: ItemMetadataCache) {
                     capacityCasePacks = state.truckConfig.regularTruckCapacityCasePacks,
                 )
                 trucks.add(newTruck)
-                perItemSaturated.clear() // New truck available — reset saturation set
             }
         }
 

@@ -1,6 +1,6 @@
 package com.example.superstoresimulator.ui.state
 
-import com.example.superstoresimulator.domain.Entities.EntityType
+import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.RefundRequest
@@ -24,6 +24,8 @@ data class GameUiState(
     val metrics: MetricsUIState = MetricsUIState(),
     val progression: ProgressionUIState = ProgressionUIState(),
     val delivery: DeliveryUIState = DeliveryUIState(),
+    /** Register system — per-register status, assignment, and purchase info. */
+    val registers: RegistersUIState = RegistersUIState(),
 )
 
 data class AppUIState(
@@ -38,11 +40,14 @@ data class AppUIState(
 
 data class DashboardUIState(
     val money: Money,
-    val totalStaff: Int
+    val totalStaff: Int,
+    /** Number of employees whose shift covers the current game hour (or always-on if no shift set). */
+    val activeStaff: Int = 0,
 )
 
 data class TransactionUIState(
     val current: Transaction,
+    val previous: Transaction? = null,
     val totalCompleted: Int,
     val isActive: Boolean,
     val isDialogOpen: Boolean,
@@ -85,7 +90,11 @@ data class InventoryItemUI(
 
 data class StaffUIState(
     val registry: HiredEntityRegistry,
-    val selectedType: EntityType = EntityType.NONE,
+    val selectedDef: EntityDef? = null,
+    /** All hired employees with their shift times and register assignments. */
+    val scheduleEntries: List<StaffScheduleEntryUI> = emptyList(),
+    /** Current game hour (0-23) — used to show on-shift status in schedule view. */
+    val currentHour: Int = 8,
 )
 
 data class HistoryUIState(
@@ -176,3 +185,64 @@ data class DeliveryUIState(
     /** Cost to purchase one additional weekly delivery slot. */
     val extraTruckSlotCost: Money = Money(10_000L),       // always $100
 )
+
+// ── Register System UI State ─────────────────────────────────────────────────
+
+/**
+ * UI-layer snapshot of a single register's current state.
+ *
+ * [isManned] is true when a cashier is on-shift and assigned OR the player is assigned.
+ * [cashierOnShift] reflects only the hired cashier's shift status (false if no cashier assigned).
+ */
+data class RegisterUIState(
+    val registerId: Int,
+    /** Name of the hired cashier assigned to this register, or null if none. */
+    val assignedCashierName: String? = null,
+    /** Entity ID of the assigned cashier, or null. */
+    val assignedCashierId: Int? = null,
+    /** True when the player has claimed this register. */
+    val isPlayerAssigned: Boolean = false,
+    /** True when a transaction is currently being processed on this register. */
+    val transactionActive: Boolean = false,
+    /** True when this register is staffed and can accept new customers. */
+    val isManned: Boolean = false,
+    /** True when the assigned cashier's shift covers the current game hour. */
+    val cashierOnShift: Boolean = false,
+    val dailyTransactions: Int = 0,
+    val dailyRevenue: Money = Money.ZERO,
+)
+
+/** Aggregate register information used by [RegistersCard]. */
+data class RegistersUIState(
+    val registers: List<RegisterUIState> = listOf(RegisterUIState(registerId = 0)),
+    val ownedCount: Int = 1,
+    val maxRegisters: Int = 1,
+    /** Cost to buy the next register. */
+    val nextRegisterCost: Money = Money(20_000L),
+    /** True when the player can afford and is below the store-size cap. */
+    val canPurchase: Boolean = false,
+    val playerAssignedRegisterId: Int? = null,
+)
+
+// ── Staff Schedule UI State ───────────────────────────────────────────────────
+
+/**
+ * Schedule and assignment info for a single hired employee.
+ *
+ * [startHour] and [endHour] are null when no explicit shift has been set (employee is always on).
+ * [assignedRegisterId] is non-null only for cashiers assigned to a specific register.
+ */
+data class StaffScheduleEntryUI(
+    val entityId: Int,
+    val entityName: String,
+    val entityTypeName: String,
+    /** Inclusive start of shift (6–13), or null if no schedule defined (always on). */
+    val startHour: Int? = null,
+    /** Exclusive end of shift (startHour + 8), or null if no schedule defined. */
+    val endHour: Int? = null,
+    /** Whether the employee is currently on shift based on the current game hour. */
+    val isOnShift: Boolean = true,
+    /** For cashiers: the register they are assigned to, or null if unassigned. */
+    val assignedRegisterId: Int? = null,
+)
+

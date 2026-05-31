@@ -504,7 +504,7 @@ class InventoryManagerTest {
     @Test
     fun `buyItemToBackroom is no-op when insufficient funds (via GameEngine)`() {
         val engine = newGameEngineWithItems()
-        // Engine starts with 0 money
+        setEngineMoneyTo(engine, 0L)
         val initialMoney = engine.currentState().money
 
         engine.buyItemToBackroom(1)
