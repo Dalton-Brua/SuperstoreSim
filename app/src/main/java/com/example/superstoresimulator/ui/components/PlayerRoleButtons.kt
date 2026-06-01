@@ -69,12 +69,12 @@ fun PlayerRoleButtons(
     val progress = when (currentRole) {
         PlayerRole.CASHIER -> playerCashierProgress
         PlayerRole.STOCKER -> playerStockerProgress
-        PlayerRole.NONE    -> 0f
+        PlayerRole.MANAGE    -> 0f
     }
     val barColor: Color = when (currentRole) {
         PlayerRole.CASHIER -> cashierColor
         PlayerRole.STOCKER -> stockerColor
-        PlayerRole.NONE    -> Color.Transparent
+        PlayerRole.MANAGE    -> Color.Transparent
     }
 
     Column(
@@ -92,11 +92,11 @@ fun PlayerRoleButtons(
             Segment(
                 icon = Icons.Default.ManageAccounts,
                 label = "MANAGE",
-                isActive = currentRole == PlayerRole.NONE,
+                isActive = currentRole == PlayerRole.MANAGE,
                 isEnabled = true,
                 activeColor = manageColor,
                 modifier = Modifier.weight(1f)
-            ) { onRoleChanged(PlayerRole.NONE) }
+            ) { onRoleChanged(PlayerRole.MANAGE) }
 
             // Cashier — available whenever the store is open; player waits for next customer
             Segment(

@@ -3,9 +3,11 @@ package com.example.superstoresimulator.domain.staff
 import android.util.Log
 import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
+import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.RegisterState
 import com.example.superstoresimulator.domain.StaffShift
+import com.example.superstoresimulator.domain.player.PlayerRole
 
 class StaffManager {
 
@@ -149,7 +151,7 @@ class StaffManager {
                 if (entity.id in assignedIds) return@sumOf 0.0
                 val shift = schedules.firstOrNull { it.entityId == entity.id }
                 if (shift?.isOnShift(currentHour) == true)
-                    entity.throughputWeight.toDouble()
+                    (entity.throughputWeight * entity.levelMultiplier * entity.trait.throughputMultiplier).toDouble()
                 else 0.0
             }.toFloat()
         }
@@ -166,6 +168,49 @@ class StaffManager {
                     (entity.throughputWeight * entity.levelMultiplier * entity.trait.throughputMultiplier).toDouble()
                 else 0.0
             }.toFloat()
+        }
+
+        fun computeGlobalBonus(
+            playerRole: PlayerRole,
+            currentHour: Int,
+            schedules: List<StaffShift>,
+            registry: HiredEntityRegistry,
+        ): Float {
+            var bonus = 1.0f
+
+            if (playerRole == PlayerRole.MANAGE) {
+                bonus *= 1.10f
+            }
+
+            // Promoted manager (FAST/MANAGER tier) = Senior Manager → 25%
+            // Base-tier manager → 15%
+            // Best on-shift manager wins; multiple managers don't stack.
+            val onShiftManagers = registry.getByDef(EntityDef.MANAGER).filter { e ->
+                schedules.any { s -> s.entityId == e.id && s.isOnShift(currentHour) }
+            }
+            val hasSenior = onShiftManagers.any { it.tier != Tier.BASE }
+            val hasBase = onShiftManagers.any { it.tier == Tier.BASE }
+
+            if (hasSenior) {
+                bonus *= 1.25f
+            } else if (hasBase) {
+                bonus *= 1.15f
+            }
+
+            return bonus
+        }
+
+        fun deptManagerBonus(
+            def: EntityDef,
+            currentHour: Int,
+            schedules: List<StaffShift>,
+            registry: HiredEntityRegistry,
+        ): Float {
+            val hasOnShiftDeptManager = registry.getByDef(def).any { entity ->
+                entity.tier == Tier.MANAGER &&
+                    schedules.any { s -> s.entityId == entity.id && s.isOnShift(currentHour) }
+            }
+            return if (hasOnShiftDeptManager) 1.10f else 1.0f
         }
     }
 }

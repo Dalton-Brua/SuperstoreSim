@@ -38,19 +38,19 @@ fun PlayerRoleIndicator(
     val roleColor = when (playerRole) {
         PlayerRole.CASHIER -> Color(0xFF2ECC71)
         PlayerRole.STOCKER -> Color(0xFF3498DB)
-        PlayerRole.NONE    -> Color(0xFF95A5A6)
+        PlayerRole.MANAGE    -> Color(0xFF95A5A6)
     }
 
     val roleLabel = when (playerRole) {
         PlayerRole.CASHIER -> "YOU: CASHIER"
         PlayerRole.STOCKER -> "YOU: STOCKER"
-        PlayerRole.NONE    -> "YOU: MANAGING"
+        PlayerRole.MANAGE    -> "YOU: MANAGING"
     }
 
     val progress = when (playerRole) {
         PlayerRole.CASHIER -> playerCashierProgress
         PlayerRole.STOCKER -> playerStockerProgress
-        PlayerRole.NONE    -> 0f
+        PlayerRole.MANAGE    -> 0f
     }
 
     Row(
@@ -75,7 +75,7 @@ fun PlayerRoleIndicator(
         }
 
         // Progress bar — only visible when actively working
-        if (playerRole != PlayerRole.NONE) {
+        if (playerRole != PlayerRole.MANAGE) {
             Spacer(Modifier.width(10.dp))
             LinearProgressIndicator(
                 progress = { progress.coerceIn(0f, 1f) },

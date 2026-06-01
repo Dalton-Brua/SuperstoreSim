@@ -58,7 +58,7 @@ class PlayerActionHandlerTest {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun stateWith(
-        playerRole: PlayerRole = PlayerRole.NONE,
+        playerRole: PlayerRole = PlayerRole.MANAGE,
         cashierProgress: Float = 0f,
         stockerProgress: Float = 0f,
         gameSpeedMultiplier: Float = 1.0f,
@@ -73,7 +73,7 @@ class PlayerActionHandlerTest {
 
     @Test
     fun `setPlayerRole activates CASHIER when current role is NONE`() {
-        val state = stateWith(playerRole = PlayerRole.NONE)
+        val state = stateWith(playerRole = PlayerRole.MANAGE)
         val result = handler.setPlayerRole(state, PlayerRole.CASHIER)
         assertEquals(PlayerRole.CASHIER, result.playerRole)
     }
@@ -82,14 +82,14 @@ class PlayerActionHandlerTest {
     fun `setPlayerRole toggles CASHIER off when it is already active`() {
         val state = stateWith(playerRole = PlayerRole.CASHIER)
         val result = handler.setPlayerRole(state, PlayerRole.CASHIER)
-        assertEquals(PlayerRole.NONE, result.playerRole)
+        assertEquals(PlayerRole.MANAGE, result.playerRole)
     }
 
     @Test
     fun `setPlayerRole toggles STOCKER off when it is already active`() {
         val state = stateWith(playerRole = PlayerRole.STOCKER)
         val result = handler.setPlayerRole(state, PlayerRole.STOCKER)
-        assertEquals(PlayerRole.NONE, result.playerRole)
+        assertEquals(PlayerRole.MANAGE, result.playerRole)
     }
 
     @Test
@@ -101,7 +101,7 @@ class PlayerActionHandlerTest {
 
     @Test
     fun `setPlayerRole zeros playerCashierProgress on every role change`() {
-        val state = stateWith(playerRole = PlayerRole.NONE, cashierProgress = 0.7f)
+        val state = stateWith(playerRole = PlayerRole.MANAGE, cashierProgress = 0.7f)
         val result = handler.setPlayerRole(state, PlayerRole.CASHIER)
         assertEquals(0f, result.playerCashierProgress, 1e-4f)
     }

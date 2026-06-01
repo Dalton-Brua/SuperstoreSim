@@ -140,6 +140,11 @@ object GameStateSerializer {
         if (state.playerAssignedRegisterId != null) {
             json.put("playerAssignedRegisterId", state.playerAssignedRegisterId)
         }
+        if (state.manuallyUnassignedCashiers.isNotEmpty()) {
+            val unassignedArray = JSONArray()
+            state.manuallyUnassignedCashiers.forEach { unassignedArray.put(it) }
+            json.put("manuallyUnassignedCashiers", unassignedArray)
+        }
 
         // ── Fresh auto-order system ──────────────────────────────────────────
         json.put("freshAutoOrderConfig", JSONObject().apply {
@@ -175,7 +180,7 @@ object GameStateSerializer {
                 totalRevenue = Money(json.getLong("totalRevenue")),
                 currentTier = ItemUnlockTier.valueOf(json.getString("currentTier")),
                 currentStoreSize = StoreSize.valueOf(json.getString("currentStoreSize")),
-                playerRole = PlayerRole.valueOf(json.getString("playerRole")),
+                playerRole = PlayerRole.fromLegacyName(json.getString("playerRole")),
                 playerCashierProgress = json.getDouble("playerCashierProgress").toFloat(),
                 playerStockerProgress = json.getDouble("playerStockerProgress").toFloat(),
                 pendingCustomers = json.getInt("pendingCustomers"),
@@ -244,6 +249,10 @@ object GameStateSerializer {
                 playerAssignedRegisterId = if (json.has("playerAssignedRegisterId") &&
                     !json.isNull("playerAssignedRegisterId")
                 ) json.getInt("playerAssignedRegisterId") else null,
+                manuallyUnassignedCashiers = if (json.has("manuallyUnassignedCashiers")) {
+                    val arr = json.getJSONArray("manuallyUnassignedCashiers")
+                    (0 until arr.length()).map { arr.getInt(it) }.toSet()
+                } else emptySet(),
                 // ── Fresh auto-order system ──────────────────────────────────
                 freshAutoOrderConfig = if (json.has("freshAutoOrderConfig")) {
                     val cfg = json.getJSONObject("freshAutoOrderConfig")

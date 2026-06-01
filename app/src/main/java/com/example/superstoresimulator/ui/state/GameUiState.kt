@@ -109,7 +109,7 @@ data class TimeUIState(
     val speedMultiplier: Float = 1.0f,
     val playerPausedTime: Boolean = false,
     // Phase 2: Player role
-    val playerRole: PlayerRole = PlayerRole.NONE,
+    val playerRole: PlayerRole = PlayerRole.MANAGE,
     val playerCashierProgress: Float = 0f,
     val playerStockerProgress: Float = 0f,
     // Phase 1.5: Store size and operating costs

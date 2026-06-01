@@ -308,6 +308,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             var updatedRegisters = state.registers
             val unassignedCashiers = state.hiredEntityRegistry.hiredEntities.filter { entity ->
                 entity.entityDefinition == EntityDef.CASHIER &&
+                    entity.id !in state.manuallyUnassignedCashiers &&
                     updatedRegisters.none { reg -> reg.assignedCashierId == entity.id }
             }
             for (cashier in unassignedCashiers) {
@@ -379,7 +380,8 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                     registers = state.registers.map { it.copy(
                         currentTransaction = Transaction(),
                         transactionActive = false,
-                    )}
+                    )},
+                    manuallyUnassignedCashiers = emptySet(),
                 )
                 staffManager.reset()
                 // Process truck arrivals at the start of each new day
@@ -394,8 +396,22 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             state = state.copy(storeState = newStoreState)
 
             val delta = deltaMilliseconds / 1000.0
-            val multiplier = state.storeConfig.gameSpeedMultiplier
+            val speedMultiplier = state.storeConfig.gameSpeedMultiplier
             val currentHour = state.currentTime.hour
+
+            // ── Global + department manager bonuses (Phase 5) ─────────────────
+            val globalBonus = StaffManager.computeGlobalBonus(
+                state.playerRole, currentHour, state.staffSchedules, state.hiredEntityRegistry
+            )
+            val cashierBonus = globalBonus * StaffManager.deptManagerBonus(
+                EntityDef.CASHIER, currentHour, state.staffSchedules, state.hiredEntityRegistry
+            )
+            val stockerBonus = globalBonus * StaffManager.deptManagerBonus(
+                EntityDef.STOCKER, currentHour, state.staffSchedules, state.hiredEntityRegistry
+            )
+            val freshBonus = globalBonus * StaffManager.deptManagerBonus(
+                EntityDef.FRESH_HANDLER, currentHour, state.staffSchedules, state.hiredEntityRegistry
+            )
 
             // Unassign cashiers whose shift has ended so the register becomes free for reassignment.
              val registersAfterShiftCheck = state.registers.map { reg ->
@@ -409,9 +425,11 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
              }
 
              // Reassign unassigned on-shift cashiers to free registers
+             // (skip cashiers the player manually unassigned today)
              var registersAfterReassignment = state.registers
              val unassignedOnShiftCashiers = state.hiredEntityRegistry.hiredEntities.filter { cashier ->
                  cashier.entityDefinition == EntityDef.CASHIER &&
+                 cashier.id !in state.manuallyUnassignedCashiers &&
                  registersAfterReassignment.none { reg -> reg.assignedCashierId == cashier.id } &&
                  state.staffSchedules.firstOrNull { it.entityId == cashier.id }?.isOnShift(currentHour) != false
              }
@@ -462,7 +480,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                     val cashierWeight = getCashierWeightForRegister(registerId, state, currentHour)
                     if (cashierWeight <= 0f) continue
                     val actions = staffManager.advanceCashierProgressForRegister(
-                        registerId, cashierWeight, delta, multiplier
+                        registerId, cashierWeight, delta, speedMultiplier * cashierBonus
                     )
                     repeat(actions) { ringUpItemOnRegister(registerId) }
                 }
@@ -472,7 +490,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             val activeStockers = StaffManager.activeWeightedCount(
                 EntityDef.STOCKER, currentHour, state.staffSchedules, state.hiredEntityRegistry
             )
-            val wholeStockActions = staffManager.advanceStockerProgress(activeStockers, delta, multiplier)
+            val wholeStockActions = staffManager.advanceStockerProgress(activeStockers, delta, speedMultiplier * stockerBonus)
             repeat(wholeStockActions) { stockRandomItemFromBackroom() }
             if (wholeStockActions > 0) {
                 state = state.copy(
@@ -484,7 +502,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             val activeFreshHandlers = StaffManager.activeWeightedCount(
                 EntityDef.FRESH_HANDLER, currentHour, state.staffSchedules, state.hiredEntityRegistry
             )
-            val wholeFreshActions = staffManager.advanceFreshHandlerProgress(activeFreshHandlers, delta, multiplier)
+            val wholeFreshActions = staffManager.advanceFreshHandlerProgress(activeFreshHandlers, delta, speedMultiplier * freshBonus)
             repeat(wholeFreshActions) { stockRandomFreshItemFromBackroom() }
             if (wholeFreshActions > 0) {
                 state = state.copy(
@@ -512,7 +530,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             when (state.playerRole) {
                 PlayerRole.CASHIER -> performPlayerCashierWork(delta)
                 PlayerRole.STOCKER -> performPlayerStockerWork(delta)
-                PlayerRole.NONE -> {
+                PlayerRole.MANAGE -> {
                     // Reset accumulators when the player is not actively working
                     if (state.playerCashierProgress != 0f || state.playerStockerProgress != 0f) {
                         state = state.copy(
@@ -564,14 +582,14 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
      * Player working as stocker: moves case-packs from backroom to shelves.
      * Progress math delegated to [PlayerActionHandler.calculateStockerWork];
      * stocking calls are performed here because they mutate live state between iterations.
-     * Auto-returns the player to [PlayerRole.NONE] when the backroom empties.
+     * Auto-returns the player to [PlayerRole.MANAGE] when the backroom empties.
      */
     private fun performPlayerStockerWork(deltaSeconds: Double) {
         val result = playerActionHandler.calculateStockerWork(state, deltaSeconds)
         repeat(result.actionsToTake) { stockRandomItemFromBackroom() }
         val backroomEmpty = state.inventory.values.none { it.backroomStock > 0 }
         if (backroomEmpty) {
-            state = state.copy(playerRole = PlayerRole.NONE, playerStockerProgress = 0f)
+            state = state.copy(playerRole = PlayerRole.MANAGE, playerStockerProgress = 0f)
         } else {
             state = state.copy(playerStockerProgress = result.newProgress)
         }
@@ -591,7 +609,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
      * Returns true when [registerId] has at least one worker that can serve customers:
      * - A hired cashier explicitly assigned to it who is currently on shift, OR
      * - The player assigned to it with [PlayerRole.CASHIER] active, OR
-     * - Manager mode: when [PlayerRole.NONE], unassigned on-shift cashiers are dynamically
+     * - Manager mode: when [PlayerRole.MANAGE], unassigned on-shift cashiers are dynamically
      *   allocated to unassigned registers (in register-id order) by the player acting as manager.
      * - (Backward compat) Any on-shift cashier if this is the only register and it has
      *   no explicit assignment (mirrors pre-Phase-3 behaviour for single-register saves).
@@ -617,7 +635,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
 
         // Manager mode: player with NONE role acts as manager, dynamically assigning
         // unassigned on-shift cashiers to unassigned registers (in register-id order).
-        if (state.playerRole == PlayerRole.NONE) {
+        if (state.playerRole == PlayerRole.MANAGE) {
             val unassignedCount = StaffManager.unassignedOnShiftCashierCount(
                 currentHour, state.staffSchedules, state.hiredEntityRegistry, state.registers
             )
@@ -664,13 +682,13 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             }
             val shift = state.staffSchedules.firstOrNull { it.entityId == assignedId }
             return if (shift?.isOnShift(currentHour) == true)
-                cashier.throughputWeight
+                cashier.throughputWeight * cashier.levelMultiplier * cashier.trait.throughputMultiplier
             else 0f
         }
 
         // Manager mode: divide the unassigned cashier pool weight across the manned
         // unassigned registers (number of manned registers ≤ number of cashiers).
-        if (state.playerRole == PlayerRole.NONE) {
+        if (state.playerRole == PlayerRole.MANAGE) {
             val unassignedCount = StaffManager.unassignedOnShiftCashierCount(
                 currentHour, state.staffSchedules, state.hiredEntityRegistry, state.registers
             )
@@ -725,8 +743,17 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             // Must not be assigned elsewhere
             if (state.registers.any { it.registerId != registerId && it.assignedCashierId == cashierId }) return
         }
+        val previousCashierId = register.assignedCashierId
+        val updatedUnassigned = if (cashierId == null && previousCashierId != null) {
+            state.manuallyUnassignedCashiers + previousCashierId
+        } else if (cashierId != null) {
+            state.manuallyUnassignedCashiers - cashierId
+        } else {
+            state.manuallyUnassignedCashiers
+        }
         state = state.copy(
-            registers = state.registers.updateRegister(register.copy(assignedCashierId = cashierId))
+            registers = state.registers.updateRegister(register.copy(assignedCashierId = cashierId)),
+            manuallyUnassignedCashiers = updatedUnassigned,
         )
     }
 
@@ -742,7 +769,15 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             val register = state.registers.findRegisterById(registerId) ?: return
             if (register.assignedCashierId != null) return
         }
-        state = state.copy(playerAssignedRegisterId = registerId)
+        if (registerId == null && state.playerRole == PlayerRole.CASHIER) {
+            state = state.copy(
+                playerAssignedRegisterId = null,
+                playerRole = PlayerRole.MANAGE,
+                playerCashierProgress = 0f,
+            )
+        } else {
+            state = state.copy(playerAssignedRegisterId = registerId)
+        }
     }
 
     /**

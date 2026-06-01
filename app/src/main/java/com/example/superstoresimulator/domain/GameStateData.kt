@@ -164,7 +164,7 @@ data class GameState(
 
     val currentStoreSize: StoreSize = StoreSize.MOM_AND_POP,
 
-    val playerRole: PlayerRole = PlayerRole.NONE,
+    val playerRole: PlayerRole = PlayerRole.MANAGE,
     val playerCashierProgress: Float = 0f,  // Fractional ring-up accumulator
     val playerStockerProgress: Float = 0f,  // Fractional stock accumulator
 
@@ -203,6 +203,8 @@ data class GameState(
     val ownedRegisterCount: Int = 1,
     /** Register id the player has claimed as cashier, or null if unassigned. */
     val playerAssignedRegisterId: Int? = null,
+    /** Cashier entity IDs manually unassigned from registers today — blocked from auto-reassignment until midnight. */
+    val manuallyUnassignedCashiers: Set<Int> = emptySet(),
 ) {
     // ── Backward-compat read-only shims ──────────────────────────────────────
     // These delegate to the first register so all code that reads

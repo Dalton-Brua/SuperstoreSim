@@ -42,12 +42,12 @@ class PlayerActionHandler {
     /**
      * Set the player's active work role.
      *
-     * Passing the currently-active role toggles it OFF (returns to [PlayerRole.NONE]).
+     * Passing the currently-active role toggles it OFF (returns to [PlayerRole.MANAGE]).
      * Both progress accumulators are always zeroed when the role changes so that
      * leftover fractions from the previous role do not bleed into the next one.
      */
     fun setPlayerRole(state: GameState, role: PlayerRole): GameState {
-        val newRole = if (state.playerRole == role) PlayerRole.NONE else role
+        val newRole = if (state.playerRole == role) PlayerRole.MANAGE else role
 
         val newAssignedRegisterId = when (newRole) {
             PlayerRole.CASHIER -> state.registers
@@ -98,7 +98,7 @@ class PlayerActionHandler {
      * Unlike cashier work there is no early-exit mid-loop, but the caller
      * ([GameEngine]) still checks whether the backroom is now empty after all
      * actions are performed and may override [PlayerWorkResult.newProgress] with 0f
-     * while also returning the player to [PlayerRole.NONE].
+     * while also returning the player to [PlayerRole.MANAGE].
      */
     fun calculateStockerWork(state: GameState, deltaSeconds: Double): PlayerWorkResult {
         val multiplier = state.storeConfig.gameSpeedMultiplier

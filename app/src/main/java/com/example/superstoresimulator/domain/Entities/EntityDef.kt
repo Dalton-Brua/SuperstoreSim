@@ -3,6 +3,7 @@ package com.example.superstoresimulator.domain.Entities
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.superstoresimulator.domain.Money
 
@@ -55,10 +56,23 @@ data class EntityDef(
             icon = Icons.Default.Build,
         )
 
+        val MANAGER = EntityDef(
+            key = "manager",
+            displayName = "Manager",
+            cost = Money(5_000),
+            description = "Boosts all employee throughput by 15%. Promote at level 3 for Senior Manager (25%).",
+            roleDescription = "Throughput bonus + auto-hire",
+            icon = Icons.Default.Star,
+            baseWage = Money(1_200),
+        )
+
         val allEntities: List<EntityDef> = listOf(
             CASHIER,
             STOCKER,
             FRESH_HANDLER,
+            MANAGER,
         )
+
+        val managerEntities: List<EntityDef> = listOf(MANAGER)
     }
 }
