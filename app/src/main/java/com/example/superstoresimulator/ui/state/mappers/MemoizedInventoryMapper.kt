@@ -1,10 +1,13 @@
 package com.example.superstoresimulator.ui.state.mappers
 
+import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.ScheduledTruck
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.ItemMetadata
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
+import com.example.superstoresimulator.domain.pricing.PricingManager
+import com.example.superstoresimulator.domain.pricing.PricingState
 import com.example.superstoresimulator.ui.state.InventoryItemUI
 import com.example.superstoresimulator.ui.state.InventoryUIState
 
@@ -35,23 +38,29 @@ class MemoizedInventoryMapper(
     private var lastTier: ItemUnlockTier? = null
     private var lastBackroomCap: Int? = null
     private var lastScheduledTrucks: List<ScheduledTruck>? = null
+    private var lastPricingState: PricingState? = null
     private val itemCache: MutableMap<Int, InventoryItemUI> = mutableMapOf()
-    
+
     fun map(
         currentInventory: Map<Int, InventoryState>,
         tier: ItemUnlockTier,
         backroomCap: Int,
         scheduledTrucks: List<ScheduledTruck> = emptyList(),
+        pricingManager: PricingManager? = null,
+        gameState: GameState? = null,
     ): InventoryUIState {
         val domainInventory = currentInventory
 
-        // Invalidate the cache when the tier, backroom cap, or truck state changes
-        if (tier != lastTier || backroomCap != lastBackroomCap || scheduledTrucks != lastScheduledTrucks) {
+        val currentPricing = gameState?.pricingState
+        // Invalidate the cache when the tier, backroom cap, truck, or pricing state changes
+        if (tier != lastTier || backroomCap != lastBackroomCap ||
+            scheduledTrucks != lastScheduledTrucks || currentPricing != lastPricingState) {
             lastDomainInventory = null
             lastMappedItems = null
             lastTier = tier
             lastBackroomCap = backroomCap
             lastScheduledTrucks = scheduledTrucks
+            lastPricingState = currentPricing
         }
 
         // ✅ If inventory hasn't changed structurally, return cached result immediately
@@ -118,6 +127,10 @@ class MemoizedInventoryMapper(
             } else null
 
 
+            val resolved = if (pricingManager != null && gameState != null) {
+                pricingManager.resolvePrice(itemId, gameState)
+            } else null
+
             itemCache[itemId] = InventoryItemUI(
                 id = itemId,
                 name = meta.name,
@@ -134,6 +147,10 @@ class MemoizedInventoryMapper(
                 pendingCasePacks = pending?.first ?: 0,
                 earliestArrivalDay = pending?.second,
                 zoneScore = dyn.zoneScore,
+                effectivePrice = resolved?.effectivePrice ?: meta.price,
+                priceModifierPercent = resolved?.modifierPercent ?: 0,
+                hasActiveMarkdown = currentPricing?.activeMarkdowns?.containsKey(itemId) == true,
+                soldByWeight = meta.soldByWeight,
             )
         }
         

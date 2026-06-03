@@ -54,6 +54,7 @@ class ItemMetadataCache(private val itemDao: ItemDao) {
                 purchaseWeight = item.purchaseWeight,
                 tier = runCatching { ItemUnlockTier.valueOf(item.tier) }.getOrDefault(ItemUnlockTier.TIER_1),
                 shelfLifeDays = item.shelfLifeDays,
+                soldByWeight = item.soldByWeight,
             )
             fullItems[itemId] = item
             names[itemId] = item.name

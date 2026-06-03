@@ -46,6 +46,7 @@ object ItemDataLoader {
                         purchaseWeight = if (itemJson.has("purchaseWeight")) itemJson.getDouble("purchaseWeight").toFloat() else 1.0f,
                         tier = if (itemJson.has("tier")) itemJson.getString("tier") else "TIER_1",
                         shelfLifeDays = if (itemJson.has("shelfLifeDays")) itemJson.getInt("shelfLifeDays") else null,
+                        soldByWeight = if (itemJson.has("soldByWeight")) itemJson.getBoolean("soldByWeight") else false,
                     )
                     items.add(item)
                 }

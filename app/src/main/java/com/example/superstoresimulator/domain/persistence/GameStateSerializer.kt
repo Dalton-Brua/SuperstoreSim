@@ -31,9 +31,14 @@ import com.example.superstoresimulator.domain.metrics.DeliveredTruckRecord
 import com.example.superstoresimulator.domain.metrics.DeliveredItemLine
 import com.example.superstoresimulator.domain.metrics.AutoHireEvent
 import com.example.superstoresimulator.domain.player.PlayerRole
+import com.example.superstoresimulator.domain.pricing.Markdown
+import com.example.superstoresimulator.domain.pricing.MarkdownReason
+import com.example.superstoresimulator.domain.pricing.PriceChangeEvent
+import com.example.superstoresimulator.domain.pricing.PricingState
 import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.store.StoreState
+import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.time.GameTime
 import org.json.JSONArray
 import org.json.JSONObject
@@ -167,6 +172,9 @@ object GameStateSerializer {
         }
         json.put("incompleteFreshOrders", incompleteOrdersArray)
 
+        // ── Pricing system ──────────────────────────────────────────────────
+        json.put("pricingState", serializePricingState(state.pricingState))
+
         return json.toString()
     }
 
@@ -280,6 +288,9 @@ object GameStateSerializer {
                         )
                     }
                 } else emptyList(),
+                pricingState = if (json.has("pricingState")) {
+                    deserializePricingState(json.getJSONObject("pricingState"))
+                } else PricingState(),
             )
         } catch (e: Exception) {
             e.printStackTrace()
@@ -380,17 +391,24 @@ object GameStateSerializer {
             put("unitPrice", line.unitPrice.cents)
             put("lineTotal", line.lineTotal.cents)
             put("lostToOutOfStock", line.lostToOutOfStock)
+            put("basePrice", line.basePrice.cents)
+            put("priceModifier", line.priceModifier)
+            if (line.weight != null) put("weight", line.weight.toDouble())
         }
     }
 
     private fun deserializeTransactionLine(json: JSONObject): TransactionLine {
+        val unitPrice = Money(json.getLong("unitPrice"))
         return TransactionLine(
             itemId = json.getInt("itemId"),
             quantity = json.getInt("quantity"),
             rungQty = json.getInt("rungQty"),
-            unitPrice = Money(json.getLong("unitPrice")),
+            unitPrice = unitPrice,
             lineTotal = Money(json.getLong("lineTotal")),
-            lostToOutOfStock = json.getBoolean("lostToOutOfStock")
+            lostToOutOfStock = json.getBoolean("lostToOutOfStock"),
+            basePrice = if (json.has("basePrice")) Money(json.getLong("basePrice")) else unitPrice,
+            priceModifier = json.optInt("priceModifier", 0),
+            weight = if (json.has("weight") && !json.isNull("weight")) json.getDouble("weight").toFloat() else null,
         )
     }
 
@@ -643,6 +661,10 @@ object GameStateSerializer {
                 autoHireArray.put(serializeAutoHireEvent(event))
             }
             put("autoHireEvents", autoHireArray)
+
+            put("markdownsSaved", acc.markdownsSaved.cents)
+            put("markupExtraRevenue", acc.markupExtraRevenue.cents)
+            put("itemsMarkedDown", acc.itemsMarkedDown)
         }
     }
 
@@ -716,6 +738,9 @@ object GameStateSerializer {
             incompleteOrderedFreshItems = incompleteOrderItems,
             deliveredTrucks = deliveredTrucksAcc,
             autoHireEvents = autoHireEventsAcc,
+            markdownsSaved = if (json.has("markdownsSaved")) Money(json.getLong("markdownsSaved")) else Money.ZERO,
+            markupExtraRevenue = if (json.has("markupExtraRevenue")) Money(json.getLong("markupExtraRevenue")) else Money.ZERO,
+            itemsMarkedDown = if (json.has("itemsMarkedDown")) json.getInt("itemsMarkedDown") else 0,
         )
     }
 
@@ -783,6 +808,10 @@ object GameStateSerializer {
                 autoHireArray.put(serializeAutoHireEvent(event))
             }
             put("autoHireEvents", autoHireArray)
+
+            put("markdownsSaved", metrics.markdownsSaved.cents)
+            put("markupExtraRevenue", metrics.markupExtraRevenue.cents)
+            put("itemsMarkedDown", metrics.itemsMarkedDown)
         }
     }
 
@@ -857,6 +886,9 @@ object GameStateSerializer {
             incompleteOrderedFreshItems = incompleteOrderItems,
             deliveredTrucks = deliveredTrucksList,
             autoHireEvents = autoHireEventsList,
+            markdownsSaved = if (json.has("markdownsSaved")) Money(json.getLong("markdownsSaved")) else Money.ZERO,
+            markupExtraRevenue = if (json.has("markupExtraRevenue")) Money(json.getLong("markupExtraRevenue")) else Money.ZERO,
+            itemsMarkedDown = if (json.has("itemsMarkedDown")) json.getInt("itemsMarkedDown") else 0,
         )
     }
 
@@ -892,6 +924,8 @@ object GameStateSerializer {
             put("itemName", event.itemName)
             put("quantitySold", event.quantitySold)
             put("revenue", event.revenue.cents)
+            put("effectivePrice", event.effectivePrice.cents)
+            put("basePrice", event.basePrice.cents)
         }
     }
 
@@ -900,7 +934,9 @@ object GameStateSerializer {
             itemId = json.getInt("itemId"),
             itemName = json.getString("itemName"),
             quantitySold = json.getInt("quantitySold"),
-            revenue = Money(json.getLong("revenue"))
+            revenue = Money(json.getLong("revenue")),
+            effectivePrice = if (json.has("effectivePrice")) Money(json.getLong("effectivePrice")) else Money.ZERO,
+            basePrice = if (json.has("basePrice")) Money(json.getLong("basePrice")) else Money.ZERO,
         )
     }
     
@@ -1090,6 +1126,107 @@ object GameStateSerializer {
             regularTruckCapacityCasePacks = json.optInt("regularTruckCapacityCasePacks", TruckConfig.DEFAULT_REGULAR_TRUCK_CAPACITY),
             freshTruckCapacityCasePacks = json.optInt("freshTruckCapacityCasePacks", TruckConfig.DEFAULT_FRESH_TRUCK_CAPACITY),
             extraTruckSlotsUnlocked = json.optInt("extraTruckSlotsUnlocked", 0),
+        )
+    }
+
+    // ── Pricing System ──────────────────────────────────────────────────────
+
+    private fun serializePricingState(pricing: PricingState): JSONObject =
+        JSONObject().apply {
+            val markupsObj = JSONObject()
+            pricing.categoryMarkups.forEach { (cat, pct) -> markupsObj.put(cat.name, pct) }
+            put("categoryMarkups", markupsObj)
+
+            val overridesObj = JSONObject()
+            pricing.itemOverrides.forEach { (id, pct) -> overridesObj.put(id.toString(), pct) }
+            put("itemOverrides", overridesObj)
+
+            val markdownsArr = JSONArray()
+            pricing.activeMarkdowns.forEach { (id, md) ->
+                markdownsArr.put(JSONObject().apply {
+                    put("itemId", id)
+                    put("percentOff", md.percentOff)
+                    put("reason", md.reason.name)
+                    put("appliedOnDay", md.appliedOnDay)
+                })
+            }
+            put("activeMarkdowns", markdownsArr)
+
+            put("defaultMarkup", pricing.defaultMarkup)
+            put("smoothedPriceIndex", pricing.smoothedPriceIndex.toDouble())
+
+            val historyArr = JSONArray()
+            pricing.priceHistory.forEach { evt ->
+                historyArr.put(JSONObject().apply {
+                    put("dayNumber", evt.dayNumber)
+                    if (evt.itemId != null) put("itemId", evt.itemId)
+                    if (evt.category != null) put("category", evt.category.name)
+                    put("oldPercent", evt.oldPercent)
+                    put("newPercent", evt.newPercent)
+                    if (evt.source != null) put("source", evt.source.name)
+                })
+            }
+            put("priceHistory", historyArr)
+        }
+
+    private fun deserializePricingState(json: JSONObject): PricingState {
+        val markups = mutableMapOf<ItemCategory, Int>()
+        if (json.has("categoryMarkups")) {
+            val obj = json.getJSONObject("categoryMarkups")
+            obj.keys().forEach { key ->
+                try { markups[ItemCategory.valueOf(key)] = obj.getInt(key) } catch (_: Exception) {}
+            }
+        }
+
+        val overrides = mutableMapOf<Int, Int>()
+        if (json.has("itemOverrides")) {
+            val obj = json.getJSONObject("itemOverrides")
+            obj.keys().forEach { key ->
+                overrides[key.toInt()] = obj.getInt(key)
+            }
+        }
+
+        val markdowns = mutableMapOf<Int, Markdown>()
+        if (json.has("activeMarkdowns")) {
+            val arr = json.getJSONArray("activeMarkdowns")
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val itemId = o.getInt("itemId")
+                markdowns[itemId] = Markdown(
+                    percentOff = o.getInt("percentOff"),
+                    reason = try { MarkdownReason.valueOf(o.getString("reason")) } catch (_: Exception) { MarkdownReason.PLAYER_SALE },
+                    appliedOnDay = o.getInt("appliedOnDay"),
+                )
+            }
+        }
+
+        val history = mutableListOf<PriceChangeEvent>()
+        if (json.has("priceHistory")) {
+            val arr = json.getJSONArray("priceHistory")
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                history.add(PriceChangeEvent(
+                    dayNumber = o.getInt("dayNumber"),
+                    itemId = if (o.has("itemId") && !o.isNull("itemId")) o.getInt("itemId") else null,
+                    category = if (o.has("category") && !o.isNull("category")) {
+                        try { ItemCategory.valueOf(o.getString("category")) } catch (_: Exception) { null }
+                    } else null,
+                    oldPercent = o.getInt("oldPercent"),
+                    newPercent = o.getInt("newPercent"),
+                    source = if (o.has("source") && !o.isNull("source")) {
+                        try { MarkdownReason.valueOf(o.getString("source")) } catch (_: Exception) { null }
+                    } else null,
+                ))
+            }
+        }
+
+        return PricingState(
+            categoryMarkups = markups,
+            itemOverrides = overrides,
+            activeMarkdowns = markdowns,
+            defaultMarkup = json.optInt("defaultMarkup", 0),
+            smoothedPriceIndex = json.optDouble("smoothedPriceIndex", 1.0).toFloat(),
+            priceHistory = history,
         )
     }
 }

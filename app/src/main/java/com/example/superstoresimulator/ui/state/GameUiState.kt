@@ -9,6 +9,9 @@ import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.domain.player.PlayerRole
+import com.example.superstoresimulator.domain.pricing.Markdown
+import com.example.superstoresimulator.domain.pricing.PricingState
+import com.example.superstoresimulator.domain.pricing.ResolvedPrice
 import com.example.superstoresimulator.domain.staff.EmployeeActivity
 import com.example.superstoresimulator.domain.time.GameTime
 import com.example.superstoresimulator.domain.store.StoreState
@@ -27,6 +30,7 @@ data class GameUiState(
     val delivery: DeliveryUIState = DeliveryUIState(),
     /** Register system — per-register status, assignment, and purchase info. */
     val registers: RegistersUIState = RegistersUIState(),
+    val pricing: PricingUIState = PricingUIState(),
 )
 
 data class AppUIState(
@@ -89,6 +93,10 @@ data class InventoryItemUI(
     val earliestArrivalDay: Int? = null,
     /** Zone score for this item (0.0–1.0). Affects purchase probability. */
     val zoneScore: Float = 1.0f,
+    val effectivePrice: Money = price,
+    val priceModifierPercent: Int = 0,
+    val hasActiveMarkdown: Boolean = false,
+    val soldByWeight: Boolean = false,
 )
 
 
@@ -258,5 +266,16 @@ data class StaffScheduleEntryUI(
     val level: Int = 1,
     /** For cashiers: the register they are assigned to, or null if unassigned. */
     val assignedRegisterId: Int? = null,
+)
+
+// ── Pricing System UI State ─────────────────────────────────────────────────
+
+data class PricingUIState(
+    val pricingState: PricingState = PricingState(),
+    val priceIndex: Float = 1.0f,
+    val trafficMultiplier: Float = 1.0f,
+    val basketMultiplier: Float = 1.0f,
+    val reputationLabel: String = "Standard",
+    val itemsMarkedDown: Int = 0,
 )
 

@@ -94,6 +94,8 @@ data class SoldItemEvent(
     val quantitySold: Int,
     /** Revenue earned from those units. */
     val revenue: Money,
+    val effectivePrice: Money = Money.ZERO,
+    val basePrice: Money = Money.ZERO,
 )
 
 /**
@@ -148,6 +150,11 @@ data class DailyMetrics(
 
     // ── Auto-Hire Events ─────────────────────────────────────────────────
     val autoHireEvents: List<AutoHireEvent> = emptyList(),
+
+    // ── Pricing ─────────────────────────────────────────────────────────
+    val markdownsSaved: Money = Money.ZERO,
+    val markupExtraRevenue: Money = Money.ZERO,
+    val itemsMarkedDown: Int = 0,
 ) {
     /** Average value per completed transaction (ZERO if no transactions). */
     val averageTransactionValue: Money
@@ -220,6 +227,11 @@ data class DailyMetricsAccumulator(
 
     // ── Auto-Hire Events ─────────────────────────────────────────────────
     val autoHireEvents: List<AutoHireEvent> = emptyList(),
+
+    // ── Pricing ─────────────────────────────────────────────────────────
+    val markdownsSaved: Money = Money.ZERO,
+    val markupExtraRevenue: Money = Money.ZERO,
+    val itemsMarkedDown: Int = 0,
 ) {
     /** Snapshot this accumulator into an immutable [DailyMetrics]. */
     fun toSnapshot(dayOfWeek: Int): DailyMetrics = DailyMetrics(
@@ -248,5 +260,8 @@ data class DailyMetricsAccumulator(
         incompleteOrderedFreshItems = incompleteOrderedFreshItems,
         deliveredTrucks = deliveredTrucks,
         autoHireEvents = autoHireEvents,
+        markdownsSaved = markdownsSaved,
+        markupExtraRevenue = markupExtraRevenue,
+        itemsMarkedDown = itemsMarkedDown,
     )
 }

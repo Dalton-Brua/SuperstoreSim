@@ -29,6 +29,7 @@ data class Item(
     val tier: String = "TIER_1",
     /** Number of days until item expires. Null = non-perishable (never expires). */
     val shelfLifeDays: Int? = null,
+    val soldByWeight: Boolean = false,
 ) {
     /**
      * Get price as Money object

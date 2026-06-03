@@ -20,6 +20,7 @@ data class ItemMetadata(
     val tier: ItemUnlockTier = ItemUnlockTier.TIER_1,
     /** Number of days until item expires. Null = non-perishable (never expires). */
     val shelfLifeDays: Int? = null,
+    val soldByWeight: Boolean = false,
 ) {
     /** Returns true if this item is perishable (has an expiration date). */
     val isPerishable: Boolean get() = shelfLifeDays != null

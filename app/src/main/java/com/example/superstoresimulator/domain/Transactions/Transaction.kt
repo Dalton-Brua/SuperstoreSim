@@ -23,6 +23,9 @@ data class TransactionLine(
     val lineTotal: Money,
     /** True when the cashier could not ring this line because shelf stock was zero. */
     val lostToOutOfStock: Boolean = false,
+    val basePrice: Money = unitPrice,
+    val priceModifier: Int = 0,
+    val weight: Float? = null,
 ) {
     constructor(id: Int, quantity: Int, price: Money) : this(
         itemId = id,

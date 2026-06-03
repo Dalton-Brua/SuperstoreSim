@@ -50,9 +50,10 @@ class TrafficManager {
         //  - game speed (faster time = more customers proportionally)
         //  - store size (larger stores = more foot traffic)
         val customerRatePerSecond =
-            (pattern.baseCustomerRate / 60.0) * 
-            state.storeConfig.gameSpeedMultiplier * 
-            state.currentStoreSize.trafficMultiplier
+            (pattern.baseCustomerRate / 60.0) *
+            state.storeConfig.gameSpeedMultiplier *
+            state.currentStoreSize.trafficMultiplier *
+            state.pricingState.priceTrafficMultiplier
 
         accumulatedCustomers += customerRatePerSecond * deltaSeconds
 

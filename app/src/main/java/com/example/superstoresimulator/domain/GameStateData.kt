@@ -9,6 +9,7 @@ import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.time.GameTime
 import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.inventory.InventoryState
+import com.example.superstoresimulator.domain.pricing.PricingState
 import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreState
 import java.util.Locale
@@ -218,6 +219,9 @@ data class GameState(
 
     // Auto-hire budget: managers will not hire if doing so would bring money below this threshold
     val autoHireBudget: Money = Money.ZERO,
+
+    // Pricing system
+    val pricingState: PricingState = PricingState(),
 ) {
     val avgZoneScore: Float
         get() {

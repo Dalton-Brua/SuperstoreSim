@@ -15,6 +15,7 @@ import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DayManager
 import com.example.superstoresimulator.domain.player.PlayerActionHandler
 import com.example.superstoresimulator.domain.player.PlayerRole
+import com.example.superstoresimulator.domain.pricing.PricingManager
 import com.example.superstoresimulator.domain.progression.ProgressionManager
 import com.example.superstoresimulator.domain.staff.StaffManager
 import com.example.superstoresimulator.domain.store.StoreConfig
@@ -29,7 +30,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
-    private val txEngine = TransactionEngine(cache = itemMetadataCache)
+    val pricingManager = PricingManager(itemMetadataCache)
+    private val txEngine = TransactionEngine(cache = itemMetadataCache, pricingManager = pricingManager)
 
     private companion object {
         const val XP_PER_TRANSACTION = 5
@@ -46,6 +48,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     private val inventoryManager = InventoryManager(itemMetadataCache)
     private val spoilageManager = SpoilageManager(itemMetadataCache)
     private val truckManager = TruckManager(itemMetadataCache)
+    private var lastPriceIndexHour = -1
 
     // Emit incremental changes instead of full state reconstructions
     private val _changes = MutableStateFlow<GameStateChange?>(null)
@@ -200,6 +203,20 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     private fun ringUpItemAndTrackMetrics(itemId: Int, registerId: Int) {
         val prevCompleted = state.totalTransactionsCompleted
         state = txEngine.ringUpSingleItem(state, itemId, registerId)
+        // Clear expiry markdowns if no more expiring batches remain on shelf
+        if (state.pricingState.activeMarkdowns.containsKey(itemId)) {
+            val markdown = state.pricingState.activeMarkdowns[itemId]
+            if (markdown?.reason == com.example.superstoresimulator.domain.pricing.MarkdownReason.EXPIRING_SOON) {
+                val inv = state.inventory[itemId]
+                val currentDay = state.currentTime.dayNumber
+                val hasExpiring = inv?.shelfBatches?.any { batch ->
+                    batch.expirationDay - currentDay <= PricingManager.EXPIRY_THRESHOLD_DAYS
+                } ?: false
+                if (!hasExpiring) {
+                    state = pricingManager.clearMarkdown(state, itemId)
+                }
+            }
+        }
         // If a transaction just completed, record it in today's accumulator
         if (state.totalTransactionsCompleted > prevCompleted && state.salesHistory.isNotEmpty()) {
             val tx = state.salesHistory.last()
@@ -229,8 +246,24 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                         itemName = itemMetadataCache.get(l.itemId)?.name ?: "Item ${l.itemId}",
                         quantitySold = l.quantity,
                         revenue = l.lineTotal,
+                        effectivePrice = l.unitPrice,
+                        basePrice = l.basePrice,
                     )
                 }
+
+            // Pricing metrics: markup extra revenue and markdown savings
+            var txMarkupExtra = Money.ZERO
+            var txMarkdownSaved = Money.ZERO
+            for (line in tx.lines) {
+                if (line.lostToOutOfStock || line.quantity <= 0) continue
+                val diff = line.unitPrice.cents - line.basePrice.cents
+                if (diff > 0) {
+                    txMarkupExtra += Money(diff * line.quantity)
+                }
+                if (state.pricingState.activeMarkdowns.containsKey(line.itemId)) {
+                    txMarkdownSaved += line.lineTotal
+                }
+            }
 
             state = state.copy(
                 currentDayMetrics = acc.copy(
@@ -246,6 +279,8 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                     itemsLostToOutOfStock = acc.itemsLostToOutOfStock + txLostItemCount,
                     outOfStockEvents = acc.outOfStockEvents + oosEvents,
                     soldItemEvents = acc.soldItemEvents + soldEvents,
+                    markupExtraRevenue = acc.markupExtraRevenue + txMarkupExtra,
+                    markdownsSaved = acc.markdownsSaved + txMarkdownSaved,
                 )
             )
 
@@ -376,6 +411,19 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
 
             // Phase 1.5: Process item expiration (remove expired batches)
             state = spoilageManager.processExpiration(state)
+            // Clear expiry markdowns for items whose expiring batches just expired
+            for (itemId in state.pricingState.activeMarkdowns.keys.toList()) {
+                val md = state.pricingState.activeMarkdowns[itemId] ?: continue
+                if (md.reason != com.example.superstoresimulator.domain.pricing.MarkdownReason.EXPIRING_SOON) continue
+                val inv = state.inventory[itemId]
+                val currentDay = state.currentTime.dayNumber
+                val hasExpiring = inv?.shelfBatches?.any { batch ->
+                    batch.expirationDay - currentDay <= PricingManager.EXPIRY_THRESHOLD_DAYS
+                } ?: false
+                if (!hasExpiring) {
+                    state = pricingManager.clearMarkdown(state, itemId)
+                }
+            }
 
             // Phase 3: Detect day rollover (midnight)
             val newDayNumber = state.currentTime.dayNumber
@@ -405,6 +453,13 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 handleStoreStateChange(newStoreState)
             }
             state = state.copy(storeState = newStoreState)
+
+            // Hourly price index EMA update
+            val currentHourForPricing = state.currentTime.hour
+            if (currentHourForPricing != lastPriceIndexHour) {
+                lastPriceIndexHour = currentHourForPricing
+                state = pricingManager.updateSmoothedPriceIndex(state)
+            }
 
             val delta = deltaMilliseconds / 1000.0
             val speedMultiplier = state.storeConfig.gameSpeedMultiplier
@@ -554,7 +609,28 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 EntityDef.FRESH_HANDLER, currentHour, state.staffSchedules, state.hiredEntityRegistry
             )
             val wholeFreshActions = staffManager.advanceFreshHandlerProgress(activeFreshHandlers, delta, speedMultiplier * freshBonus)
-            repeat(wholeFreshActions) { stockRandomFreshItemFromBackroom() }
+
+            // Markdown expiring items first (higher priority than stocking)
+            var remainingFreshActions = wholeFreshActions
+            if (remainingFreshActions > 0) {
+                val currentDay = state.currentTime.dayNumber
+                for ((itemId, inv) in state.inventory) {
+                    if (remainingFreshActions <= 0) break
+                    val meta = itemMetadataCache.get(itemId) ?: continue
+                    if (!meta.isPerishable) continue
+                    if (state.pricingState.activeMarkdowns.containsKey(itemId)) continue
+                    val hasExpiringBatch = inv.shelfBatches.any { batch ->
+                        batch.expirationDay - currentDay <= PricingManager.EXPIRY_THRESHOLD_DAYS
+                    }
+                    if (hasExpiringBatch) {
+                        state = pricingManager.applyExpiryMarkdown(state, itemId, currentDay)
+                        remainingFreshActions--
+                    }
+                }
+            }
+
+            // Then stock with remaining actions
+            repeat(remainingFreshActions) { stockRandomFreshItemFromBackroom() }
             if (wholeFreshActions > 0) {
                 state = state.copy(
                     hiredEntityRegistry = state.hiredEntityRegistry.grantXpToAll(EntityDef.FRESH_HANDLER, wholeFreshActions * XP_PER_STOCK_ACTION)
@@ -1010,6 +1086,23 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         val previousTier = state.currentTier
         state = progressionManager.unlockNextTier(state)
         if (state.currentTier != previousTier) {
+            // New categories inherit defaultMarkup
+            val defaultMarkup = state.pricingState.defaultMarkup
+            if (defaultMarkup != 0) {
+                val oldCategories = previousTier.unlockedSections
+                val newCategories = state.currentTier.unlockedSections - oldCategories
+                if (newCategories.isNotEmpty()) {
+                    val updatedMarkups = state.pricingState.categoryMarkups.toMutableMap()
+                    for (cat in newCategories) {
+                        if (cat !in updatedMarkups) {
+                            updatedMarkups[cat] = defaultMarkup
+                        }
+                    }
+                    state = state.copy(
+                        pricingState = state.pricingState.copy(categoryMarkups = updatedMarkups)
+                    )
+                }
+            }
             _changes.value = GameStateChange.TierUnlocked(state.currentTier, previousTier)
         }
     }
@@ -1216,7 +1309,28 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         staffManager.reset()
         // Reset traffic manager (customers are transient, don't persist across saves)
         trafficManager.reset()
+        // Recompute cached pricing multipliers from current pricing state
+        state = pricingManager.updateSmoothedPriceIndex(state)
+        lastPriceIndexHour = savedState.currentTime.hour
         // Clear any pending changes
         _changes.value = null
+    }
+
+    // ── Pricing System ───────────────────────────────────────────────────────
+
+    fun setCategoryMarkup(category: com.example.superstoresimulator.domain.items.ItemCategory, percent: Int) {
+        state = pricingManager.setCategoryMarkup(state, category, percent)
+    }
+
+    fun setDefaultMarkup(percent: Int) {
+        state = pricingManager.setDefaultMarkup(state, percent)
+    }
+
+    fun setItemPriceOverride(itemId: Int, percent: Int) {
+        state = pricingManager.setItemOverride(state, itemId, percent)
+    }
+
+    fun clearItemMarkdown(itemId: Int) {
+        state = pricingManager.clearMarkdown(state, itemId)
     }
 }

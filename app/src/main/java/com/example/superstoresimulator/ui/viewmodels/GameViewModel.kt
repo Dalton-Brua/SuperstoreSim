@@ -15,6 +15,7 @@ import com.example.superstoresimulator.ui.state.DeliveryUIState
 import com.example.superstoresimulator.ui.state.GameUiState
 import com.example.superstoresimulator.ui.state.HistoryUIState
 import com.example.superstoresimulator.ui.state.MetricsUIState
+import com.example.superstoresimulator.ui.state.PricingUIState
 import com.example.superstoresimulator.ui.state.ProgressionUIState
 import com.example.superstoresimulator.ui.state.StaffUIState
 import com.example.superstoresimulator.ui.state.TransactionUIState
@@ -402,7 +403,11 @@ class GameViewModel @Inject constructor(
                 pendingCustomers = domain.pendingCustomers,
                 completedToday = domain.currentDayMetrics.transactionsCompleted,
             ),
-            inventory = inventoryMapper.map(domain.inventory, domain.currentTier, domain.storeConfig.backroomCapPerItem).copy(
+            inventory = inventoryMapper.map(
+                domain.inventory, domain.currentTier, domain.storeConfig.backroomCapPerItem,
+                pricingManager = if (gameEngineInitialized) gameEngine.pricingManager else null,
+                gameState = domain,
+            ).copy(
                 selectedCategory = null,
             ),
             staff = StaffUIState(
@@ -442,6 +447,7 @@ class GameViewModel @Inject constructor(
             progression = buildProgressionUiState(domain, null),
             delivery = buildDeliveryUiState(domain),
             registers = buildRegistersUiState(domain),
+            pricing = buildPricingUiState(domain),
         )
     }
 
@@ -495,7 +501,9 @@ class GameViewModel @Inject constructor(
             ),
             inventory = inventoryMapper.map(
                 domain.inventory, domain.currentTier, domain.storeConfig.backroomCapPerItem,
-                domain.scheduledTrucks
+                domain.scheduledTrucks,
+                pricingManager = gameEngine.pricingManager,
+                gameState = domain,
             ).copy(
                 selectedCategory = oldUi?.inventory?.selectedCategory,
                 focusedItemId = oldUi?.inventory?.focusedItemId,
@@ -548,6 +556,7 @@ class GameViewModel @Inject constructor(
             progression = buildProgressionUiState(domain, oldUi?.progression),
             delivery = buildDeliveryUiState(domain),
             registers = buildRegistersUiState(domain),
+            pricing = buildPricingUiState(domain),
         )
     }
 
@@ -735,6 +744,45 @@ class GameViewModel @Inject constructor(
             extraTruckSlotsUnlocked = domain.truckConfig.extraTruckSlotsUnlocked,
             extraTruckSlotCost = com.example.superstoresimulator.domain.TruckConfig.EXTRA_SLOT_COST,
         )
+    }
+
+    private fun buildPricingUiState(domain: GameState): PricingUIState {
+        val pricing = domain.pricingState
+        val reputationLabel = when {
+            pricing.smoothedPriceIndex < 0.9f -> "Budget"
+            pricing.smoothedPriceIndex > 1.1f -> "Premium"
+            else -> "Standard"
+        }
+        return PricingUIState(
+            pricingState = pricing,
+            priceIndex = pricing.smoothedPriceIndex,
+            trafficMultiplier = pricing.priceTrafficMultiplier,
+            basketMultiplier = pricing.basketSizeMultiplier,
+            reputationLabel = reputationLabel,
+            itemsMarkedDown = pricing.activeMarkdowns.size,
+        )
+    }
+
+    // ── Pricing Controls ─────────────────────────────────────────────────────
+
+    fun setCategoryMarkup(category: com.example.superstoresimulator.domain.items.ItemCategory, percent: Int) {
+        if (!gameEngineInitialized) return
+        gameEngine.setCategoryMarkup(category, percent)
+    }
+
+    fun setDefaultMarkup(percent: Int) {
+        if (!gameEngineInitialized) return
+        gameEngine.setDefaultMarkup(percent)
+    }
+
+    fun setItemPriceOverride(itemId: Int, percent: Int) {
+        if (!gameEngineInitialized) return
+        gameEngine.setItemPriceOverride(itemId, percent)
+    }
+
+    fun clearItemMarkdown(itemId: Int) {
+        if (!gameEngineInitialized) return
+        gameEngine.clearItemMarkdown(itemId)
     }
 
     /**
