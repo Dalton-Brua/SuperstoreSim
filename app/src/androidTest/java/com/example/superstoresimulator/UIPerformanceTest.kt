@@ -134,7 +134,7 @@ class UIPerformanceTest {
         }
         
         val screens = listOf("Inventory", "Staff", "History", "Metrics", "Game")
-        val reports = mutableMapOf<String, FrameTimingReport>()
+        val reports = mutableMapOf<String, FrameTimingAnalyzer.FrameTimingReport>()
         
         screens.forEach { screenName ->
             println("\n  Testing navigation to: $screenName")

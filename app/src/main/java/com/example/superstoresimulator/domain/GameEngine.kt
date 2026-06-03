@@ -428,6 +428,8 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             // Phase 3: Detect day rollover (midnight)
             val newDayNumber = state.currentTime.dayNumber
             if (newDayNumber != dayManager.lastKnownDayNumber) {
+                // Store Manager auto-actions (registers, shift rebalancing) before hiring
+                state = staffManager.evaluateStoreManagerActions(state)
                 // Auto-hire evaluation before day reset (uses today's accumulated metrics)
                 state = staffManager.evaluateAutoHire(state)
                 state = dayManager.rollOverDay(state, dayManager.lastKnownDayNumber)
@@ -479,9 +481,10 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 EntityDef.FRESH_HANDLER, currentHour, state.staffSchedules, state.hiredEntityRegistry
             )
 
-            // Unassign cashiers whose shift has ended so the register becomes free for reassignment.
+            // Unassign cashiers whose shift has ended, unless they have an active transaction.
              val registersAfterShiftCheck = state.registers.map { reg ->
                  val assignedId = reg.assignedCashierId ?: return@map reg
+                 if (reg.transactionActive) return@map reg
                  val shift = state.staffSchedules.firstOrNull { it.entityId == assignedId }
                  if (shift != null && !shift.isOnShift(currentHour)) reg.copy(assignedCashierId = null)
                  else reg
@@ -537,9 +540,9 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             }
 
             // Phase 3: Process hired cashiers per register.
-            // Each register's assigned (or pool) cashier advances that register's transaction.
+            // Cashiers finish active transactions even during CLOSING/CLOSED.
             var totalEmployeeActions = 0
-            if (state.storeState == StoreState.OPEN) {
+            if (state.registers.any { it.transactionActive }) {
                 val registerIds = state.registers.map { it.registerId }
                 for (registerId in registerIds) {
                     val reg = state.registers.findRegisterById(registerId) ?: continue
@@ -592,8 +595,11 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 val wholeStockActions = staffManager.advanceStockerProgress(activeStockers, delta, speedMultiplier * stockerBonus)
                 repeat(wholeStockActions) { stockRandomItemFromBackroom() }
                 if (wholeStockActions > 0) {
+                    val onShiftStockerIds = state.hiredEntityRegistry.getByDef(EntityDef.STOCKER)
+                        .filter { e -> state.staffSchedules.any { s -> s.entityId == e.id && s.isOnShift(currentHour) } }
+                        .map { it.id }
                     state = state.copy(
-                        hiredEntityRegistry = state.hiredEntityRegistry.grantXpToAll(EntityDef.STOCKER, wholeStockActions * XP_PER_STOCK_ACTION)
+                        hiredEntityRegistry = state.hiredEntityRegistry.grantXpDistributed(onShiftStockerIds, wholeStockActions * XP_PER_STOCK_ACTION)
                     )
                     totalEmployeeActions += wholeStockActions
                 }
@@ -632,8 +638,11 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             // Then stock with remaining actions
             repeat(remainingFreshActions) { stockRandomFreshItemFromBackroom() }
             if (wholeFreshActions > 0) {
+                val onShiftFreshIds = state.hiredEntityRegistry.getByDef(EntityDef.FRESH_HANDLER)
+                    .filter { e -> state.staffSchedules.any { s -> s.entityId == e.id && s.isOnShift(currentHour) } }
+                    .map { it.id }
                 state = state.copy(
-                    hiredEntityRegistry = state.hiredEntityRegistry.grantXpToAll(EntityDef.FRESH_HANDLER, wholeFreshActions * XP_PER_STOCK_ACTION)
+                    hiredEntityRegistry = state.hiredEntityRegistry.grantXpDistributed(onShiftFreshIds, wholeFreshActions * XP_PER_STOCK_ACTION)
                 )
                 totalEmployeeActions += wholeFreshActions
             }

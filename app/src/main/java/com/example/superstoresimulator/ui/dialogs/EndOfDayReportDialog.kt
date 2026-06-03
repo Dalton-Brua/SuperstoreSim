@@ -157,7 +157,7 @@ fun EndOfDayReportDialog(
 
                 // ── Inventory section ─────────────────────────────────────
                 SectionHeader("📦 Inventory")
-                StatRow(Icons.Default.MoveToInbox,  "Items Stocked",     "${report.itemsStocked} units")
+                StatRow(Icons.Default.MoveToInbox,  "Cases Stocked",     "${report.itemsStocked}")
                 StatRow(Icons.Default.AddShoppingCart, "Items Ordered",  "${report.itemsOrdered} units")
 
                 Spacer(Modifier.height(20.dp))
@@ -372,22 +372,24 @@ fun EndOfDayReportDialog(
 
                 // ── Auto-Hire section ──────────────────────────────────────
                 if (report.autoHireEvents.isNotEmpty()) {
-                    SectionHeader("👔 Manager Auto-Hire")
-                    report.autoHireEvents.forEach { event ->
-                        if (event.blocked) {
-                            StatRow(
-                                Icons.Default.Block,
-                                "Skipped ${event.entityDefName}",
-                                event.blockReason,
-                                tint = Color(0xFFF59E0B),
-                            )
-                        } else {
-                            StatRow(
-                                Icons.Default.PersonAdd,
-                                "Hired ${event.entityDefName}",
-                                event.reason,
-                                tint = Color(0xFF22C55E),
-                            )
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        SectionHeader("👔 Manager Auto-Hire")
+                        report.autoHireEvents.forEach { event ->
+                            if (event.blocked) {
+                                StatRow(
+                                    Icons.Default.Block,
+                                    "Skipped ${event.entityDefName}",
+                                    event.blockReason,
+                                    tint = Color(0xFFF59E0B),
+                                )
+                            } else {
+                                StatRow(
+                                    Icons.Default.PersonAdd,
+                                    "Hired ${event.entityDefName}",
+                                    event.reason,
+                                    tint = Color(0xFF22C55E),
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(12.dp))
@@ -523,7 +525,8 @@ private fun StatRow(
             fontSize = 13.sp,
             fontWeight = if (highlight) FontWeight.Bold else FontWeight.Normal,
             color = if (highlight) PrimaryDark else TextDark,
-            textAlign = TextAlign.End
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
         )
     }
 }

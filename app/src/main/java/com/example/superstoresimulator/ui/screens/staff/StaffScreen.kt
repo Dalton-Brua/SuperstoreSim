@@ -240,7 +240,12 @@ fun EntityTypeDetailScreen(
                     entity = entity,
                     activity = state.employeeActivities[entity.id] ?: EmployeeActivity.OFF_SHIFT,
                     onFire = { onFire(entity.id) },
-                    canAffordUpgrade = entity.canPromote && money >= entity.upgradeCost,
+                    canAffordUpgrade = entity.canPromote && money >= entity.upgradeCost &&
+                        !(entity.entityDefinition == EntityDef.MANAGER &&
+                            entity.tier == com.example.superstoresimulator.domain.Entities.Tier.FAST &&
+                            state.registry.getByDef(EntityDef.MANAGER).any {
+                                it.tier == com.example.superstoresimulator.domain.Entities.Tier.MANAGER
+                            }),
                     onUpgrade = { onUpgrade(entity.id) }
                 )
             }
@@ -270,8 +275,10 @@ fun HiredEntityCard(
 ) {
     val tierLabel = when (entity.tier) {
         com.example.superstoresimulator.domain.Entities.Tier.BASE -> entity.entityDefinition.displayName
-        com.example.superstoresimulator.domain.Entities.Tier.FAST -> "Fast ${entity.entityDefinition.displayName}"
-        com.example.superstoresimulator.domain.Entities.Tier.MANAGER -> "Dept. Manager"
+        com.example.superstoresimulator.domain.Entities.Tier.FAST -> if (entity.entityDefinition == EntityDef.MANAGER) "Senior Manager"
+            else "Fast ${entity.entityDefinition.displayName}"
+        com.example.superstoresimulator.domain.Entities.Tier.MANAGER -> if (entity.entityDefinition == EntityDef.MANAGER) "Store Manager"
+            else "Dept. Manager"
     }
     val tierColor = when (entity.tier) {
         com.example.superstoresimulator.domain.Entities.Tier.BASE -> Color(0xFF3B82F6)

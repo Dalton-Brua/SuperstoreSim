@@ -4,7 +4,6 @@ import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.superstoresimulator.domain.Entities.EntityDef
-import com.example.superstoresimulator.domain.Entities.EntityType
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.GameEngine
 import com.example.superstoresimulator.domain.Money
@@ -129,11 +128,11 @@ class DevicePerformanceTest {
         var registry = HiredEntityRegistry()
         
         repeat(cashierCount) {
-            registry = registry.hireEntity(EntityDef.CASHIER, EntityType.CASHIERS)
+            registry = registry.hireEntity(EntityDef.CASHIER)
         }
-        
+
         repeat(stockerCount) {
-            registry = registry.hireEntity(EntityDef.STOCKER, EntityType.STOCKERS)
+            registry = registry.hireEntity(EntityDef.STOCKER)
         }
         
         return registry

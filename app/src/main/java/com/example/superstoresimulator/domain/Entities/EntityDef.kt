@@ -63,7 +63,7 @@ data class EntityDef(
             key = "manager",
             displayName = "Manager",
             cost = Money(5_000),
-            description = "Boosts all employee throughput by 15%. Promote at level 3 for Senior Manager (25%).",
+            description = "Boosts all employee throughput by 15%. Promote to Senior (25%) then Store Manager (30%, auto-manages store).",
             roleDescription = "Throughput bonus + auto-hire",
             icon = Icons.Default.Star,
             baseWage = Money(1_200),

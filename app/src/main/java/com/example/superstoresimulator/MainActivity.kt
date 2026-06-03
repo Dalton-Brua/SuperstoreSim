@@ -156,7 +156,7 @@ class MainActivity : ComponentActivity() {
                         snackbarHost = { SnackbarHost(snackbarHostState) },
                         bottomBar = {
                             BottomNavBar(
-                                current = currentScreen,
+                                current = mainScreens[pagerState.currentPage],
                                 onSelect = { screen ->
                                     // Disable navigation when overlay screens are open
                                     if (currentScreen == Screen.STAFF_ENTITY_LIST || selectedInventoryItemId != null) {

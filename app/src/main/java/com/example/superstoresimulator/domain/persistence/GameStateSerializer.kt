@@ -266,7 +266,7 @@ object GameStateSerializer {
                     (0 until arr.length()).map { arr.getInt(it) }.toSet()
                 } else emptySet(),
                 // ── Auto-hire budget (Phase 5B) ──────────────────────────────
-                autoHireBudget = if (json.has("autoHireBudget")) Money(json.getLong("autoHireBudget")) else Money.ZERO,
+                autoHireBudget = if (json.has("autoHireBudget")) Money(json.getLong("autoHireBudget")) else StoreSize.MOM_AND_POP.dailyRent,
                 // ── Fresh auto-order system ──────────────────────────────────
                 freshAutoOrderConfig = if (json.has("freshAutoOrderConfig")) {
                     val cfg = json.getJSONObject("freshAutoOrderConfig")

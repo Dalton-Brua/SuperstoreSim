@@ -56,8 +56,8 @@ private enum class ScheduleFilter(val label: String) {
     ALL("All"), CASHIER("Cashiers"), STOCKER("Stockers"), FRESH_HANDLER("Fresh"), MANAGER("Managers")
 }
 
-private val GANTT_HOURS = 6..21
-private const val GANTT_HOUR_COUNT = 16
+private val GANTT_HOURS = 6..20
+private const val GANTT_HOUR_COUNT = 15
 
 private val ROLE_COLOR_CASHIER = Color(0xFF3B82F6)
 private val ROLE_COLOR_STOCKER = Color(0xFFF59E0B)
@@ -316,7 +316,7 @@ private fun GanttEmployeeRow(
                         color = Color.White,
                     )
                 }
-                val trailingSlots = 21 - entry.endHour
+                val trailingSlots = 21 - entry.endHour.coerceAtMost(21)
                 if (trailingSlots > 0) {
                     Spacer(Modifier.weight(trailingSlots.toFloat()))
                 }
@@ -421,7 +421,7 @@ private fun ShiftEditDialog(
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 private fun coverageByHour(entries: List<StaffScheduleEntryUI>): Map<Int, Int> =
-    (6..21).associateWith { hour ->
+    (6..20).associateWith { hour ->
         entries.count { e ->
             e.startHour != null && e.endHour != null &&
                 hour >= e.startHour && hour < e.endHour

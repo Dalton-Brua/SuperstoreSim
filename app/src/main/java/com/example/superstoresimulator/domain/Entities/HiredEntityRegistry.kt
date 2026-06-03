@@ -80,11 +80,12 @@ data class HiredEntityRegistry(
         return copy(entities = updatedList)
     }
 
-    fun grantXpToAll(def: EntityDef, rawAmount: Int): HiredEntityRegistry {
+    fun grantXpDistributed(entityIds: List<Int>, totalRawAmount: Int): HiredEntityRegistry {
+        if (entityIds.isEmpty()) return this
+        val perEntity = totalRawAmount / entityIds.size
+        if (perEntity <= 0) return this
         var updated = this
-        entities.filter { it.entityDefinition == def }.forEach { entity ->
-            updated = updated.grantXp(entity.id, rawAmount)
-        }
+        entityIds.forEach { id -> updated = updated.grantXp(id, perEntity) }
         return updated
     }
 

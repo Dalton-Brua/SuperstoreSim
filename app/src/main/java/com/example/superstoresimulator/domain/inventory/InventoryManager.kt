@@ -91,9 +91,10 @@ class InventoryManager(private val cache: ItemMetadataCache) {
         
         val updated = inv.copy(
             shelfBatches = updatedShelfBatches,
-            backroomBatches = updatedBackroomBatches
+            backroomBatches = updatedBackroomBatches,
+            zoneScore = 1.0f,
         )
-        
+
         return state.copy(
             inventory = state.inventory + (itemId to updated),
             currentDayMetrics = state.currentDayMetrics.copy(
@@ -191,13 +192,14 @@ class InventoryManager(private val cache: ItemMetadataCache) {
         
         val updated = inv.copy(
             shelfBatches = updatedShelfBatches,
-            backroomBatches = updatedBackroomBatches
+            backroomBatches = updatedBackroomBatches,
+            zoneScore = 1.0f,
         )
-        
+
         return state.copy(
             inventory = state.inventory + (itemId to updated),
             currentDayMetrics = state.currentDayMetrics.copy(
-                itemsStocked = state.currentDayMetrics.itemsStocked + itemsToStock,
+                itemsStocked = state.currentDayMetrics.itemsStocked + 1,
             ),
         )
     }

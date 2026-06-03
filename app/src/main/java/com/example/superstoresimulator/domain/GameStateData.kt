@@ -218,7 +218,7 @@ data class GameState(
     val manuallyUnassignedCashiers: Set<Int> = emptySet(),
 
     // Auto-hire budget: managers will not hire if doing so would bring money below this threshold
-    val autoHireBudget: Money = Money.ZERO,
+    val autoHireBudget: Money = StoreSize.MOM_AND_POP.dailyRent,
 
     // Pricing system
     val pricingState: PricingState = PricingState(),
