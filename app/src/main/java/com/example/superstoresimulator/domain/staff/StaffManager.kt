@@ -1,12 +1,17 @@
 package com.example.superstoresimulator.domain.staff
 
 import android.util.Log
+import com.example.superstoresimulator.domain.DailyStaffMetrics
 import com.example.superstoresimulator.domain.Entities.EntityDef
+import com.example.superstoresimulator.domain.metrics.AutoHireEvent
+import com.example.superstoresimulator.domain.Entities.HiredEntity
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.GameState
+import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.RegisterState
 import com.example.superstoresimulator.domain.StaffShift
+import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.player.PlayerRole
 
 class StaffManager {
@@ -14,6 +19,31 @@ class StaffManager {
     private val cashierProgressByRegister: MutableMap<Int, Float> = mutableMapOf()
     private var stockerProgress: Float = 0f
     private var freshHandlerProgress: Float = 0f
+
+    // ── Zoning state (Phase 5B) ──────────────────────────────────────────────
+
+    data class StockerZoningState(
+        val targetItemId: Int? = null,
+        val progress: Float = 0f,
+    )
+
+    private val zoningByStockerId: MutableMap<Int, StockerZoningState> = mutableMapOf()
+
+    data class ZoneAction(val stockerId: Int, val targetItemId: Int)
+
+    // ── Utilization accumulators (Phase 5B, transient) ───────────────────────
+
+    private var cashierBusyTicks: Int = 0
+    private var cashierTotalTicks: Int = 0
+    private var stockerBusyTicks: Int = 0
+    private var stockerTotalTicks: Int = 0
+    private var freshBusyTicks: Int = 0
+    private var freshTotalTicks: Int = 0
+    private var peakPendingCustomers: Int = 0
+    private var hadUnstaffedRegisters: Boolean = false
+
+    var employeeActivities: Map<Int, EmployeeActivity> = emptyMap()
+        private set
 
     // ── Tick-advance helpers ──────────────────────────────────────────────────
 
@@ -50,6 +80,256 @@ class StaffManager {
         return whole
     }
 
+    // ── Zoning tick-advance ──────────────────────────────────────────────────
+
+    fun advanceZoningForStocker(
+        stockerId: Int,
+        stockerWeight: Float,
+        delta: Double,
+        multiplier: Float,
+    ): List<ZoneAction> {
+        if (stockerWeight <= 0f) return emptyList()
+        val state = zoningByStockerId.getOrPut(stockerId) { StockerZoningState() }
+        val targetId = state.targetItemId ?: return emptyList()
+        val updated = state.progress + ZONE_ACTIONS_PER_SECOND * stockerWeight * delta.toFloat() * multiplier
+        val actions = mutableListOf<ZoneAction>()
+        var remaining = updated
+        while (remaining >= 1f) {
+            remaining -= 1f
+            actions += ZoneAction(stockerId, targetId)
+        }
+        zoningByStockerId[stockerId] = state.copy(progress = remaining)
+        return actions
+    }
+
+    fun assignZoningTarget(stockerId: Int, itemId: Int) {
+        val current = zoningByStockerId[stockerId]
+        if (current?.targetItemId == itemId) return
+        zoningByStockerId[stockerId] = StockerZoningState(targetItemId = itemId, progress = current?.progress ?: 0f)
+    }
+
+    fun clearZoningTarget(stockerId: Int) {
+        val current = zoningByStockerId[stockerId] ?: return
+        zoningByStockerId[stockerId] = current.copy(targetItemId = null)
+    }
+
+    fun getZoningTarget(stockerId: Int): Int? = zoningByStockerId[stockerId]?.targetItemId
+
+    fun allClaimedZoningTargets(): Set<Int> =
+        zoningByStockerId.values.mapNotNull { it.targetItemId }.toSet()
+
+    fun cleanUpZoningForEntity(entityId: Int) {
+        zoningByStockerId.remove(entityId)
+    }
+
+    // ── Utilization tracking ─────────────────────────────────────────────────
+
+    fun updateUtilization(
+        state: GameState,
+        currentHour: Int,
+        hasActionableBackroom: Boolean,
+        hasUnzonedItems: Boolean,
+        hasFreshWork: Boolean,
+    ) {
+        val registry = state.hiredEntityRegistry
+        val schedules = state.staffSchedules
+        val registers = state.registers
+        val assignedIds = registers.mapNotNull { it.assignedCashierId }.toSet()
+
+        if (state.pendingCustomers > peakPendingCustomers) {
+            peakPendingCustomers = state.pendingCustomers
+        }
+
+        val activities = mutableMapOf<Int, EmployeeActivity>()
+
+        // Cashiers
+        for (entity in registry.getByDef(EntityDef.CASHIER)) {
+            val shift = schedules.firstOrNull { it.entityId == entity.id }
+            if (shift == null || !shift.isOnShift(currentHour)) {
+                activities[entity.id] = EmployeeActivity.OFF_SHIFT
+                continue
+            }
+            cashierTotalTicks++
+            if (entity.id in assignedIds) {
+                val reg = registers.firstOrNull { it.assignedCashierId == entity.id }
+                if (reg != null && (reg.transactionActive || state.pendingCustomers > 0)) {
+                    cashierBusyTicks++
+                    activities[entity.id] = if (reg.transactionActive) EmployeeActivity.CASHIERING
+                        else EmployeeActivity.WAITING_FOR_CUSTOMER
+                } else {
+                    activities[entity.id] = EmployeeActivity.WAITING_FOR_CUSTOMER
+                }
+            } else {
+                activities[entity.id] = EmployeeActivity.IDLE
+            }
+        }
+
+        // Check for unstaffed registers during operating hours
+        val unmannedRegisters = registers.count { reg ->
+            reg.assignedCashierId == null &&
+                state.playerAssignedRegisterId != reg.registerId
+        }
+        if (unmannedRegisters > 0) hadUnstaffedRegisters = true
+
+        // Stockers
+        for (entity in registry.getByDef(EntityDef.STOCKER)) {
+            val shift = schedules.firstOrNull { it.entityId == entity.id }
+            if (shift == null || !shift.isOnShift(currentHour)) {
+                activities[entity.id] = EmployeeActivity.OFF_SHIFT
+                cleanUpZoningForEntity(entity.id)
+                continue
+            }
+            stockerTotalTicks++
+            if (hasActionableBackroom) {
+                stockerBusyTicks++
+                activities[entity.id] = EmployeeActivity.STOCKING
+            } else if (hasUnzonedItems) {
+                stockerBusyTicks++
+                activities[entity.id] = EmployeeActivity.ZONING
+            } else {
+                activities[entity.id] = EmployeeActivity.IDLE
+            }
+        }
+
+        // Fresh handlers
+        for (entity in registry.getByDef(EntityDef.FRESH_HANDLER)) {
+            val shift = schedules.firstOrNull { it.entityId == entity.id }
+            if (shift == null || !shift.isOnShift(currentHour)) {
+                activities[entity.id] = EmployeeActivity.OFF_SHIFT
+                continue
+            }
+            freshTotalTicks++
+            if (hasFreshWork) {
+                freshBusyTicks++
+                activities[entity.id] = EmployeeActivity.HANDLING_FRESH
+            } else {
+                activities[entity.id] = EmployeeActivity.IDLE
+            }
+        }
+
+        // Managers
+        for (entity in registry.getByDef(EntityDef.MANAGER)) {
+            val shift = schedules.firstOrNull { it.entityId == entity.id }
+            if (shift == null || !shift.isOnShift(currentHour)) {
+                activities[entity.id] = EmployeeActivity.OFF_SHIFT
+            } else {
+                activities[entity.id] = EmployeeActivity.IDLE
+            }
+        }
+
+        employeeActivities = activities
+    }
+
+    fun currentCashierUtilization(): Float =
+        if (cashierTotalTicks > 0) cashierBusyTicks.toFloat() / cashierTotalTicks else 0f
+
+    fun currentStockerUtilization(): Float =
+        if (stockerTotalTicks > 0) stockerBusyTicks.toFloat() / stockerTotalTicks else 0f
+
+    fun currentFreshUtilization(): Float =
+        if (freshTotalTicks > 0) freshBusyTicks.toFloat() / freshTotalTicks else 0f
+
+    fun snapshotDailyMetrics(): DailyStaffMetrics = DailyStaffMetrics(
+        peakPendingCustomers = peakPendingCustomers,
+        avgCashierUtilization = if (cashierTotalTicks > 0)
+            cashierBusyTicks.toFloat() / cashierTotalTicks else 0f,
+        avgStockerUtilization = if (stockerTotalTicks > 0)
+            stockerBusyTicks.toFloat() / stockerTotalTicks else 0f,
+        avgFreshUtilization = if (freshTotalTicks > 0)
+            freshBusyTicks.toFloat() / freshTotalTicks else 0f,
+        hasUnstaffedRegisters = hadUnstaffedRegisters,
+        freshItemsOutOfStock = 0,
+        freshOrdersAttempted = 0,
+    )
+
+    // ── Auto-Hire (Phase 5B) ─────────────────────────────────────────────────
+
+    fun evaluateAutoHire(state: GameState): GameState {
+        val registry = state.hiredEntityRegistry
+        val hasManager = registry.getByDef(EntityDef.MANAGER).isNotEmpty()
+        if (!hasManager) return state
+        if (state.autoHireBudget <= Money.ZERO) return state
+
+        val hasSeniorManager = registry.getByDef(EntityDef.MANAGER).any { it.tier != Tier.BASE }
+        val metrics = snapshotDailyMetrics()
+
+        val freshOosIds = state.currentDayMetrics.outOfStockEvents
+            .map { it.itemId }.toSet()
+        val freshOrderedIds = (state.currentDayMetrics.autoOrderedFreshItems.map { it.itemId } +
+            state.currentDayMetrics.incompleteOrderedFreshItems.map { it.itemId }).toSet()
+
+        var result = state
+        val events = mutableListOf<AutoHireEvent>()
+
+        // Cashier auto-hire
+        if (metrics.hasUnstaffedRegisters) {
+            if (hasSeniorManager && metrics.avgCashierUtilization < 1.0f) {
+                events += AutoHireEvent(
+                    EntityDef.CASHIER.displayName,
+                    "Unstaffed registers detected",
+                    blocked = true,
+                    blockReason = "Utilization ${(metrics.avgCashierUtilization * 100).toInt()}% — reassign idle cashiers",
+                )
+            } else {
+                val before = result.hiredEntityRegistry.totalCount()
+                result = tryAutoHire(result, EntityDef.CASHIER)
+                if (result.hiredEntityRegistry.totalCount() > before) {
+                    events += AutoHireEvent(EntityDef.CASHIER.displayName, "Unstaffed registers detected")
+                }
+            }
+        }
+
+        // Stocker auto-hire
+        val stockerThreshold = if (hasSeniorManager) 1.0f else 0.95f
+        if (metrics.avgStockerUtilization >= stockerThreshold) {
+            val before = result.hiredEntityRegistry.totalCount()
+            result = tryAutoHire(result, EntityDef.STOCKER)
+            if (result.hiredEntityRegistry.totalCount() > before) {
+                events += AutoHireEvent(EntityDef.STOCKER.displayName, "High utilization (${(metrics.avgStockerUtilization * 100).toInt()}%)")
+            }
+        } else if (hasSeniorManager && metrics.avgStockerUtilization >= 0.95f) {
+            events += AutoHireEvent(
+                EntityDef.STOCKER.displayName,
+                "High utilization",
+                blocked = true,
+                blockReason = "Utilization ${(metrics.avgStockerUtilization * 100).toInt()}% — not at 100%",
+            )
+        }
+
+        // Fresh handler auto-hire
+        if (freshOosIds.size > freshOrderedIds.size) {
+            if (hasSeniorManager && metrics.avgFreshUtilization < 1.0f) {
+                events += AutoHireEvent(
+                    EntityDef.FRESH_HANDLER.displayName,
+                    "Fresh items out of stock",
+                    blocked = true,
+                    blockReason = "Utilization ${(metrics.avgFreshUtilization * 100).toInt()}% — reassign idle handlers",
+                )
+            } else {
+                val before = result.hiredEntityRegistry.totalCount()
+                result = tryAutoHire(result, EntityDef.FRESH_HANDLER)
+                if (result.hiredEntityRegistry.totalCount() > before) {
+                    events += AutoHireEvent(EntityDef.FRESH_HANDLER.displayName, "Fresh items out of stock")
+                }
+            }
+        }
+
+        if (events.isNotEmpty()) {
+            result = result.copy(
+                currentDayMetrics = result.currentDayMetrics.copy(
+                    autoHireEvents = result.currentDayMetrics.autoHireEvents + events,
+                ),
+            )
+        }
+
+        return result
+    }
+
+    private fun tryAutoHire(state: GameState, def: EntityDef): GameState {
+        if (state.money - def.cost < state.autoHireBudget) return state
+        return hireEntity(state, def)
+    }
+
     // ── Pure state operations ─────────────────────────────────────────────────
 
     fun hireEntity(state: GameState, def: EntityDef): GameState {
@@ -75,7 +355,7 @@ class StaffManager {
 
     fun promoteEntity(state: GameState, entityId: Int): GameState {
         val entity = state.hiredEntityRegistry.getById(entityId)
-        if (entity.tier == com.example.superstoresimulator.domain.Entities.Tier.MANAGER) return state
+        if (entity.tier == Tier.MANAGER) return state
         val cost = entity.upgradeCost
         if (state.money < cost) return state
         return state.copy(
@@ -84,11 +364,13 @@ class StaffManager {
         )
     }
 
-    fun fireEntity(state: GameState, entityId: Int): GameState =
-        state.copy(
+    fun fireEntity(state: GameState, entityId: Int): GameState {
+        cleanUpZoningForEntity(entityId)
+        return state.copy(
             hiredEntityRegistry = state.hiredEntityRegistry.fireEntity(entityId),
             staffSchedules = state.staffSchedules.filter { it.entityId != entityId },
         )
+    }
 
     fun updateShift(state: GameState, entityId: Int, newStartHour: Int): GameState {
         if (newStartHour !in 6..13) {
@@ -111,6 +393,19 @@ class StaffManager {
         cashierProgressByRegister.clear()
         stockerProgress = 0f
         freshHandlerProgress = 0f
+        zoningByStockerId.clear()
+        resetDailyMetrics()
+    }
+
+    fun resetDailyMetrics() {
+        cashierBusyTicks = 0
+        cashierTotalTicks = 0
+        stockerBusyTicks = 0
+        stockerTotalTicks = 0
+        freshBusyTicks = 0
+        freshTotalTicks = 0
+        peakPendingCustomers = 0
+        hadUnstaffedRegisters = false
     }
 
     // ── Constants + static helpers ────────────────────────────────────────────
@@ -124,6 +419,12 @@ class StaffManager {
         const val SHIFT_MORNING = 6
         const val SHIFT_MID     = 10
         const val SHIFT_CLOSING = 13
+
+        // Zoning constants
+        const val ZONE_DECAY_RATE = 0.005f
+        const val ZONE_ACTIONS_PER_SECOND = 0.1f
+        const val ZONE_PER_ACTION = 0.35f
+        const val ZONE_FLOOR = 0.4f
 
         private const val TAG = "StaffManager"
 
@@ -212,5 +513,8 @@ class StaffManager {
             }
             return if (hasOnShiftDeptManager) 1.10f else 1.0f
         }
+
+        fun zonePurchaseMultiplier(zoneScore: Float): Float =
+            ZONE_FLOOR + (zoneScore * (1.0f - ZONE_FLOOR))
     }
 }

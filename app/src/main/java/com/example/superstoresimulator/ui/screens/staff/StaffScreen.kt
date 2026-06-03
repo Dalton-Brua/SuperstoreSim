@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -45,6 +47,7 @@ import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Entities.HiredEntity
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
+import com.example.superstoresimulator.domain.staff.EmployeeActivity
 import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.state.ProgressionUIState
 import com.example.superstoresimulator.ui.state.StaffUIState
@@ -59,6 +62,7 @@ fun StaffScreen(
     state: StaffUIState,
     money: Money,
     onSelectStaffDef: (EntityDef?) -> Unit,
+    onSetAutoHireBudget: (Money) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -83,6 +87,28 @@ fun StaffScreen(
                     onClick = { onSelectStaffDef(def) }
                 )
             }
+
+            // Efficiency display — visible when senior manager (promoted) is on staff
+            if (state.hasSeniorManager) {
+                item {
+                    StaffEfficiencySection(
+                        cashierUtil = state.cashierUtilization,
+                        stockerUtil = state.stockerUtilization,
+                        freshUtil = state.freshUtilization,
+                    )
+                }
+            }
+
+            // Auto-hire budget — visible when any manager is on staff
+            if (state.hasManagerOnStaff) {
+                item {
+                    AutoHireBudgetInput(
+                        currentBudget = state.autoHireBudget,
+                        onSetBudget = onSetAutoHireBudget,
+                    )
+                }
+            }
+
             item {
                 Spacer(Modifier.height(6.dp))
             }
@@ -212,6 +238,7 @@ fun EntityTypeDetailScreen(
             items(entities) { entity ->
                 HiredEntityCard(
                     entity = entity,
+                    activity = state.employeeActivities[entity.id] ?: EmployeeActivity.OFF_SHIFT,
                     onFire = { onFire(entity.id) },
                     canAffordUpgrade = entity.canPromote && money >= entity.upgradeCost,
                     onUpgrade = { onUpgrade(entity.id) }
@@ -235,6 +262,7 @@ fun EntityTypeDetailScreen(
 @Composable
 fun HiredEntityCard(
     entity: HiredEntity,
+    activity: EmployeeActivity = EmployeeActivity.OFF_SHIFT,
     onFire: (Int) -> Unit,
     canAffordUpgrade: Boolean,
     onUpgrade: (Int) -> Unit,
@@ -250,8 +278,9 @@ fun HiredEntityCard(
         com.example.superstoresimulator.domain.Entities.Tier.FAST -> Color(0xFF8B5CF6)
         com.example.superstoresimulator.domain.Entities.Tier.MANAGER -> Color(0xFFD97706)
     }
-    val xpForNextLevel = HiredEntity.XP_THRESHOLDS.getOrNull(entity.level - 1) ?: Int.MAX_VALUE
-    val xpAtCurrentLevel = if (entity.level > 1) HiredEntity.XP_THRESHOLDS[entity.level - 2] else 0
+    val thresholds = entity.entityDefinition.xpThresholds
+    val xpForNextLevel = thresholds.getOrNull(entity.level - 1) ?: Int.MAX_VALUE
+    val xpAtCurrentLevel = if (entity.level > 1) thresholds[entity.level - 2] else 0
     val xpProgress = if (entity.level >= HiredEntity.MAX_LEVEL) 1f else {
         ((entity.xp - xpAtCurrentLevel).toFloat() / (xpForNextLevel - xpAtCurrentLevel)).coerceIn(0f, 1f)
     }
@@ -301,6 +330,9 @@ fun HiredEntityCard(
                     }
                 }
             }
+
+            // Activity status chip
+            ActivityChip(activity)
 
             // XP bar
             if (!atMaxTier || entity.level < HiredEntity.MAX_LEVEL) {
@@ -352,6 +384,137 @@ fun HiredEntityCard(
     }
 }
 
+@Composable
+private fun ActivityChip(activity: EmployeeActivity) {
+    val (label, chipColor, textColor) = when (activity) {
+        EmployeeActivity.CASHIERING -> Triple("Cashiering", Color(0xFFDCFCE7), Color(0xFF166534))
+        EmployeeActivity.WAITING_FOR_CUSTOMER -> Triple("Waiting for customer", Color(0xFFFEF3C7), Color(0xFF92400E))
+        EmployeeActivity.STOCKING -> Triple("Stocking", Color(0xFFDCFCE7), Color(0xFF166534))
+        EmployeeActivity.ZONING -> Triple("Zoning shelves", Color(0xFFDBEAFE), Color(0xFF1E40AF))
+        EmployeeActivity.HANDLING_FRESH -> Triple("Handling fresh", Color(0xFFDCFCE7), Color(0xFF166534))
+        EmployeeActivity.IDLE -> Triple("Idle", Color(0xFFFEE2E2), Color(0xFFB91C1C))
+        EmployeeActivity.OFF_SHIFT -> Triple("Off shift", Color(0xFFF1F5F9), Color(0xFF64748B))
+    }
+    androidx.compose.material3.Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+        color = chipColor,
+    ) {
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        )
+    }
+}
+
+@Composable
+fun StaffEfficiencySection(
+    cashierUtil: Float,
+    stockerUtil: Float,
+    freshUtil: Float,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(2.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Staff Efficiency", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF1E293B))
+            UtilizationBar("Cashiers", cashierUtil)
+            UtilizationBar("Stockers", stockerUtil)
+            UtilizationBar("Fresh Handlers", freshUtil)
+        }
+    }
+}
+
+@Composable
+private fun UtilizationBar(label: String, utilization: Float) {
+    val pct = (utilization * 100).toInt().coerceIn(0, 100)
+    val barColor = when {
+        pct >= 90 -> Color(0xFFEF4444)
+        pct >= 70 -> Color(0xFFF59E0B)
+        else -> Color(0xFF22C55E)
+    }
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(label, fontSize = 12.sp, color = Color(0xFF475569))
+            Text("$pct%", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+        }
+        androidx.compose.material3.LinearProgressIndicator(
+            progress = { utilization.coerceIn(0f, 1f) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp),
+            color = barColor,
+            trackColor = Color(0xFFE2E8F0),
+        )
+    }
+}
+
+@Composable
+fun AutoHireBudgetInput(
+    currentBudget: Money,
+    onSetBudget: (Money) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var text by remember(currentBudget) {
+        mutableStateOf(if (currentBudget <= Money.ZERO) "" else currentBudget.toDouble().toLong().toString())
+    }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(2.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("Auto-Hire Budget", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF1E293B))
+            Text(
+                "Managers won't auto-hire if cash would drop below this amount. Set to 0 to disable.",
+                fontSize = 11.sp,
+                color = Color(0xFF64748B),
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("$", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                androidx.compose.material3.OutlinedTextField(
+                    value = text,
+                    onValueChange = { newVal: String ->
+                        val filtered = newVal.filter { c -> c.isDigit() }
+                        text = filtered
+                    },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp),
+                )
+                Button(
+                    onClick = {
+                        val dollars = text.toLongOrNull() ?: 0L
+                        onSetBudget(Money(dollars * 100))
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                ) {
+                    Text("Set", color = Color.White, fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}
+
 /**
  * Container that hosts the Staff, Schedule, and Unlocks tabs together so the bottom
  * nav bar stays at exactly 5 items.
@@ -367,6 +530,7 @@ fun StaffAndUnlocksScreen(
     onSelectStaffDef: (EntityDef?) -> Unit,
     onUnlockNextTier: () -> Unit,
     onUpdateShift: (entityId: Int, newStartHour: Int) -> Unit = { _, _ -> },
+    onSetAutoHireBudget: (Money) -> Unit = {},
 ) {    val tabs = listOf("Staff", "Schedule", "Unlocks")
 
     // Pager state for tab navigation
@@ -440,7 +604,8 @@ fun StaffAndUnlocksScreen(
                 0 -> StaffScreen(
                     state = staffState,
                     money = money,
-                    onSelectStaffDef = onSelectStaffDef
+                    onSelectStaffDef = onSelectStaffDef,
+                    onSetAutoHireBudget = onSetAutoHireBudget,
                 )
                 1 -> ScheduleScreen(
                     scheduleEntries = staffState.scheduleEntries,

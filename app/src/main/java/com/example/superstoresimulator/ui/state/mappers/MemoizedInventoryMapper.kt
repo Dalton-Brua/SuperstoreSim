@@ -133,6 +133,7 @@ class MemoizedInventoryMapper(
                 closestExpirationDay = closestExpiration,
                 pendingCasePacks = pending?.first ?: 0,
                 earliestArrivalDay = pending?.second,
+                zoneScore = dyn.zoneScore,
             )
         }
         

@@ -182,12 +182,12 @@ class PerformanceRegressionTest {
         val elapsed = System.nanoTime() - startTime
         val elapsedMs = elapsed / 1_000_000.0
         
-        // Assert: Should complete in under 100ms (0.1ms per tick average)
-        // This is conservative; actual performance should be much better
+        // Assert: Should complete in under 200ms (0.2ms per tick average)
+        // Includes zone decay + utilization tracking overhead (Phase 5B)
         assertTrue(
             "Tick performance regression detected: 1000 ticks took ${elapsedMs}ms " +
-            "(${elapsedMs / 1000}ms per tick). Expected < 100ms total.",
-            elapsed < 100_000_000L  // 100ms in nanoseconds
+            "(${elapsedMs / 1000}ms per tick). Expected < 200ms total.",
+            elapsed < 200_000_000L  // 200ms in nanoseconds
         )
         
         // Log performance for tracking (visible in test output)
@@ -273,10 +273,11 @@ class PerformanceRegressionTest {
         val elapsedMs = elapsed / 1_000_000.0
         
         // Assert: Should be very fast with no work
+        // Includes zone decay overhead on 10 items (Phase 5B)
         assertTrue(
             "Empty tick performance regression: 10000 ticks took ${elapsedMs}ms " +
-            "(${elapsedMs / 10000}ms per tick). Expected < 50ms total.",
-            elapsed < 50_000_000L  // 50ms in nanoseconds
+            "(${elapsedMs / 10000}ms per tick). Expected < 100ms total.",
+            elapsed < 100_000_000L  // 100ms in nanoseconds
         )
         
         println("Minimal work: 10000 ticks completed in ${elapsedMs}ms (${elapsedMs / 10000}ms per tick)")

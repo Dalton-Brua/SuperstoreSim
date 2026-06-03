@@ -39,7 +39,7 @@ data class HiredEntityRegistry(
     fun hireEntity(definition: EntityDef): HiredEntityRegistry {
         val trait = EntityTrait.entries.random()
         val startLevel = if (trait == EntityTrait.VETERAN) 3 else 1
-        val startXp = if (trait == EntityTrait.VETERAN) HiredEntity.XP_THRESHOLDS[1] else 0
+        val startXp = if (trait == EntityTrait.VETERAN) definition.xpThresholds[1] else 0
         val newEntity = HiredEntity(
             id = nextEntityId,
             name = randomName(),
@@ -74,7 +74,7 @@ data class HiredEntityRegistry(
             val multiplier = entity.trait.xpMultiplier
             val gained = (rawAmount * multiplier).toInt().coerceAtLeast(1)
             val newXp = entity.xp + gained
-            val newLevel = computeLevel(newXp)
+            val newLevel = computeLevel(newXp, entity.entityDefinition.xpThresholds)
             entity.copy(xp = newXp, level = newLevel)
         }
         return copy(entities = updatedList)
@@ -88,9 +88,9 @@ data class HiredEntityRegistry(
         return updated
     }
 
-    private fun computeLevel(xp: Int): Int {
+    private fun computeLevel(xp: Int, thresholds: List<Int> = HiredEntity.XP_THRESHOLDS): Int {
         var level = 1
-        for (threshold in HiredEntity.XP_THRESHOLDS) {
+        for (threshold in thresholds) {
             if (xp >= threshold) level++ else break
         }
         return level.coerceAtMost(HiredEntity.MAX_LEVEL)

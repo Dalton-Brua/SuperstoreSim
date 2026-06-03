@@ -43,9 +43,11 @@ import android.content.Context
 import com.example.superstoresimulator.ui.state.RegisterUIState
 import com.example.superstoresimulator.ui.state.RegistersUIState
 import com.example.superstoresimulator.ui.state.StaffScheduleEntryUI
+import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.persistence.GameStateRepository
 import com.example.superstoresimulator.domain.inventory.InventoryState
+import com.example.superstoresimulator.domain.Entities.EntityDef
 
 @HiltViewModel
 class GameViewModel @Inject constructor(
@@ -339,6 +341,10 @@ class GameViewModel @Inject constructor(
                 gameEngine.assignPlayerToRegister(event.registerId)
             }
 
+            is GameEvent.SetAutoHireBudget -> {
+                gameEngine.setAutoHireBudget(event.budget)
+            }
+
             GameEvent.Tick -> gameEngine.tick(tickDelta)
 
         }
@@ -378,18 +384,19 @@ class GameViewModel @Inject constructor(
             app = AppUIState(
                 storeName = domain.storeName,
                 pendingRefunds = domain.pendingRefunds.size,
-                transactionActive = domain.transactionActive,
+                transactionActive = domain.registers.firstOrNull()?.transactionActive ?: false,
                 money = domain.money
             ),
             dashboard = DashboardUIState(
                 money = domain.money,
                 totalStaff = domain.hiredEntityRegistry.totalCount(),
                 activeStaff = countActiveStaff(domain),
+                avgZoneScore = domain.avgZoneScore,
             ),
             transactions = TransactionUIState(
-                current = domain.currentTransaction,
+                current = domain.registers.firstOrNull()?.currentTransaction ?: com.example.superstoresimulator.domain.Transactions.Transaction(),
                 totalCompleted = domain.totalTransactionsCompleted,
-                isActive = domain.transactionActive,
+                isActive = domain.registers.firstOrNull()?.transactionActive ?: false,
                 isDialogOpen = false,
                 pendingRefunds = domain.pendingRefunds,
                 pendingCustomers = domain.pendingCustomers,
@@ -397,13 +404,19 @@ class GameViewModel @Inject constructor(
             ),
             inventory = inventoryMapper.map(domain.inventory, domain.currentTier, domain.storeConfig.backroomCapPerItem).copy(
                 selectedCategory = null,
-
             ),
             staff = StaffUIState(
                 registry = domain.hiredEntityRegistry,
                 selectedDef = null,
                 scheduleEntries = scheduleEntries,
                 currentHour = domain.currentTime.hour,
+                employeeActivities = if (gameEngineInitialized) gameEngine.employeeActivities() else emptyMap(),
+                cashierUtilization = if (gameEngineInitialized) gameEngine.cashierUtilization() else 0f,
+                stockerUtilization = if (gameEngineInitialized) gameEngine.stockerUtilization() else 0f,
+                freshUtilization = if (gameEngineInitialized) gameEngine.freshUtilization() else 0f,
+                hasManagerOnStaff = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).isNotEmpty(),
+                hasSeniorManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.tier != Tier.BASE },
+                autoHireBudget = domain.autoHireBudget,
             ),
             history = HistoryUIState(
                 salesHistory = domain.salesHistory,
@@ -462,18 +475,19 @@ class GameViewModel @Inject constructor(
             app = AppUIState(
                 storeName = domain.storeName,
                 pendingRefunds = domain.pendingRefunds.size,
-                transactionActive = domain.transactionActive,
+                transactionActive = domain.registers.firstOrNull()?.transactionActive ?: false,
                 money = domain.money,
             ),
             dashboard = DashboardUIState(
                 money = domain.money,
                 totalStaff = domain.hiredEntityRegistry.totalCount(),
                 activeStaff = countActiveStaff(domain),
+                avgZoneScore = domain.avgZoneScore,
             ),
             transactions = TransactionUIState(
-                current = domain.currentTransaction,
+                current = domain.registers.firstOrNull()?.currentTransaction ?: com.example.superstoresimulator.domain.Transactions.Transaction(),
                 totalCompleted = domain.totalTransactionsCompleted,
-                isActive = domain.transactionActive,
+                isActive = domain.registers.firstOrNull()?.transactionActive ?: false,
                 isDialogOpen = oldUi?.transactions?.isDialogOpen ?: false,
                 pendingRefunds = domain.pendingRefunds,
                 pendingCustomers = domain.pendingCustomers,
@@ -490,11 +504,25 @@ class GameViewModel @Inject constructor(
                 registry = domain.hiredEntityRegistry,
                 scheduleEntries = scheduleEntries,
                 currentHour = domain.currentTime.hour,
+                employeeActivities = gameEngine.employeeActivities(),
+                cashierUtilization = gameEngine.cashierUtilization(),
+                stockerUtilization = gameEngine.stockerUtilization(),
+                freshUtilization = gameEngine.freshUtilization(),
+                hasManagerOnStaff = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).isNotEmpty(),
+                hasSeniorManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.tier != Tier.BASE },
+                autoHireBudget = domain.autoHireBudget,
             )) ?: StaffUIState(
                 registry = domain.hiredEntityRegistry,
                 selectedDef = null,
                 scheduleEntries = scheduleEntries,
                 currentHour = domain.currentTime.hour,
+                employeeActivities = gameEngine.employeeActivities(),
+                cashierUtilization = gameEngine.cashierUtilization(),
+                stockerUtilization = gameEngine.stockerUtilization(),
+                freshUtilization = gameEngine.freshUtilization(),
+                hasManagerOnStaff = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).isNotEmpty(),
+                hasSeniorManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.tier != Tier.BASE },
+                autoHireBudget = domain.autoHireBudget,
             ),
             history = HistoryUIState(
                 salesHistory = domain.salesHistory,
@@ -556,7 +584,8 @@ class GameViewModel @Inject constructor(
                newDomainState.truckConfig != oldDomainState.truckConfig ||
                newDomainState.staffSchedules != oldDomainState.staffSchedules ||
                newDomainState.playerAssignedRegisterId != oldDomainState.playerAssignedRegisterId ||
-               newDomainState.ownedRegisterCount != oldDomainState.ownedRegisterCount
+               newDomainState.ownedRegisterCount != oldDomainState.ownedRegisterCount ||
+               newDomainState.autoHireBudget != oldDomainState.autoHireBudget
     }
 
     // ── Register & Schedule UI State Builders ────────────────────────────────────
@@ -623,7 +652,6 @@ class GameViewModel @Inject constructor(
         val currentHour = domain.currentTime.hour
         val shiftMap = domain.staffSchedules.associateBy { it.entityId }
 
-        // Build reverse lookup: cashier entity id → register id
         val cashierRegisterMap = domain.registers
             .filter { it.assignedCashierId != null }
             .associate { it.assignedCashierId!! to it.registerId }
@@ -631,14 +659,22 @@ class GameViewModel @Inject constructor(
         return domain.hiredEntityRegistry.hiredEntities.map { entity ->
             val shift = shiftMap[entity.id]
             val isOnShift = shift?.isOnShift(currentHour) ?: true
+            val tierLabel = when (entity.tier) {
+                com.example.superstoresimulator.domain.Entities.Tier.BASE -> ""
+                com.example.superstoresimulator.domain.Entities.Tier.FAST -> "Fast"
+                com.example.superstoresimulator.domain.Entities.Tier.MANAGER -> "Dept. Mgr"
+            }
 
             StaffScheduleEntryUI(
                 entityId = entity.id,
                 entityName = entity.name,
                 entityTypeName = entity.entityDefinition.displayName,
+                entityDefKey = entity.entityDefinition.key,
                 startHour = shift?.startHour,
                 endHour = shift?.endHour,
                 isOnShift = isOnShift,
+                tierLabel = tierLabel,
+                level = entity.level,
                 assignedRegisterId = cashierRegisterMap[entity.id],
             )
         }

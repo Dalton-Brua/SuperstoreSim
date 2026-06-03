@@ -111,10 +111,8 @@ fun StoreHomeScreen (
             // Player role buttons (Cashier, Stocker) with progress bars
             item {
                 if (state.time != null) {
-                    val hasBackroomItems = state.inventory.items.any { it.backroomStock > 0 }
                     PlayerRoleButtons(
                         currentRole = state.time.playerRole,
-                        hasBackroomItems = hasBackroomItems,
                         onRoleChanged = onSetPlayerRole,
                         playerCashierProgress = state.time.playerCashierProgress,
                         playerStockerProgress = state.time.playerStockerProgress,
@@ -127,7 +125,8 @@ fun StoreHomeScreen (
                 StoreOverviewCard(
                     cash = state.dashboard.money,
                     totalEmployees = state.dashboard.totalStaff,
-                    activeEmployees = state.dashboard.activeStaff
+                    activeEmployees = state.dashboard.activeStaff,
+                    avgZoneScore = state.dashboard.avgZoneScore,
                 )
             }
 

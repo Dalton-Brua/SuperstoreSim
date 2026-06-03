@@ -23,6 +23,7 @@ import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.time.TimeManager
 import com.example.superstoresimulator.domain.store.StoreState
 import com.example.superstoresimulator.domain.traffic.TrafficManager
+import com.example.superstoresimulator.domain.traffic.TrafficSchedule
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +34,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     private companion object {
         const val XP_PER_TRANSACTION = 5
         const val XP_PER_STOCK_ACTION = 1
+        const val MANAGER_XP_PER_SUPERVISED_ACTION = 1
     }
     private val timeManager = TimeManager()
     private val trafficManager = TrafficManager()
@@ -102,6 +104,13 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     }
 
     fun currentState(): GameState = state
+
+    fun employeeActivities(): Map<Int, com.example.superstoresimulator.domain.staff.EmployeeActivity> =
+        staffManager.employeeActivities
+
+    fun cashierUtilization(): Float = staffManager.currentCashierUtilization()
+    fun stockerUtilization(): Float = staffManager.currentStockerUtilization()
+    fun freshUtilization(): Float = staffManager.currentFreshUtilization()
 
     // Inventory operations — delegated to InventoryManager; change emission stays here.
 
@@ -371,6 +380,8 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             // Phase 3: Detect day rollover (midnight)
             val newDayNumber = state.currentTime.dayNumber
             if (newDayNumber != dayManager.lastKnownDayNumber) {
+                // Auto-hire evaluation before day reset (uses today's accumulated metrics)
+                state = staffManager.evaluateAutoHire(state)
                 state = dayManager.rollOverDay(state, dayManager.lastKnownDayNumber)
                 dayManager.advanceDay(newDayNumber)
                 // Clear any transactions left open at midnight (e.g. from skip-day) and
@@ -472,6 +483,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
 
             // Phase 3: Process hired cashiers per register.
             // Each register's assigned (or pool) cashier advances that register's transaction.
+            var totalEmployeeActions = 0
             if (state.storeState == StoreState.OPEN) {
                 val registerIds = state.registers.map { it.registerId }
                 for (registerId in registerIds) {
@@ -483,22 +495,61 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                         registerId, cashierWeight, delta, speedMultiplier * cashierBonus
                     )
                     repeat(actions) { ringUpItemOnRegister(registerId) }
+                    totalEmployeeActions += actions
                 }
             }
 
-            // Process hired stockers — weighted, on-shift only.
+            // ── Zone decay (Phase 5B) ────────────────────────────────────────
+            if (state.storeState == StoreState.OPEN) {
+                val pattern = TrafficSchedule.getPatternForTime(state.currentTime)
+                val trafficRate = (pattern.baseCustomerRate / 60f) * state.currentStoreSize.trafficMultiplier
+                val decayAmount = StaffManager.ZONE_DECAY_RATE * trafficRate * delta.toFloat() * speedMultiplier
+                if (decayAmount > 0.0001f) {
+                    var changed = false
+                    val updatedInventory = HashMap(state.inventory)
+                    for ((itemId, inv) in state.inventory) {
+                        if (inv.shelfStock > 0 && inv.zoneScore > 0f) {
+                            val newScore = (inv.zoneScore - decayAmount).coerceAtLeast(0f)
+                            if (newScore != inv.zoneScore) {
+                                updatedInventory[itemId] = inv.copy(zoneScore = newScore)
+                                changed = true
+                            }
+                        }
+                    }
+                    if (changed) state = state.copy(inventory = updatedInventory)
+                }
+            }
+
+            // ── Stocker work: stocking or zoning ─────────────────────────────
+            val hasActionableBackroom = state.inventory.any { (itemId, inv) ->
+                val meta = itemMetadataCache.get(itemId)
+                meta?.isPerishable != true && inv.backroomStock > 0
+            }
+            val hasUnzonedItems = state.inventory.any { (_, inv) ->
+                inv.shelfStock > 0 && inv.zoneScore < 1.0f
+            }
+
             val activeStockers = StaffManager.activeWeightedCount(
                 EntityDef.STOCKER, currentHour, state.staffSchedules, state.hiredEntityRegistry
             )
-            val wholeStockActions = staffManager.advanceStockerProgress(activeStockers, delta, speedMultiplier * stockerBonus)
-            repeat(wholeStockActions) { stockRandomItemFromBackroom() }
-            if (wholeStockActions > 0) {
-                state = state.copy(
-                    hiredEntityRegistry = state.hiredEntityRegistry.grantXpToAll(EntityDef.STOCKER, wholeStockActions * XP_PER_STOCK_ACTION)
-                )
+
+            if (hasActionableBackroom) {
+                val wholeStockActions = staffManager.advanceStockerProgress(activeStockers, delta, speedMultiplier * stockerBonus)
+                repeat(wholeStockActions) { stockRandomItemFromBackroom() }
+                if (wholeStockActions > 0) {
+                    state = state.copy(
+                        hiredEntityRegistry = state.hiredEntityRegistry.grantXpToAll(EntityDef.STOCKER, wholeStockActions * XP_PER_STOCK_ACTION)
+                    )
+                    totalEmployeeActions += wholeStockActions
+                }
+            } else if (hasUnzonedItems && activeStockers > 0f) {
+                advanceStockerZoning(currentHour, delta, speedMultiplier * stockerBonus)
             }
 
             // Process fresh handlers — weighted, on-shift only.
+            val hasFreshBackroomStock = state.inventory.any { (itemId, inv) ->
+                itemMetadataCache.get(itemId)?.isPerishable == true && inv.backroomStock > 0
+            }
             val activeFreshHandlers = StaffManager.activeWeightedCount(
                 EntityDef.FRESH_HANDLER, currentHour, state.staffSchedules, state.hiredEntityRegistry
             )
@@ -508,15 +559,40 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 state = state.copy(
                     hiredEntityRegistry = state.hiredEntityRegistry.grantXpToAll(EntityDef.FRESH_HANDLER, wholeFreshActions * XP_PER_STOCK_ACTION)
                 )
+                totalEmployeeActions += wholeFreshActions
+            }
+
+            // Grant XP to on-shift managers for supervising employee work
+            if (totalEmployeeActions > 0) {
+                val managerXp = totalEmployeeActions * MANAGER_XP_PER_SUPERVISED_ACTION
+                val onShiftManagers = state.hiredEntityRegistry.getByDef(EntityDef.MANAGER).filter { mgr ->
+                    state.staffSchedules.any { s -> s.entityId == mgr.id && s.isOnShift(currentHour) }
+                }
+                if (onShiftManagers.isNotEmpty()) {
+                    val xpEach = (managerXp / onShiftManagers.size).coerceAtLeast(1)
+                    var registry = state.hiredEntityRegistry
+                    for (mgr in onShiftManagers) {
+                        registry = registry.grantXp(mgr.id, xpEach)
+                    }
+                    state = state.copy(hiredEntityRegistry = registry)
+                }
             }
 
             // If fresh handlers are active but have no fresh items in the backroom to stock,
             // attempt auto-ordering regardless of how many actions were accumulated.
-            val hasFreshBackroomStock = activeFreshHandlers > 0f && state.inventory.any { (itemId, inv) ->
-                itemMetadataCache.get(itemId)?.isPerishable == true && inv.backroomStock > 0
-            }
             if (activeFreshHandlers > 0f && !hasFreshBackroomStock) {
                 attemptFreshHandlerAutoOrder()
+            }
+
+            // ── Utilization tracking (Phase 5B) ──────────────────────────────
+            if (state.hiredEntityRegistry.hiredEntities.isNotEmpty()) {
+                val hasFreshWork = hasFreshBackroomStock ||
+                    (state.freshAutoOrderConfig.enabled && state.inventory.any { (itemId, _) ->
+                        inventoryManager.shouldAutoOrderFreshItem(state, itemId, state.freshAutoOrderConfig)
+                    })
+                staffManager.updateUtilization(
+                    state, currentHour, hasActionableBackroom, hasUnzonedItems, hasFreshWork
+                )
             }
 
             // Phase 2: Process player work (mutually exclusive roles)
@@ -582,15 +658,34 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
      * Player working as stocker: moves case-packs from backroom to shelves.
      * Progress math delegated to [PlayerActionHandler.calculateStockerWork];
      * stocking calls are performed here because they mutate live state between iterations.
-     * Auto-returns the player to [PlayerRole.MANAGE] when the backroom empties.
+     * When the backroom empties, zones unzoned shelf items instead.
+     * Auto-returns the player to [PlayerRole.MANAGE] when nothing left to stock or zone.
      */
     private fun performPlayerStockerWork(deltaSeconds: Double) {
         val result = playerActionHandler.calculateStockerWork(state, deltaSeconds)
-        repeat(result.actionsToTake) { stockRandomItemFromBackroom() }
-        val backroomEmpty = state.inventory.values.none { it.backroomStock > 0 }
-        if (backroomEmpty) {
-            state = state.copy(playerRole = PlayerRole.MANAGE, playerStockerProgress = 0f)
+        val hasActionableBackroom = state.inventory.values.any { it.backroomStock > 0 }
+        if (hasActionableBackroom) {
+            repeat(result.actionsToTake) { stockRandomItemFromBackroom() }
+            state = state.copy(playerStockerProgress = result.newProgress)
         } else {
+            val unzonedItems = state.inventory.entries
+                .filter { (_, inv) -> inv.shelfStock > 0 && inv.zoneScore < 1.0f }
+                .sortedBy { (_, inv) -> inv.zoneScore }
+            if (unzonedItems.isEmpty()) {
+                state = state.copy(playerRole = PlayerRole.MANAGE, playerStockerProgress = 0f)
+                return
+            }
+            var actionsLeft = result.actionsToTake
+            var idx = 0
+            while (actionsLeft > 0 && idx < unzonedItems.size) {
+                val (itemId, inv) = unzonedItems[idx]
+                val newScore = (inv.zoneScore + StaffManager.ZONE_PER_ACTION).coerceAtMost(1.0f)
+                state = state.copy(
+                    inventory = state.inventory + (itemId to inv.copy(zoneScore = newScore))
+                )
+                actionsLeft--
+                if (newScore >= 1.0f) idx++
+            }
             state = state.copy(playerStockerProgress = result.newProgress)
         }
     }
@@ -601,6 +696,52 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
      */
     private fun handleStoreStateChange(newState: StoreState) {
         state = storeController.handleStoreStateChange(state, newState, trafficManager)
+    }
+
+    // ── Zoning helpers (Phase 5B) ───────────────────────────────────────────
+
+    private fun advanceStockerZoning(currentHour: Int, delta: Double, multiplier: Float) {
+        val onShiftStockers = state.hiredEntityRegistry.getByDef(EntityDef.STOCKER).filter { entity ->
+            state.staffSchedules.firstOrNull { it.entityId == entity.id }?.isOnShift(currentHour) == true
+        }
+        if (onShiftStockers.isEmpty()) return
+
+        // Assign targets to stockers without one (or whose target is complete)
+        val unzonedItems = state.inventory.entries
+            .filter { (_, inv) -> inv.shelfStock > 0 && inv.zoneScore < 1.0f }
+            .sortedBy { (_, inv) -> inv.zoneScore }
+            .map { (id, _) -> id }
+
+        for (stocker in onShiftStockers) {
+            val currentTarget = staffManager.getZoningTarget(stocker.id)
+            if (currentTarget != null) {
+                val inv = state.inventory[currentTarget]
+                if (inv != null && inv.zoneScore < 1.0f && inv.shelfStock > 0) continue
+                staffManager.clearZoningTarget(stocker.id)
+            }
+            val claimed = staffManager.allClaimedZoningTargets()
+            val newTarget = unzonedItems.firstOrNull { it !in claimed }
+            if (newTarget != null) {
+                staffManager.assignZoningTarget(stocker.id, newTarget)
+            }
+        }
+
+        // Advance zoning progress for each stocker
+        for (stocker in onShiftStockers) {
+            val weight = stocker.throughputWeight * stocker.levelMultiplier * stocker.trait.throughputMultiplier
+            val actions = staffManager.advanceZoningForStocker(stocker.id, weight, delta, multiplier)
+            for (action in actions) {
+                val inv = state.inventory[action.targetItemId] ?: continue
+                val newScore = (inv.zoneScore + StaffManager.ZONE_PER_ACTION).coerceAtMost(1.0f)
+                state = state.copy(
+                    inventory = state.inventory + (action.targetItemId to inv.copy(zoneScore = newScore))
+                )
+            }
+        }
+    }
+
+    fun setAutoHireBudget(budget: Money) {
+        state = state.copy(autoHireBudget = budget)
     }
 
     // ── Register helpers ──────────────────────────────────────────────────────

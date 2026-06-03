@@ -29,6 +29,7 @@ import com.example.superstoresimulator.domain.metrics.FreshOrderLineItem
 import com.example.superstoresimulator.domain.metrics.IncompleteOrderLineItem
 import com.example.superstoresimulator.domain.metrics.DeliveredTruckRecord
 import com.example.superstoresimulator.domain.metrics.DeliveredItemLine
+import com.example.superstoresimulator.domain.metrics.AutoHireEvent
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreSize
@@ -146,6 +147,9 @@ object GameStateSerializer {
             json.put("manuallyUnassignedCashiers", unassignedArray)
         }
 
+        // ── Auto-hire budget (Phase 5B) ──────────────────────────────────────
+        json.put("autoHireBudget", state.autoHireBudget.cents)
+
         // ── Fresh auto-order system ──────────────────────────────────────────
         json.put("freshAutoOrderConfig", JSONObject().apply {
             put("enabled", state.freshAutoOrderConfig.enabled)
@@ -253,6 +257,8 @@ object GameStateSerializer {
                     val arr = json.getJSONArray("manuallyUnassignedCashiers")
                     (0 until arr.length()).map { arr.getInt(it) }.toSet()
                 } else emptySet(),
+                // ── Auto-hire budget (Phase 5B) ──────────────────────────────
+                autoHireBudget = if (json.has("autoHireBudget")) Money(json.getLong("autoHireBudget")) else Money.ZERO,
                 // ── Fresh auto-order system ──────────────────────────────────
                 freshAutoOrderConfig = if (json.has("freshAutoOrderConfig")) {
                     val cfg = json.getJSONObject("freshAutoOrderConfig")
@@ -451,13 +457,15 @@ object GameStateSerializer {
                 shelfBatchesArray.put(serializeBatch(batch))
             }
             put("shelfBatches", shelfBatchesArray)
-            
+
             // Serialize backroom batches
             val backroomBatchesArray = JSONArray()
             invState.backroomBatches.forEach { batch ->
                 backroomBatchesArray.put(serializeBatch(batch))
             }
             put("backroomBatches", backroomBatchesArray)
+
+            put("zoneScore", invState.zoneScore.toDouble())
         }
     }
     
@@ -495,7 +503,8 @@ object GameStateSerializer {
             
             map[itemId] = InventoryState(
                 shelfBatches = shelfBatches,
-                backroomBatches = backroomBatches
+                backroomBatches = backroomBatches,
+                zoneScore = invJson.optDouble("zoneScore", 1.0).toFloat(),
             )
         }
         return map
@@ -628,6 +637,12 @@ object GameStateSerializer {
                 deliveredTrucksArray.put(serializeDeliveredTruckRecord(record))
             }
             put("deliveredTrucks", deliveredTrucksArray)
+
+            val autoHireArray = JSONArray()
+            acc.autoHireEvents.forEach { event ->
+                autoHireArray.put(serializeAutoHireEvent(event))
+            }
+            put("autoHireEvents", autoHireArray)
         }
     }
 
@@ -670,6 +685,12 @@ object GameStateSerializer {
             for (i in 0 until arr.length()) deliveredTrucksAcc.add(deserializeDeliveredTruckRecord(arr.getJSONObject(i)))
         }
 
+        val autoHireEventsAcc = mutableListOf<AutoHireEvent>()
+        if (json.has("autoHireEvents")) {
+            val arr = json.getJSONArray("autoHireEvents")
+            for (i in 0 until arr.length()) autoHireEventsAcc.add(deserializeAutoHireEvent(arr.getJSONObject(i)))
+        }
+
         return DailyMetricsAccumulator(
             dayNumber = if (json.has("dayNumber")) json.getInt("dayNumber") else 0,
             revenue = Money(json.getLong("revenue")),
@@ -694,6 +715,7 @@ object GameStateSerializer {
             autoOrderedFreshItems = freshOrderItems,
             incompleteOrderedFreshItems = incompleteOrderItems,
             deliveredTrucks = deliveredTrucksAcc,
+            autoHireEvents = autoHireEventsAcc,
         )
     }
 
@@ -755,6 +777,12 @@ object GameStateSerializer {
                 deliveredTrucksArray.put(serializeDeliveredTruckRecord(record))
             }
             put("deliveredTrucks", deliveredTrucksArray)
+
+            val autoHireArray = JSONArray()
+            metrics.autoHireEvents.forEach { event ->
+                autoHireArray.put(serializeAutoHireEvent(event))
+            }
+            put("autoHireEvents", autoHireArray)
         }
     }
 
@@ -797,6 +825,12 @@ object GameStateSerializer {
             for (i in 0 until arr.length()) deliveredTrucksList.add(deserializeDeliveredTruckRecord(arr.getJSONObject(i)))
         }
 
+        val autoHireEventsList = mutableListOf<AutoHireEvent>()
+        if (json.has("autoHireEvents")) {
+            val arr = json.getJSONArray("autoHireEvents")
+            for (i in 0 until arr.length()) autoHireEventsList.add(deserializeAutoHireEvent(arr.getJSONObject(i)))
+        }
+
         return DailyMetrics(
             dayNumber = json.getInt("dayNumber"),
             dayOfWeek = json.getInt("dayOfWeek"),
@@ -822,6 +856,7 @@ object GameStateSerializer {
             autoOrderedFreshItems = freshOrderItems,
             incompleteOrderedFreshItems = incompleteOrderItems,
             deliveredTrucks = deliveredTrucksList,
+            autoHireEvents = autoHireEventsList,
         )
     }
 
@@ -886,6 +921,24 @@ object GameStateSerializer {
             valueLost = Money(json.getLong("valueLost"))
         )
     }
+
+    // ── Auto-Hire Events ────────────────────────────────────────────────────
+
+    private fun serializeAutoHireEvent(event: AutoHireEvent): JSONObject =
+        JSONObject().apply {
+            put("entityDefName", event.entityDefName)
+            put("reason", event.reason)
+            put("blocked", event.blocked)
+            put("blockReason", event.blockReason)
+        }
+
+    private fun deserializeAutoHireEvent(json: JSONObject): AutoHireEvent =
+        AutoHireEvent(
+            entityDefName = json.getString("entityDefName"),
+            reason = json.getString("reason"),
+            blocked = json.optBoolean("blocked", false),
+            blockReason = json.optString("blockReason", ""),
+        )
 
     // ── Truck Delivery System ─────────────────────────────────────────────────
 

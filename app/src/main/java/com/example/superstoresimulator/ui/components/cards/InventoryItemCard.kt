@@ -92,6 +92,29 @@ fun InventoryItemCard(
                 Text("Case Cost: ${item.casePackCost}", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = PrimaryDark)
             }
 
+            // Zone score
+            if (item.shelfStock > 0 && item.zoneScore < 1.0f) {
+                val zonePct = (item.zoneScore * 100).toInt()
+                val zoneColor = when {
+                    zonePct >= 80 -> Color(0xFF22C55E)
+                    zonePct >= 50 -> Color(0xFFF59E0B)
+                    else -> Color(0xFFEF4444)
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("Zone: $zonePct%", fontSize = 11.sp, color = zoneColor, fontWeight = FontWeight.SemiBold)
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { item.zoneScore.coerceIn(0f, 1f) },
+                        modifier = Modifier.weight(1f).height(4.dp),
+                        color = zoneColor,
+                        trackColor = Color(0xFFE2E8F0),
+                    )
+                }
+            }
+
             // In-transit badge
             if (item.pendingCasePacks > 0) {
                 val arrivalDow = item.earliestArrivalDay?.let { day ->

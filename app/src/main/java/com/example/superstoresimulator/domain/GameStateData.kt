@@ -136,6 +136,16 @@ data class IncompleteOrderRequest(
     val reason: String,
 )
 
+data class DailyStaffMetrics(
+    val peakPendingCustomers: Int = 0,
+    val avgCashierUtilization: Float = 0f,
+    val avgStockerUtilization: Float = 0f,
+    val avgFreshUtilization: Float = 0f,
+    val hasUnstaffedRegisters: Boolean = false,
+    val freshItemsOutOfStock: Int = 0,
+    val freshOrdersAttempted: Int = 0,
+)
+
 data class GameState(
 
     val storeName: String = "Grocery Store",
@@ -205,12 +215,17 @@ data class GameState(
     val playerAssignedRegisterId: Int? = null,
     /** Cashier entity IDs manually unassigned from registers today — blocked from auto-reassignment until midnight. */
     val manuallyUnassignedCashiers: Set<Int> = emptySet(),
+
+    // Auto-hire budget: managers will not hire if doing so would bring money below this threshold
+    val autoHireBudget: Money = Money.ZERO,
 ) {
-    // ── Backward-compat read-only shims ──────────────────────────────────────
-    // These delegate to the first register so all code that reads
-    // state.currentTransaction / state.transactionActive continues to compile
-    // without modification.  They are READ-ONLY — write paths must go through
-    // the registers list via updateRegister().
+    val avgZoneScore: Float
+        get() {
+            val withShelf = inventory.values.filter { it.shelfStock > 0 }
+            if (withShelf.isEmpty()) return 1.0f
+            return withShelf.map { it.zoneScore.toDouble() }.average().toFloat()
+        }
+
     val currentTransaction: Transaction
         get() = registers.firstOrNull()?.currentTransaction ?: Transaction()
     val transactionActive: Boolean

@@ -370,6 +370,29 @@ fun EndOfDayReportDialog(
                     Spacer(Modifier.height(20.dp))
                 }
 
+                // ── Auto-Hire section ──────────────────────────────────────
+                if (report.autoHireEvents.isNotEmpty()) {
+                    SectionHeader("👔 Manager Auto-Hire")
+                    report.autoHireEvents.forEach { event ->
+                        if (event.blocked) {
+                            StatRow(
+                                Icons.Default.Block,
+                                "Skipped ${event.entityDefName}",
+                                event.blockReason,
+                                tint = Color(0xFFF59E0B),
+                            )
+                        } else {
+                            StatRow(
+                                Icons.Default.PersonAdd,
+                                "Hired ${event.entityDefName}",
+                                event.reason,
+                                tint = Color(0xFF22C55E),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+
                 // ── Deliveries Received section ───────────────────────────
                 if (report.deliveredTrucks.isNotEmpty()) {
                     var deliveriesExpanded by remember { mutableStateOf(false) }

@@ -1,6 +1,7 @@
 package com.example.superstoresimulator.ui
 
 import com.example.superstoresimulator.domain.Entities.EntityDef
+import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.player.PlayerRole
 
@@ -124,4 +125,7 @@ sealed interface GameEvent {
      * Guard: cannot assign to a register that already has a hired cashier.
      */
     data class AssignPlayerToRegister(val registerId: Int?) : GameEvent
+
+    // Auto-Hire Budget (Phase 5B)
+    data class SetAutoHireBudget(val budget: Money) : GameEvent
 }

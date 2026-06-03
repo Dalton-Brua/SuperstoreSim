@@ -26,8 +26,11 @@ data class EntityDef(
     val roleDescription: String,
     val icon: ImageVector,
     val baseWage: Money = Money(725),
+    val xpThresholds: List<Int> = DEFAULT_XP_THRESHOLDS,
 ) {
     companion object {
+        val DEFAULT_XP_THRESHOLDS = listOf(100, 300, 700, 1500)
+        val MANAGER_XP_THRESHOLDS = listOf(250, 750, 1750, 4000)
 
         val CASHIER = EntityDef(
             key = "cashier",
@@ -64,6 +67,7 @@ data class EntityDef(
             roleDescription = "Throughput bonus + auto-hire",
             icon = Icons.Default.Star,
             baseWage = Money(1_200),
+            xpThresholds = MANAGER_XP_THRESHOLDS,
         )
 
         val allEntities: List<EntityDef> = listOf(

@@ -55,7 +55,6 @@ import com.example.superstoresimulator.ui.theme.TextWhite
 @Composable
 fun PlayerRoleButtons(
     currentRole: PlayerRole,
-    hasBackroomItems: Boolean,
     onRoleChanged: (PlayerRole) -> Unit,
     modifier: Modifier = Modifier,
     playerCashierProgress: Float = 0f,
@@ -108,12 +107,12 @@ fun PlayerRoleButtons(
                 modifier = Modifier.weight(1f)
             ) { onRoleChanged(PlayerRole.CASHIER) }
 
-            // Stocker — available even when store is closed (overnight restocking)
+            // Stocker — stocks backroom items or zones shelves when backroom is empty
             Segment(
                 icon = Icons.Default.Inventory,
                 label = "STOCKER",
                 isActive = currentRole == PlayerRole.STOCKER,
-                isEnabled = hasBackroomItems,
+                isEnabled = true,
                 activeColor = stockerColor,
                 modifier = Modifier.weight(1f)
             ) { onRoleChanged(PlayerRole.STOCKER) }

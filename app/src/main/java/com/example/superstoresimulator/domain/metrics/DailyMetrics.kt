@@ -74,6 +74,16 @@ data class OutOfStockEvent(
 )
 
 /**
+ * Record of an auto-hire decision made at midnight.
+ */
+data class AutoHireEvent(
+    val entityDefName: String,
+    val reason: String,
+    val blocked: Boolean = false,
+    val blockReason: String = "",
+)
+
+/**
  * One line-item that was successfully sold during the day.
  * Aggregated per-day to drive the "Items Sold Report" on the Metrics screen.
  */
@@ -135,6 +145,9 @@ data class DailyMetrics(
 
     // ── Truck Deliveries ──────────────────────────────────────────────────
     val deliveredTrucks: List<DeliveredTruckRecord> = emptyList(),
+
+    // ── Auto-Hire Events ─────────────────────────────────────────────────
+    val autoHireEvents: List<AutoHireEvent> = emptyList(),
 ) {
     /** Average value per completed transaction (ZERO if no transactions). */
     val averageTransactionValue: Money
@@ -204,6 +217,9 @@ data class DailyMetricsAccumulator(
 
     // ── Truck Deliveries ──────────────────────────────────────────────────
     val deliveredTrucks: List<DeliveredTruckRecord> = emptyList(),
+
+    // ── Auto-Hire Events ─────────────────────────────────────────────────
+    val autoHireEvents: List<AutoHireEvent> = emptyList(),
 ) {
     /** Snapshot this accumulator into an immutable [DailyMetrics]. */
     fun toSnapshot(dayOfWeek: Int): DailyMetrics = DailyMetrics(
@@ -231,5 +247,6 @@ data class DailyMetricsAccumulator(
         autoOrderedFreshItems = autoOrderedFreshItems,
         incompleteOrderedFreshItems = incompleteOrderedFreshItems,
         deliveredTrucks = deliveredTrucks,
+        autoHireEvents = autoHireEvents,
     )
 }

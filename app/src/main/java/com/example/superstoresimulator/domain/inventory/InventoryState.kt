@@ -9,6 +9,7 @@ package com.example.superstoresimulator.domain.inventory
 data class InventoryState(
     val shelfBatches: List<ItemBatch> = emptyList(),
     val backroomBatches: List<ItemBatch> = emptyList(),
+    val zoneScore: Float = 1.0f,
 ) {
     val shelfStock: Int get() = shelfBatches.sumOf { it.quantity }
     val backroomStock: Int get() = backroomBatches.sumOf { it.quantity }

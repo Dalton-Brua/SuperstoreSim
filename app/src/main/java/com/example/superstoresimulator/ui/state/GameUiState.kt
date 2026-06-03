@@ -9,6 +9,7 @@ import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.domain.player.PlayerRole
+import com.example.superstoresimulator.domain.staff.EmployeeActivity
 import com.example.superstoresimulator.domain.time.GameTime
 import com.example.superstoresimulator.domain.store.StoreState
 
@@ -43,6 +44,7 @@ data class DashboardUIState(
     val totalStaff: Int,
     /** Number of employees whose shift covers the current game hour (or always-on if no shift set). */
     val activeStaff: Int = 0,
+    val avgZoneScore: Float = 1.0f,
 )
 
 data class TransactionUIState(
@@ -85,6 +87,8 @@ data class InventoryItemUI(
     val pendingCasePacks: Int = 0,
     /** Earliest scheduled arrival day among all trucks carrying this item (null if none). */
     val earliestArrivalDay: Int? = null,
+    /** Zone score for this item (0.0–1.0). Affects purchase probability. */
+    val zoneScore: Float = 1.0f,
 )
 
 
@@ -95,6 +99,13 @@ data class StaffUIState(
     val scheduleEntries: List<StaffScheduleEntryUI> = emptyList(),
     /** Current game hour (0-23) — used to show on-shift status in schedule view. */
     val currentHour: Int = 8,
+    val employeeActivities: Map<Int, EmployeeActivity> = emptyMap(),
+    val cashierUtilization: Float = 0f,
+    val stockerUtilization: Float = 0f,
+    val freshUtilization: Float = 0f,
+    val hasManagerOnStaff: Boolean = false,
+    val hasSeniorManager: Boolean = false,
+    val autoHireBudget: Money = Money.ZERO,
 )
 
 data class HistoryUIState(
@@ -236,12 +247,15 @@ data class StaffScheduleEntryUI(
     val entityId: Int,
     val entityName: String,
     val entityTypeName: String,
+    val entityDefKey: String = "",
     /** Inclusive start of shift (6–13), or null if no schedule defined (always on). */
     val startHour: Int? = null,
     /** Exclusive end of shift (startHour + 8), or null if no schedule defined. */
     val endHour: Int? = null,
     /** Whether the employee is currently on shift based on the current game hour. */
     val isOnShift: Boolean = true,
+    val tierLabel: String = "",
+    val level: Int = 1,
     /** For cashiers: the register they are assigned to, or null if unassigned. */
     val assignedRegisterId: Int? = null,
 )

@@ -312,6 +312,9 @@ class MainActivity : ComponentActivity() {
                                  onUpdateShift = { entityId, newStartHour ->
                                      viewModel.onEvent(GameEvent.UpdateShift(entityId, newStartHour))
                                  },
+                                 onSetAutoHireBudget = { budget ->
+                                     viewModel.onEvent(GameEvent.SetAutoHireBudget(budget))
+                                 },
                                  modifier = Modifier.padding(paddingValues)
                              )
 

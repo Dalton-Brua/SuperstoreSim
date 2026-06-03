@@ -12,6 +12,7 @@ import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
+import com.example.superstoresimulator.domain.staff.StaffManager
 import java.time.Instant
 import kotlin.random.Random
 
@@ -108,7 +109,10 @@ class TransactionEngine(
         if (availableItemIds.isEmpty()) return state
 
         val numLines = itemCount.coerceIn(1, availableItemIds.size.coerceAtMost(7))
-        val chosen = weightedSample(availableItemIds, numLines)
+        val zoneMultipliers = state.inventory.mapValues { (_, inv) ->
+            StaffManager.zonePurchaseMultiplier(inv.zoneScore)
+        }
+        val chosen = weightedSample(availableItemIds, numLines, zoneMultipliers)
         val lines = mutableListOf<TransactionLine>()
 
         for (itemId in chosen) {
@@ -289,13 +293,17 @@ class TransactionEngine(
      * Falls back to a uniform shuffle when the metadata cache is unavailable
      * (e.g., in unit tests that do not supply a cache).
      */
-    private fun weightedSample(pool: List<Int>, count: Int): List<Int> {
+    private fun weightedSample(
+        pool: List<Int>,
+        count: Int,
+        zoneMultipliers: Map<Int, Float>? = null,
+    ): List<Int> {
         if (cache == null) return pool.shuffled(random).take(count)
 
-        // Build a mutable list of (itemId, weight) pairs; weight floored at 0.01
-        // so items with weight=0 are effectively never chosen but don't break math.
         val weighted = pool.map { id ->
-            id to (cache.get(id)?.purchaseWeight ?: 1.0f).coerceAtLeast(0.01f)
+            val baseWeight = (cache.get(id)?.purchaseWeight ?: 1.0f).coerceAtLeast(0.01f)
+            val zoneMultiplier = zoneMultipliers?.get(id) ?: 1.0f
+            id to (baseWeight * zoneMultiplier)
         }.toMutableList()
 
         val result = mutableListOf<Int>()
