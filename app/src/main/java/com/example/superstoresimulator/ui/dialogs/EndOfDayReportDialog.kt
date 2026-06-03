@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.metrics.AutoHireAction
+import com.example.superstoresimulator.domain.metrics.AutoHireEvent
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.ui.theme.*
 import java.util.Locale
@@ -375,21 +377,7 @@ fun EndOfDayReportDialog(
                     Column(modifier = Modifier.fillMaxWidth()) {
                         SectionHeader("👔 Manager Auto-Hire")
                         report.autoHireEvents.forEach { event ->
-                            if (event.blocked) {
-                                StatRow(
-                                    Icons.Default.Block,
-                                    "Skipped ${event.entityDefName}",
-                                    event.blockReason,
-                                    tint = Color(0xFFF59E0B),
-                                )
-                            } else {
-                                StatRow(
-                                    Icons.Default.PersonAdd,
-                                    "Hired ${event.entityDefName}",
-                                    event.reason,
-                                    tint = Color(0xFF22C55E),
-                                )
-                            }
+                            AutoHireRow(event)
                         }
                     }
                     Spacer(Modifier.height(12.dp))
@@ -528,6 +516,67 @@ private fun StatRow(
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1f)
         )
+    }
+}
+
+@Composable
+private fun AutoHireRow(event: AutoHireEvent) {
+    var showTooltip by remember { mutableStateOf(false) }
+    val (icon, tint, prefix) = when (event.action) {
+        AutoHireAction.HIRED -> Triple(Icons.Default.PersonAdd, Color(0xFF22C55E), "Hired")
+        AutoHireAction.SKIPPED -> Triple(Icons.Default.Block, Color(0xFFF59E0B), "Skipped")
+        AutoHireAction.REBALANCED -> Triple(Icons.Default.SwapHoriz, Color(0xFF3B82F6), "Rebalanced")
+        AutoHireAction.PURCHASED -> Triple(Icons.Default.ShoppingCart, Color(0xFF8B5CF6), "Purchased")
+    }
+    val displayReason = if (event.blocked) event.blockReason else event.reason
+    val detail = event.detail
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "$prefix ${event.entityDefName}",
+                fontSize = 13.sp,
+                color = TextSecondary,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = displayReason,
+                fontSize = 13.sp,
+                color = TextDark,
+                textAlign = TextAlign.End,
+            )
+            if (detail.isNotEmpty()) {
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "Details",
+                    tint = Color(0xFF94A3B8),
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clickable { showTooltip = !showTooltip }
+                )
+            }
+        }
+        if (showTooltip && detail.isNotEmpty()) {
+            Text(
+                text = detail,
+                fontSize = 11.sp,
+                color = Color(0xFF64748B),
+                modifier = Modifier.padding(start = 24.dp, bottom = 4.dp)
+            )
+        }
     }
 }
 

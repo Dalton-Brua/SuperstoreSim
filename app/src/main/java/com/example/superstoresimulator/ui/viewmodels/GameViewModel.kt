@@ -326,9 +326,9 @@ class GameViewModel @Inject constructor(
             }
 
             is GameEvent.UpdateShift -> {
-                // Clamp to valid range before passing to engine (UI-side safety net)
-                val clampedHour = event.newStartHour.coerceIn(6, 13)
-                gameEngine.updateShift(event.entityId, clampedHour)
+                val duration = event.newDuration.coerceIn(2, 8)
+                val clampedHour = event.newStartHour.coerceIn(6, 21 - duration)
+                gameEngine.updateShift(event.entityId, clampedHour, duration)
             }
 
             // Register System (Phase 3)

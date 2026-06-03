@@ -49,17 +49,22 @@ fun List<RegisterState>.updateRegister(updated: RegisterState): List<RegisterSta
 data class StaffShift(
     val entityId: Int,
     val startHour: Int,
+    val durationHours: Int = 8,
 ) {
     init {
-        require(startHour in 6..13) {
-            "startHour must be between 6 and 13 (inclusive), got $startHour"
+        require(startHour in 6..20) {
+            "startHour must be between 6 and 20 (inclusive), got $startHour"
+        }
+        require(durationHours in 2..8) {
+            "durationHours must be between 2 and 8 (inclusive), got $durationHours"
+        }
+        require(startHour + durationHours <= 21) {
+            "shift must end by 21:00, got startHour=$startHour + duration=$durationHours = ${startHour + durationHours}"
         }
     }
 
-    /** The hour at which this shift ends (exclusive). Always startHour + 8. */
-    val endHour: Int get() = startHour + 8
+    val endHour: Int get() = startHour + durationHours
 
-    /** Returns true when [hour] falls within this shift window [startHour, endHour). */
     fun isOnShift(hour: Int): Boolean = hour >= startHour && hour < endHour
 }
 
@@ -139,6 +144,7 @@ data class IncompleteOrderRequest(
 
 data class DailyStaffMetrics(
     val peakPendingCustomers: Int = 0,
+    val avgHourlyPendingCustomers: Float = 0f,
     val avgCashierUtilization: Float = 0f,
     val avgStockerUtilization: Float = 0f,
     val avgFreshUtilization: Float = 0f,

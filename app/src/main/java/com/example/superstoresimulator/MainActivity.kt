@@ -309,8 +309,8 @@ class MainActivity : ComponentActivity() {
                                      currentScreen = Screen.STAFF_ENTITY_LIST
                                  },
                                  onUnlockNextTier = { viewModel.onEvent(GameEvent.UnlockNextTier) },
-                                 onUpdateShift = { entityId, newStartHour ->
-                                     viewModel.onEvent(GameEvent.UpdateShift(entityId, newStartHour))
+                                 onUpdateShift = { entityId, newStartHour, newDuration ->
+                                     viewModel.onEvent(GameEvent.UpdateShift(entityId, newStartHour, newDuration))
                                  },
                                  onSetAutoHireBudget = { budget ->
                                      viewModel.onEvent(GameEvent.SetAutoHireBudget(budget))

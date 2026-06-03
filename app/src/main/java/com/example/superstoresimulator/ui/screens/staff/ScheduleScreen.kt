@@ -71,7 +71,7 @@ private val COVERAGE_GREEN = Color(0xFF22C55E)
 @Composable
 fun ScheduleScreen(
     scheduleEntries: List<StaffScheduleEntryUI>,
-    onUpdateShift: (entityId: Int, newStartHour: Int) -> Unit,
+    onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var filter by remember { mutableStateOf(ScheduleFilter.ALL) }
@@ -190,8 +190,8 @@ fun ScheduleScreen(
     if (editing != null) {
         ShiftEditDialog(
             entry = editing,
-            onUpdateShift = { entityId, newStart ->
-                onUpdateShift(entityId, newStart)
+            onUpdateShift = { entityId, newStart, newDuration ->
+                onUpdateShift(entityId, newStart, newDuration)
                 editingEntry = null
             },
             onDismiss = { editingEntry = null },
@@ -294,13 +294,14 @@ private fun GanttEmployeeRow(
                 .background(Color(0xFFF1F5F9), RoundedCornerShape(2.dp)),
         ) {
             if (entry.startHour != null && entry.endHour != null) {
+                val duration = entry.endHour - entry.startHour
                 val leadingSlots = entry.startHour - 6
                 if (leadingSlots > 0) {
                     Spacer(Modifier.weight(leadingSlots.toFloat()))
                 }
                 Box(
                     modifier = Modifier
-                        .weight(8f)
+                        .weight(duration.toFloat())
                         .height(20.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(
@@ -330,12 +331,14 @@ private fun GanttEmployeeRow(
 @Composable
 private fun ShiftEditDialog(
     entry: StaffScheduleEntryUI,
-    onUpdateShift: (entityId: Int, newStartHour: Int) -> Unit,
+    onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var currentStart by remember(entry.entityId) {
-        mutableStateOf(entry.startHour ?: 8)
-    }
+    val initDuration = if (entry.startHour != null && entry.endHour != null)
+        (entry.endHour - entry.startHour).coerceIn(2, 8) else 8
+    var currentStart by remember(entry.entityId) { mutableStateOf(entry.startHour ?: 8) }
+    var currentDuration by remember(entry.entityId) { mutableStateOf(initDuration) }
+    val maxStart = 21 - currentDuration
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -357,13 +360,21 @@ private fun ShiftEditDialog(
                 Spacer(Modifier.height(16.dp))
 
                 Text(
-                    text = "${formatHour(currentStart)} – ${formatHour(currentStart + 8)}",
+                    text = "${formatHour(currentStart)} – ${formatHour(currentStart + currentDuration)}",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = Primary,
                 )
+                Text(
+                    text = "${currentDuration}hr shift",
+                    fontSize = 13.sp,
+                    color = TextSecondary,
+                )
                 Spacer(Modifier.height(16.dp))
 
+                // Start time controls
+                Text("Start Time", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+                Spacer(Modifier.height(4.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -372,41 +383,77 @@ private fun ShiftEditDialog(
                         onClick = { if (currentStart > 6) currentStart-- },
                         enabled = currentStart > 6,
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(44.dp)
                             .background(
                                 if (currentStart > 6) Primary.copy(alpha = 0.1f) else Color(0xFFF1F5F9),
                                 RoundedCornerShape(12.dp),
                             ),
                     ) {
-                        Icon(
-                            Icons.Default.Remove,
-                            contentDescription = "Earlier",
-                            tint = if (currentStart > 6) Primary else TextMuted,
-                        )
+                        Icon(Icons.Default.Remove, contentDescription = "Earlier",
+                            tint = if (currentStart > 6) Primary else TextMuted)
                     }
 
                     IconButton(
-                        onClick = { if (currentStart < 13) currentStart++ },
-                        enabled = currentStart < 13,
+                        onClick = { if (currentStart < maxStart) currentStart++ },
+                        enabled = currentStart < maxStart,
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(44.dp)
                             .background(
-                                if (currentStart < 13) Primary.copy(alpha = 0.1f) else Color(0xFFF1F5F9),
+                                if (currentStart < maxStart) Primary.copy(alpha = 0.1f) else Color(0xFFF1F5F9),
                                 RoundedCornerShape(12.dp),
                             ),
                     ) {
-                        Icon(
-                            Icons.Default.Add,
-                            contentDescription = "Later",
-                            tint = if (currentStart < 13) Primary else TextMuted,
-                        )
+                        Icon(Icons.Default.Add, contentDescription = "Later",
+                            tint = if (currentStart < maxStart) Primary else TextMuted)
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // Duration controls
+                Text("Duration", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = {
+                            if (currentDuration > 2) currentDuration--
+                        },
+                        enabled = currentDuration > 2,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(
+                                if (currentDuration > 2) Primary.copy(alpha = 0.1f) else Color(0xFFF1F5F9),
+                                RoundedCornerShape(12.dp),
+                            ),
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Shorter",
+                            tint = if (currentDuration > 2) Primary else TextMuted)
+                    }
+
+                    IconButton(
+                        onClick = {
+                            if (currentDuration < 8 && currentStart + currentDuration < 21) currentDuration++
+                        },
+                        enabled = currentDuration < 8 && currentStart + currentDuration < 21,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(
+                                if (currentDuration < 8 && currentStart + currentDuration < 21) Primary.copy(alpha = 0.1f) else Color(0xFFF1F5F9),
+                                RoundedCornerShape(12.dp),
+                            ),
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Longer",
+                            tint = if (currentDuration < 8 && currentStart + currentDuration < 21) Primary else TextMuted)
                     }
                 }
 
                 Spacer(Modifier.height(20.dp))
 
                 Button(
-                    onClick = { onUpdateShift(entry.entityId, currentStart) },
+                    onClick = { onUpdateShift(entry.entityId, currentStart, currentDuration) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryDark),
                     shape = RoundedCornerShape(10.dp),

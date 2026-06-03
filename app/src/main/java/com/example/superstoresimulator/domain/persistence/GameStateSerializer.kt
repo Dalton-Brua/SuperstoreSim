@@ -132,6 +132,7 @@ object GameStateSerializer {
             schedulesArray.put(JSONObject().apply {
                 put("entityId", shift.entityId)
                 put("startHour", shift.startHour)
+                put("durationHours", shift.durationHours)
             })
         }
         json.put("staffSchedules", schedulesArray)
@@ -232,10 +233,12 @@ object GameStateSerializer {
                     (0 until arr.length()).mapNotNull { i ->
                         val shiftJson = arr.getJSONObject(i)
                         val startHour = shiftJson.getInt("startHour")
-                        if (startHour in 6..13) {
+                        val duration = if (shiftJson.has("durationHours")) shiftJson.getInt("durationHours") else 8
+                        if (startHour in 6..20 && duration in 2..8 && startHour + duration <= 21) {
                             StaffShift(
                                 entityId = shiftJson.getInt("entityId"),
                                 startHour = startHour,
+                                durationHours = duration,
                             )
                         } else null
                     }

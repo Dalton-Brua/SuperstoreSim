@@ -76,11 +76,15 @@ data class OutOfStockEvent(
 /**
  * Record of an auto-hire decision made at midnight.
  */
+enum class AutoHireAction { HIRED, SKIPPED, REBALANCED, PURCHASED }
+
 data class AutoHireEvent(
     val entityDefName: String,
     val reason: String,
+    val detail: String = "",
     val blocked: Boolean = false,
     val blockReason: String = "",
+    val action: AutoHireAction = if (blocked) AutoHireAction.SKIPPED else AutoHireAction.HIRED,
 )
 
 /**

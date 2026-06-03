@@ -69,7 +69,7 @@ class DayManager {
 
         // Calculate operating costs
         val rentCost = processedState.currentStoreSize.dailyRent
-        val wagesCost = StaffWageCalculator.calculateTotalWages(processedState.hiredEntityRegistry)
+        val wagesCost = StaffWageCalculator.calculateTotalWages(processedState.hiredEntityRegistry, processedState.staffSchedules)
 
         // Update metrics with operating costs and pricing snapshot
         val metricsWithCosts = processedState.currentDayMetrics.copy(

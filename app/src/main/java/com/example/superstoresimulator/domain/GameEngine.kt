@@ -74,9 +74,15 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         // Seed every item with baseline stock for deterministic tests/sim startup.
         val allDbItems = itemMetadataCache.getAllItems()
         if (allDbItems.isNotEmpty()) {
+            val startingTier = ItemUnlockTier.TIER_2
             val inventory = mutableMapOf<Int, InventoryState>()
             val currentDay = state.currentTime.dayNumber
             allDbItems.forEach { (itemId, item) ->
+                val metadata = itemMetadataCache.get(itemId)
+                val itemTier = metadata?.tier ?: ItemUnlockTier.TIER_1
+                if (itemTier.unlockAmount > startingTier.unlockAmount) {
+                    return@forEach
+                }
                 val expirationDay = if (item.shelfLifeDays != null) {
                     currentDay + item.shelfLifeDays
                 } else {
@@ -92,13 +98,12 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                     backroomBatches = listOf(startingBatch),
                 )
             }
-            //state = state.copy(inventory = inventory)
             state = state.copy(
                 inventory = inventory,
                 money = Money(5_000_000),
-                currentTier = ItemUnlockTier.TIER_2,
+                currentTier = startingTier,
                 currentStoreSize = StoreSize.SMALL_GROCERY,
-                storeConfig = StoreConfig(backroomCapPerItem = StoreSize.SMALL_GROCERY.backroomCapPerItem)) // For testing progression and unlocked items
+                storeConfig = StoreConfig(backroomCapPerItem = StoreSize.SMALL_GROCERY.backroomCapPerItem))
         }
     }
     
@@ -387,8 +392,8 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
      * Update the shift start hour for employee [entityId].
      * Delegates to [StaffManager.updateShift]; invalid hours are silently dropped there.
      */
-    fun updateShift(entityId: Int, newStartHour: Int) {
-        state = staffManager.updateShift(state, entityId, newStartHour)
+    fun updateShift(entityId: Int, newStartHour: Int, newDuration: Int = 8) {
+        state = staffManager.updateShift(state, entityId, newStartHour, newDuration)
     }
 
     fun updateStoreName(newName: String) {
@@ -907,7 +912,9 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 return 0f
             }
             val shift = state.staffSchedules.firstOrNull { it.entityId == assignedId }
-            return if (shift?.isOnShift(currentHour) == true)
+            val onShift = shift?.isOnShift(currentHour) == true
+            // Off-shift cashiers still finish their active transaction at full speed
+            return if (onShift || register.transactionActive)
                 cashier.throughputWeight * cashier.levelMultiplier * cashier.trait.throughputMultiplier
             else 0f
         }
@@ -1095,6 +1102,21 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         val previousTier = state.currentTier
         state = progressionManager.unlockNextTier(state)
         if (state.currentTier != previousTier) {
+            // Add empty inventory entries for newly unlocked items
+            val newItems = itemMetadataCache.getAllItems().filter { (itemId, _) ->
+                val meta = itemMetadataCache.get(itemId) ?: return@filter false
+                meta.tier.unlockAmount > previousTier.unlockAmount &&
+                    meta.tier.unlockAmount <= state.currentTier.unlockAmount &&
+                    itemId !in state.inventory
+            }
+            if (newItems.isNotEmpty()) {
+                val updatedInventory = state.inventory.toMutableMap()
+                for ((itemId, _) in newItems) {
+                    updatedInventory[itemId] = InventoryState()
+                }
+                state = state.copy(inventory = updatedInventory)
+            }
+
             // New categories inherit defaultMarkup
             val defaultMarkup = state.pricingState.defaultMarkup
             if (defaultMarkup != 0) {

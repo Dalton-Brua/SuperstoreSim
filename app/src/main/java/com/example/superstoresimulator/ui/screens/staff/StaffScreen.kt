@@ -536,7 +536,7 @@ fun StaffAndUnlocksScreen(
     onTabChanged: (Int) -> Unit,
     onSelectStaffDef: (EntityDef?) -> Unit,
     onUnlockNextTier: () -> Unit,
-    onUpdateShift: (entityId: Int, newStartHour: Int) -> Unit = { _, _ -> },
+    onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int) -> Unit = { _, _, _ -> },
     onSetAutoHireBudget: (Money) -> Unit = {},
 ) {    val tabs = listOf("Staff", "Schedule", "Unlocks")
 

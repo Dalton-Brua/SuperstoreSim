@@ -107,7 +107,7 @@ sealed interface GameEvent {
      * [newStartHour] is clamped to 6..13 in the UI before dispatch; the domain
      * layer also validates the range and silently ignores invalid values.
      */
-    data class UpdateShift(val entityId: Int, val newStartHour: Int) : GameEvent
+    data class UpdateShift(val entityId: Int, val newStartHour: Int, val newDuration: Int = 8) : GameEvent
 
     // Register System (Phase 3)
     /** Purchase one additional register (subject to store-size cap and affordability). */
