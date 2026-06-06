@@ -188,8 +188,9 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         if (md.reason != com.example.superstoresimulator.domain.pricing.MarkdownReason.EXPIRING_SOON) return
         val inv = state.inventory[itemId] ?: return
         val currentDay = state.currentTime.dayNumber
-        val hasExpiring = inv.shelfBatches.any { batch ->
-            batch.expirationDay - currentDay <= PricingManager.EXPIRY_THRESHOLD_DAYS
+        val hasExpiring = (inv.shelfBatches + inv.backroomBatches).any { batch ->
+            batch.expirationDay != Int.MAX_VALUE &&
+                batch.expirationDay - currentDay <= PricingManager.EXPIRY_THRESHOLD_DAYS
         }
         if (!hasExpiring) {
             state = pricingManager.clearMarkdown(state, itemId)
