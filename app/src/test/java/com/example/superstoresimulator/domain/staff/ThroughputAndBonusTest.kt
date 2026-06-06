@@ -88,20 +88,20 @@ class ThroughputAndBonusTest {
         assertEquals(1.0f * 1.0f * 1.10f, result, 0.001f)
     }
 
-    // ── computeGlobalBonus ───────────────────────────────────────────────────
+    // ── computeAllBonuses ──────────────────────────────────────────────────
 
     @Test
     fun `MANAGE player role gives 1_10 bonus`() {
         val reg = HiredEntityRegistry()
-        val bonus = StaffManager.computeGlobalBonus(PlayerRole.MANAGE, 10, emptyList(), reg)
-        assertEquals(1.10f, bonus, 0.001f)
+        val bonuses = StaffManager.computeAllBonuses(PlayerRole.MANAGE, 10, emptyList(), reg)
+        assertEquals(1.10f, bonuses.cashierBonus, 0.001f)
     }
 
     @Test
     fun `CASHIER player role gives no bonus`() {
         val reg = HiredEntityRegistry()
-        val bonus = StaffManager.computeGlobalBonus(PlayerRole.CASHIER, 10, emptyList(), reg)
-        assertEquals(1.0f, bonus, 0.001f)
+        val bonuses = StaffManager.computeAllBonuses(PlayerRole.CASHIER, 10, emptyList(), reg)
+        assertEquals(1.0f, bonuses.cashierBonus, 0.001f)
     }
 
     @Test
@@ -109,8 +109,8 @@ class ThroughputAndBonusTest {
         val mgr = entity(1, def = EntityDef.MANAGER, tier = Tier.BASE)
         val reg = registry(mgr)
         val schedules = listOf(shift(1, startHour = 6))
-        val bonus = StaffManager.computeGlobalBonus(PlayerRole.CASHIER, 10, schedules, reg)
-        assertEquals(1.15f, bonus, 0.001f)
+        val bonuses = StaffManager.computeAllBonuses(PlayerRole.CASHIER, 10, schedules, reg)
+        assertEquals(1.15f, bonuses.cashierBonus, 0.001f)
     }
 
     @Test
@@ -118,8 +118,8 @@ class ThroughputAndBonusTest {
         val mgr = entity(1, def = EntityDef.MANAGER, tier = Tier.FAST)
         val reg = registry(mgr)
         val schedules = listOf(shift(1, startHour = 6))
-        val bonus = StaffManager.computeGlobalBonus(PlayerRole.CASHIER, 10, schedules, reg)
-        assertEquals(1.25f, bonus, 0.001f)
+        val bonuses = StaffManager.computeAllBonuses(PlayerRole.CASHIER, 10, schedules, reg)
+        assertEquals(1.25f, bonuses.cashierBonus, 0.001f)
     }
 
     @Test
@@ -127,8 +127,8 @@ class ThroughputAndBonusTest {
         val mgr = entity(1, def = EntityDef.MANAGER, tier = Tier.FAST)
         val reg = registry(mgr)
         val schedules = listOf(shift(1, startHour = 6))
-        val bonus = StaffManager.computeGlobalBonus(PlayerRole.MANAGE, 10, schedules, reg)
-        assertEquals(1.10f * 1.25f, bonus, 0.001f)
+        val bonuses = StaffManager.computeAllBonuses(PlayerRole.MANAGE, 10, schedules, reg)
+        assertEquals(1.10f * 1.25f, bonuses.cashierBonus, 0.001f)
     }
 
     @Test
@@ -136,19 +136,19 @@ class ThroughputAndBonusTest {
         val mgr = entity(1, def = EntityDef.MANAGER, tier = Tier.BASE)
         val reg = registry(mgr)
         val schedules = listOf(shift(1, startHour = 13))
-        val bonus = StaffManager.computeGlobalBonus(PlayerRole.CASHIER, 6, schedules, reg)
-        assertEquals(1.0f, bonus, 0.001f)
+        val bonuses = StaffManager.computeAllBonuses(PlayerRole.CASHIER, 6, schedules, reg)
+        assertEquals(1.0f, bonuses.cashierBonus, 0.001f)
     }
 
-    // ── deptManagerBonus ─────────────────────────────────────────────────────
+    // ── dept manager bonus (via computeAllBonuses) ──────────────────────────
 
     @Test
     fun `dept manager gives 1_10 to same type`() {
         val deptMgr = entity(1, def = EntityDef.CASHIER, tier = Tier.MANAGER)
         val reg = registry(deptMgr)
         val schedules = listOf(shift(1, startHour = 6))
-        val bonus = StaffManager.deptManagerBonus(EntityDef.CASHIER, 10, schedules, reg)
-        assertEquals(1.10f, bonus, 0.001f)
+        val bonuses = StaffManager.computeAllBonuses(PlayerRole.CASHIER, 10, schedules, reg)
+        assertEquals(1.10f, bonuses.cashierBonus, 0.001f)
     }
 
     @Test
@@ -156,8 +156,8 @@ class ThroughputAndBonusTest {
         val deptMgr = entity(1, def = EntityDef.CASHIER, tier = Tier.MANAGER)
         val reg = registry(deptMgr)
         val schedules = listOf(shift(1, startHour = 6))
-        val bonus = StaffManager.deptManagerBonus(EntityDef.STOCKER, 10, schedules, reg)
-        assertEquals(1.0f, bonus, 0.001f)
+        val bonuses = StaffManager.computeAllBonuses(PlayerRole.CASHIER, 10, schedules, reg)
+        assertEquals(1.0f, bonuses.stockerBonus, 0.001f)
     }
 
     @Test
@@ -166,8 +166,8 @@ class ThroughputAndBonusTest {
         val dm2 = entity(2, def = EntityDef.CASHIER, tier = Tier.MANAGER)
         val reg = registry(dm1, dm2)
         val schedules = listOf(shift(1, startHour = 6), shift(2, startHour = 6))
-        val bonus = StaffManager.deptManagerBonus(EntityDef.CASHIER, 10, schedules, reg)
-        assertEquals(1.10f, bonus, 0.001f)
+        val bonuses = StaffManager.computeAllBonuses(PlayerRole.CASHIER, 10, schedules, reg)
+        assertEquals(1.10f, bonuses.cashierBonus, 0.001f)
     }
 
     @Test
@@ -175,8 +175,8 @@ class ThroughputAndBonusTest {
         val deptMgr = entity(1, def = EntityDef.CASHIER, tier = Tier.MANAGER)
         val reg = registry(deptMgr)
         val schedules = listOf(shift(1, startHour = 13))
-        val bonus = StaffManager.deptManagerBonus(EntityDef.CASHIER, 6, schedules, reg)
-        assertEquals(1.0f, bonus, 0.001f)
+        val bonuses = StaffManager.computeAllBonuses(PlayerRole.CASHIER, 6, schedules, reg)
+        assertEquals(1.0f, bonuses.cashierBonus, 0.001f)
     }
 
     // ── Full stacking example ────────────────────────────────────────────────
@@ -188,9 +188,7 @@ class ThroughputAndBonusTest {
         val reg = registry(mgr, deptMgr)
         val schedules = listOf(shift(1, startHour = 6), shift(2, startHour = 6))
 
-        val global = StaffManager.computeGlobalBonus(PlayerRole.MANAGE, 10, schedules, reg)
-        val dept = StaffManager.deptManagerBonus(EntityDef.CASHIER, 10, schedules, reg)
-        val total = global * dept
-        assertEquals(1.10f * 1.25f * 1.10f, total, 0.01f)
+        val bonuses = StaffManager.computeAllBonuses(PlayerRole.MANAGE, 10, schedules, reg)
+        assertEquals(1.10f * 1.25f * 1.10f, bonuses.cashierBonus, 0.01f)
     }
 }

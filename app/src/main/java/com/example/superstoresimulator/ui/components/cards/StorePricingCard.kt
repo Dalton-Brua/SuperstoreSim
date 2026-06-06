@@ -143,7 +143,7 @@ fun StorePricingCard(
                     val unlockedCategories = currentTier.unlockedSections.sortedBy { it.ordinal }
                     for (category in unlockedCategories) {
                         PriceSlider(
-                            label = category.name.lowercase().replaceFirstChar { it.uppercase() },
+                            label = category.displayName,
                             currentPercent = pricingState.pricingState.categoryMarkups[category] ?: 0,
                             range = -50f..100f,
                             onSet = { percent -> onSetCategoryMarkup(category, percent) },

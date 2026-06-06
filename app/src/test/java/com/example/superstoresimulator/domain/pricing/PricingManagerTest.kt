@@ -382,66 +382,68 @@ class PricingManagerTest {
         assertEquals(raw, updated.pricingState.smoothedPriceIndex, 0.001f)
     }
 
-    // ── 6. Traffic Multiplier ────────────────────────────────────────────────
+    // ── 6. Traffic Multiplier (via PricingState) ──────────────────────────────
+
+    private fun pricingWithIndex(index: Float) = PricingState(smoothedPriceIndex = index)
 
     @Test
     fun `neutral price index gives traffic multiplier 1`() {
-        assertEquals(1.0f, mgr.computeTrafficMultiplier(1.0f), 0.001f)
+        assertEquals(1.0f, pricingWithIndex(1.0f).priceTrafficMultiplier, 0.001f)
     }
 
     @Test
     fun `cheap store boosts traffic`() {
-        val mult = mgr.computeTrafficMultiplier(0.70f)
+        val mult = pricingWithIndex(0.70f).priceTrafficMultiplier
         assertTrue("Expected >1.0, got $mult", mult > 1.0f)
         assertTrue("Expected ~1.20, got $mult", abs(mult - 1.195f) < 0.05f)
     }
 
     @Test
     fun `expensive store reduces traffic`() {
-        val mult = mgr.computeTrafficMultiplier(1.30f)
+        val mult = pricingWithIndex(1.30f).priceTrafficMultiplier
         assertTrue("Expected <1.0, got $mult", mult < 1.0f)
     }
 
     @Test
     fun `extreme cheap does not overflow`() {
-        val mult = mgr.computeTrafficMultiplier(0.50f)
+        val mult = pricingWithIndex(0.50f).priceTrafficMultiplier
         assertTrue("Expected ~1.41, got $mult", mult > 1.0f && mult < 2.0f)
     }
 
     @Test
     fun `extreme expensive does not zero out traffic`() {
-        val mult = mgr.computeTrafficMultiplier(2.0f)
+        val mult = pricingWithIndex(2.0f).priceTrafficMultiplier
         assertTrue("Expected positive, got $mult", mult > 0.0f)
         assertTrue("Expected ~0.71, got $mult", mult < 1.0f)
     }
 
-    // ── 7. Basket Size Multiplier ────────────────────────────────────────────
+    // ── 7. Basket Size Multiplier (via PricingState) ────────────────────────
 
     @Test
     fun `at or below 1 gives no reduction`() {
-        assertEquals(1.0f, mgr.computeBasketMultiplier(1.0f), 0.001f)
+        assertEquals(1.0f, pricingWithIndex(1.0f).basketSizeMultiplier, 0.001f)
     }
 
     @Test
     fun `discount does not increase basket`() {
-        assertEquals(1.0f, mgr.computeBasketMultiplier(0.7f), 0.001f)
+        assertEquals(1.0f, pricingWithIndex(0.7f).basketSizeMultiplier, 0.001f)
     }
 
     @Test
     fun `10 percent markup reduces basket to about 91 percent`() {
-        val mult = mgr.computeBasketMultiplier(1.10f)
+        val mult = pricingWithIndex(1.10f).basketSizeMultiplier
         assertTrue("Expected ~0.91, got $mult", abs(mult - 0.909f) < 0.02f)
     }
 
     @Test
     fun `30 percent markup reduces basket to about 77 percent`() {
-        val mult = mgr.computeBasketMultiplier(1.30f)
+        val mult = pricingWithIndex(1.30f).basketSizeMultiplier
         assertTrue("Expected ~0.77, got $mult", abs(mult - 0.769f) < 0.02f)
     }
 
     @Test
     fun `100 percent markup halves basket`() {
-        val mult = mgr.computeBasketMultiplier(2.0f)
+        val mult = pricingWithIndex(2.0f).basketSizeMultiplier
         assertTrue("Expected ~0.50, got $mult", abs(mult - 0.50f) < 0.02f)
     }
 

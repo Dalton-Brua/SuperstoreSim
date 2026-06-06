@@ -99,16 +99,6 @@ class PricingManager(private val cache: ItemMetadataCache) {
         )
     }
 
-    fun computeTrafficMultiplier(priceIndex: Float): Float {
-        if (priceIndex <= 0f) return 1.0f
-        return (1.0 / priceIndex).pow(TRAFFIC_ELASTICITY.toDouble()).toFloat()
-    }
-
-    fun computeBasketMultiplier(priceIndex: Float): Float {
-        if (priceIndex <= 1.0f) return 1.0f
-        return (1.0 / priceIndex).pow(BASKET_ELASTICITY.toDouble()).toFloat()
-    }
-
     fun setCategoryMarkup(state: GameState, category: ItemCategory, percent: Int): GameState {
         val clamped = percent.coerceIn(-50, 100)
         val pricing = state.pricingState
@@ -219,14 +209,6 @@ class PricingManager(private val cache: ItemMetadataCache) {
             }
         }
         return PricingData(multipliers, prices)
-    }
-
-    fun computePricingMultipliers(state: GameState): Map<Int, Float> {
-        val result = mutableMapOf<Int, Float>()
-        for (itemId in state.inventory.keys) {
-            result[itemId] = purchaseProbabilityMultiplier(itemId, state)
-        }
-        return result
     }
 
     fun randomWeight(category: ItemCategory, random: kotlin.random.Random = kotlin.random.Random): Float {

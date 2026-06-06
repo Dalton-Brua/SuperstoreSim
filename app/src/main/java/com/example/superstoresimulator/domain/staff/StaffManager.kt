@@ -790,45 +790,6 @@ class StaffManager {
             )
         }
 
-        fun computeGlobalBonus(
-            playerRole: PlayerRole,
-            currentHour: Int,
-            schedules: List<StaffShift>,
-            registry: HiredEntityRegistry,
-        ): Float {
-            val onShiftManagers = registry.getByDef(EntityDef.MANAGER).filter { e ->
-                schedules.any { s -> s.entityId == e.id && s.isOnShift(currentHour) }
-            }
-            val managerBonus = onShiftManagers.sumOf { mgr ->
-                when (mgr.tier) {
-                    Tier.BASE -> 0.15
-                    Tier.FAST -> 0.25
-                    Tier.MANAGER -> 0.30
-                }
-            }.toFloat()
-
-            var bonus = 1.0f + managerBonus
-
-            if (playerRole == PlayerRole.MANAGE) {
-                bonus *= 1.10f
-            }
-
-            return bonus
-        }
-
-        fun deptManagerBonus(
-            def: EntityDef,
-            currentHour: Int,
-            schedules: List<StaffShift>,
-            registry: HiredEntityRegistry,
-        ): Float {
-            val hasOnShiftDeptManager = registry.getByDef(def).any { entity ->
-                entity.tier == Tier.MANAGER &&
-                    schedules.any { s -> s.entityId == entity.id && s.isOnShift(currentHour) }
-            }
-            return if (hasOnShiftDeptManager) 1.10f else 1.0f
-        }
-
         fun zonePurchaseMultiplier(zoneScore: Float): Float =
             ZONE_FLOOR + (zoneScore * (1.0f - ZONE_FLOOR))
     }

@@ -51,31 +51,8 @@ class TransactionEngine(
         val pricingData = pricingManager?.computePricingData(state)
         val chosen = weightedSample(availableItemIds, numLines, pricingMultipliers = pricingData?.multipliers)
 
-        repeat(numLines) { index ->
-            val itemId = chosen[index]
-            val meta = cache?.get(itemId)
-            val resolved = pricingData?.resolvedPrices?.get(itemId)
-
-            val unitPrice = resolved?.effectivePrice ?: meta?.price ?: Money.Companion.fromDollars(9.99)
-            val basePrice = resolved?.basePrice ?: unitPrice
-            val modifier = resolved?.modifierPercent ?: 0
-
-            if (meta?.soldByWeight == true) {
-                val weight = pricingManager?.randomWeight(meta.category, random) ?: 1.0f
-                val lineCents = (unitPrice.cents.toDouble() * weight).roundToLong()
-                lines += TransactionLine(
-                    itemId = itemId, quantity = 1, rungQty = 0,
-                    unitPrice = unitPrice, lineTotal = Money(lineCents),
-                    basePrice = basePrice, priceModifier = modifier, weight = weight,
-                )
-            } else {
-                val qty = (1..3).random(random)
-                lines += TransactionLine(
-                    itemId = itemId, quantity = qty, rungQty = 0,
-                    unitPrice = unitPrice, lineTotal = unitPrice * qty,
-                    basePrice = basePrice, priceModifier = modifier,
-                )
-            }
+        for (itemId in chosen) {
+            lines += buildTransactionLine(itemId, pricingData)
         }
 
         val subtotal = lines.fold(Money(0)) { acc, line -> acc + line.lineTotal }
@@ -134,29 +111,7 @@ class TransactionEngine(
         val lines = mutableListOf<TransactionLine>()
 
         for (itemId in chosen) {
-            val meta = cache?.get(itemId)
-            val resolved = pricingData?.resolvedPrices?.get(itemId)
-
-            val unitPrice = resolved?.effectivePrice ?: meta?.price ?: Money.Companion.fromDollars(9.99)
-            val basePrice = resolved?.basePrice ?: unitPrice
-            val modifier = resolved?.modifierPercent ?: 0
-
-            if (meta?.soldByWeight == true) {
-                val weight = pricingManager?.randomWeight(meta.category, random) ?: 1.0f
-                val lineCents = (unitPrice.cents.toDouble() * weight).roundToLong()
-                lines += TransactionLine(
-                    itemId = itemId, quantity = 1, rungQty = 0,
-                    unitPrice = unitPrice, lineTotal = Money(lineCents),
-                    basePrice = basePrice, priceModifier = modifier, weight = weight,
-                )
-            } else {
-                val qty = (1..3).random(random)
-                lines += TransactionLine(
-                    itemId = itemId, quantity = qty, rungQty = 0,
-                    unitPrice = unitPrice, lineTotal = unitPrice * qty,
-                    basePrice = basePrice, priceModifier = modifier,
-                )
-            }
+            lines += buildTransactionLine(itemId, pricingData)
         }
 
         val subtotal = lines.fold(Money(0)) { acc, line -> acc + line.lineTotal }
@@ -226,6 +181,35 @@ class TransactionEngine(
             completeTransaction(state, updatedLines, updatedInventory, registerId)
         } else {
             updatePartialTransaction(state, updatedLines, updatedInventory, registerId)
+        }
+    }
+
+    private fun buildTransactionLine(
+        itemId: Int,
+        pricingData: PricingManager.PricingData?,
+    ): TransactionLine {
+        val meta = cache?.get(itemId)
+        val resolved = pricingData?.resolvedPrices?.get(itemId)
+
+        val unitPrice = resolved?.effectivePrice ?: meta?.price ?: Money.Companion.fromDollars(9.99)
+        val basePrice = resolved?.basePrice ?: unitPrice
+        val modifier = resolved?.modifierPercent ?: 0
+
+        return if (meta?.soldByWeight == true) {
+            val weight = pricingManager?.randomWeight(meta.category, random) ?: 1.0f
+            val lineCents = (unitPrice.cents.toDouble() * weight).roundToLong()
+            TransactionLine(
+                itemId = itemId, quantity = 1, rungQty = 0,
+                unitPrice = unitPrice, lineTotal = Money(lineCents),
+                basePrice = basePrice, priceModifier = modifier, weight = weight,
+            )
+        } else {
+            val qty = (1..3).random(random)
+            TransactionLine(
+                itemId = itemId, quantity = qty, rungQty = 0,
+                unitPrice = unitPrice, lineTotal = unitPrice * qty,
+                basePrice = basePrice, priceModifier = modifier,
+            )
         }
     }
 
