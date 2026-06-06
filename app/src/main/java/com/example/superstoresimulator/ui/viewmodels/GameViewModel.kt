@@ -466,7 +466,7 @@ class GameViewModel @Inject constructor(
     }
 
     private fun calculateDailyWages(domain: GameState): com.example.superstoresimulator.domain.Money {
-        return com.example.superstoresimulator.domain.store.StaffWageCalculator.calculateTotalWages(domain.hiredEntityRegistry)
+        return com.example.superstoresimulator.domain.store.StaffWageCalculator.calculateTotalWages(domain.hiredEntityRegistry, domain.staffSchedules)
     }
 
     private fun buildProgressionUiState(domain: GameState, old: ProgressionUIState?): ProgressionUIState {
