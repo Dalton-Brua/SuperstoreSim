@@ -21,6 +21,12 @@ class StaffManager {
     private var stockerProgress: Float = 0f
     private var freshHandlerProgress: Float = 0f
 
+    // Assignment queues: when an action fires, pop an entity ID to credit with XP.
+    // Queues are refilled proportional to each employee's speed weight so fast
+    // employees are credited more often.
+    private val stockerAssignmentQueue = ArrayDeque<Int>()
+    private val freshAssignmentQueue = ArrayDeque<Int>()
+
     // ── Zoning state (Phase 5B) ──────────────────────────────────────────────
 
     data class StockerZoningState(
@@ -75,12 +81,69 @@ class StaffManager {
         return whole
     }
 
+    /**
+     * Advance stocker progress and return the entity ID responsible for each completed action.
+     * Uses a weighted assignment queue so faster stockers get credited proportionally.
+     */
+    fun advanceStockerProgressWithAssignment(
+        result: ActiveWeightResult,
+        delta: Double,
+        multiplier: Float,
+    ): List<Int> {
+        val whole = advanceStockerProgress(result.weight, delta, multiplier)
+        if (whole <= 0) return emptyList()
+        return assignActions(whole, result, stockerAssignmentQueue)
+    }
+
     fun advanceFreshHandlerProgress(freshHandlerCount: Float, delta: Double, multiplier: Float): Int {
         if (freshHandlerCount <= 0f) return 0
         freshHandlerProgress += FRESH_HANDLER_ACTIONS_PER_SECOND * freshHandlerCount * delta.toFloat() * multiplier
         val whole = freshHandlerProgress.toInt()
         freshHandlerProgress -= whole
         return whole
+    }
+
+    /**
+     * Advance fresh handler progress and return the entity ID responsible for each completed action.
+     * Uses a weighted assignment queue so faster handlers get credited proportionally.
+     */
+    fun advanceFreshProgressWithAssignment(
+        result: ActiveWeightResult,
+        delta: Double,
+        multiplier: Float,
+    ): List<Int> {
+        val whole = advanceFreshHandlerProgress(result.weight, delta, multiplier)
+        if (whole <= 0) return emptyList()
+        return assignActions(whole, result, freshAssignmentQueue)
+    }
+
+    /**
+     * Pop [count] entity IDs from [queue], refilling it when empty.
+     * Each entity appears in the queue proportional to their speed weight,
+     * so faster employees get credited with more actions.
+     */
+    private fun assignActions(
+        count: Int,
+        result: ActiveWeightResult,
+        queue: ArrayDeque<Int>,
+    ): List<Int> {
+        val assigned = ArrayList<Int>(count)
+        repeat(count) {
+            if (queue.isEmpty()) refillQueue(queue, result.onShiftIds, result.perEntityWeights)
+            assigned += if (queue.isEmpty()) result.onShiftIds.random() else queue.removeFirst()
+        }
+        return assigned
+    }
+
+    private fun refillQueue(queue: ArrayDeque<Int>, ids: List<Int>, weights: List<Float>) {
+        if (ids.isEmpty()) return
+        val minWeight = weights.min()
+        for (i in ids.indices) {
+            // Normalize so the slowest employee gets 1 slot, faster ones get proportionally more
+            val slots = (weights[i] / minWeight).toInt().coerceAtLeast(1)
+            repeat(slots) { queue.addLast(ids[i]) }
+        }
+        queue.shuffle()
     }
 
     // ── Zoning tick-advance ──────────────────────────────────────────────────
@@ -640,7 +703,11 @@ class StaffManager {
             }.toFloat()
         }
 
-        data class ActiveWeightResult(val weight: Float, val onShiftIds: List<Int>)
+        data class ActiveWeightResult(
+            val weight: Float,
+            val onShiftIds: List<Int>,
+            val perEntityWeights: List<Float> = emptyList(),
+        )
 
         fun activeWeightedCount(
             def: EntityDef,
@@ -657,14 +724,17 @@ class StaffManager {
         ): ActiveWeightResult {
             var weight = 0.0
             val ids = mutableListOf<Int>()
+            val weights = mutableListOf<Float>()
             for (entity in registry.getByDef(def)) {
                 val shift = schedules.firstOrNull { it.entityId == entity.id }
                 if (shift != null && shift.isOnShift(currentHour)) {
-                    weight += entity.throughputWeight * entity.levelMultiplier * entity.trait.throughputMultiplier
+                    val w = entity.throughputWeight * entity.levelMultiplier * entity.trait.throughputMultiplier
+                    weight += w
                     ids.add(entity.id)
+                    weights.add(w)
                 }
             }
-            return ActiveWeightResult(weight.toFloat(), ids)
+            return ActiveWeightResult(weight.toFloat(), ids, weights)
         }
 
         data class TickBonuses(

@@ -586,13 +586,15 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             val activeStockers = stockerResult.weight
 
             if (hasActionableBackroom) {
-                val wholeStockActions = staffManager.advanceStockerProgress(activeStockers, delta, speedMultiplier * stockerBonus)
-                repeat(wholeStockActions) { stockRandomItemFromBackroom() }
-                if (wholeStockActions > 0) {
-                    state = state.copy(
-                        hiredEntityRegistry = state.hiredEntityRegistry.grantXpDistributed(stockerResult.onShiftIds, wholeStockActions * XP_PER_STOCK_ACTION)
-                    )
-                    totalEmployeeActions += wholeStockActions
+                val assignedStockers = staffManager.advanceStockerProgressWithAssignment(stockerResult, delta, speedMultiplier * stockerBonus)
+                repeat(assignedStockers.size) { stockRandomItemFromBackroom() }
+                if (assignedStockers.isNotEmpty()) {
+                    var registry = state.hiredEntityRegistry
+                    for (entityId in assignedStockers) {
+                        registry = registry.grantXp(entityId, XP_PER_STOCK_ACTION)
+                    }
+                    state = state.copy(hiredEntityRegistry = registry)
+                    totalEmployeeActions += assignedStockers.size
                 }
             } else if (hasUnzonedItems && activeStockers > 0f) {
                 advanceStockerZoning(currentHour, delta, speedMultiplier * stockerBonus)
@@ -603,10 +605,10 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 EntityDef.FRESH_HANDLER, currentHour, state.staffSchedules, state.hiredEntityRegistry
             )
             val activeFreshHandlers = freshResult.weight
-            val wholeFreshActions = staffManager.advanceFreshHandlerProgress(activeFreshHandlers, delta, speedMultiplier * freshBonus)
+            val assignedFreshHandlers = staffManager.advanceFreshProgressWithAssignment(freshResult, delta, speedMultiplier * freshBonus)
 
             // Markdown expiring items first (higher priority than stocking)
-            var remainingFreshActions = wholeFreshActions
+            var remainingFreshActions = assignedFreshHandlers.size
             if (remainingFreshActions > 0) {
                 val currentDay = state.currentTime.dayNumber
                 for ((itemId, inv) in state.inventory) {
@@ -626,11 +628,13 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
 
             // Then stock with remaining actions
             repeat(remainingFreshActions) { stockRandomFreshItemFromBackroom() }
-            if (wholeFreshActions > 0) {
-                state = state.copy(
-                    hiredEntityRegistry = state.hiredEntityRegistry.grantXpDistributed(freshResult.onShiftIds, wholeFreshActions * XP_PER_STOCK_ACTION)
-                )
-                totalEmployeeActions += wholeFreshActions
+            if (assignedFreshHandlers.isNotEmpty()) {
+                var registry = state.hiredEntityRegistry
+                for (entityId in assignedFreshHandlers) {
+                    registry = registry.grantXp(entityId, XP_PER_STOCK_ACTION)
+                }
+                state = state.copy(hiredEntityRegistry = registry)
+                totalEmployeeActions += assignedFreshHandlers.size
             }
 
             // Grant XP to on-shift managers for supervising employee work
