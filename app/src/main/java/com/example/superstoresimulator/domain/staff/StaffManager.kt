@@ -440,15 +440,14 @@ class StaffManager {
             val maxCoverage = coverageByHour.values.max()
             if (maxCoverage <= 1) continue // can't steal from a shift with only 1 person
 
-            // Find shift with most staff to steal from
-            val presets = listOf(SHIFT_MORNING, SHIFT_MID, SHIFT_CLOSING)
-            val worstSource = presets.maxByOrNull { start ->
-                shifts.count { it.startHour == start }
-            } ?: continue
-            val sourceCount = shifts.count { it.startHour == worstSource }
+            // Find shift start hour with most staff to steal from (any start hour, not just presets)
+            val shiftsByStart = shifts.groupBy { it.startHour }
+            val worstSource = shiftsByStart.maxByOrNull { it.value.size }?.key ?: continue
+            val sourceCount = shiftsByStart[worstSource]?.size ?: 0
             if (sourceCount <= 1) continue
 
-            // Target: pick shift preset that covers the most zero-coverage hours
+            // Target: pick preset shift that covers the most zero-coverage hours
+            val presets = listOf(SHIFT_MORNING, SHIFT_MID, SHIFT_CLOSING)
             val bestTarget = presets.maxByOrNull { start ->
                 val shiftHours = start until (start + 8)
                 zeroHours.count { it in shiftHours }
@@ -458,7 +457,7 @@ class StaffManager {
             val entityToMove = shifts.firstOrNull { it.startHour == worstSource }?.entityId ?: continue
             result = result.copy(
                 staffSchedules = result.staffSchedules.map { s ->
-                    if (s.entityId == entityToMove) s.copy(startHour = bestTarget) else s
+                    if (s.entityId == entityToMove) s.copy(startHour = bestTarget, durationHours = 8) else s
                 }
             )
             events += AutoHireEvent(def.displayName, "Shift rebalanced", detail = "Store Manager moved ${def.displayName} to cover hours with no staff",
