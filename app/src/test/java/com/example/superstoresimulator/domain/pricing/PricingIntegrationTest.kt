@@ -115,7 +115,7 @@ class PricingIntegrationTest {
     // ── Phase 6: Tier Unlock Default Markup Inheritance ──────────────────────
 
     @Test
-    fun `tier unlock inherits defaultMarkup for new categories`() {
+    fun `tier unlock does not add redundant categoryMarkup entries — defaultMarkup already applies globally`() {
         engine.state = engine.state.copy(
             currentTier = ItemUnlockTier.TIER_1,
             totalRevenue = Money(600_000),
@@ -127,7 +127,8 @@ class PricingIntegrationTest {
 
         assertEquals(ItemUnlockTier.TIER_2, engine.currentState().currentTier)
         val markups = engine.currentState().pricingState.categoryMarkups
-        assertEquals(10, markups[ItemCategory.DAIRY])
+        // defaultMarkup applies to ALL items via resolvePrice baseMarkup — no per-category entry needed
+        assertFalse(markups.containsKey(ItemCategory.DAIRY))
     }
 
     @Test
@@ -164,7 +165,7 @@ class PricingIntegrationTest {
     }
 
     @Test
-    fun `tier 3 unlock inherits defaultMarkup for frozen bakery produce`() {
+    fun `tier 3 unlock does not add redundant categoryMarkup entries for new categories`() {
         engine.state = engine.state.copy(
             currentTier = ItemUnlockTier.TIER_2,
             totalRevenue = Money(2_500_000),
@@ -176,9 +177,10 @@ class PricingIntegrationTest {
 
         assertEquals(ItemUnlockTier.TIER_3, engine.currentState().currentTier)
         val markups = engine.currentState().pricingState.categoryMarkups
-        assertEquals(15, markups[ItemCategory.FROZEN])
-        assertEquals(15, markups[ItemCategory.BAKERY])
-        assertEquals(15, markups[ItemCategory.PRODUCE])
+        // defaultMarkup applies globally — no per-category duplication
+        assertFalse(markups.containsKey(ItemCategory.FROZEN))
+        assertFalse(markups.containsKey(ItemCategory.BAKERY))
+        assertFalse(markups.containsKey(ItemCategory.PRODUCE))
     }
 
     // ── Phase 5: Serialization of new DailyMetrics fields ────────────────────

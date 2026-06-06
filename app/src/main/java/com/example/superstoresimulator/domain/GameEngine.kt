@@ -1089,23 +1089,6 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 state = state.copy(inventory = updatedInventory)
             }
 
-            // New categories inherit defaultMarkup
-            val defaultMarkup = state.pricingState.defaultMarkup
-            if (defaultMarkup != 0) {
-                val oldCategories = previousTier.unlockedSections
-                val newCategories = state.currentTier.unlockedSections - oldCategories
-                if (newCategories.isNotEmpty()) {
-                    val updatedMarkups = state.pricingState.categoryMarkups.toMutableMap()
-                    for (cat in newCategories) {
-                        if (cat !in updatedMarkups) {
-                            updatedMarkups[cat] = defaultMarkup
-                        }
-                    }
-                    state = state.copy(
-                        pricingState = state.pricingState.copy(categoryMarkups = updatedMarkups)
-                    )
-                }
-            }
             _changes.value = GameStateChange.TierUnlocked(state.currentTier, previousTier)
         }
     }
