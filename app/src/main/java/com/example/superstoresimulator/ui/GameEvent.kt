@@ -128,4 +128,10 @@ sealed interface GameEvent {
 
     // Auto-Hire Budget (Phase 5B)
     data class SetAutoHireBudget(val budget: Money) : GameEvent
+
+    // Pricing System
+    data class SetCategoryMarkup(val category: ItemCategory, val percent: Int) : GameEvent
+    data class SetDefaultMarkup(val percent: Int) : GameEvent
+    data class SetItemPriceOverride(val itemId: Int, val percent: Int) : GameEvent
+    data class ClearItemMarkdown(val itemId: Int) : GameEvent
 }

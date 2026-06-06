@@ -42,9 +42,25 @@ import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.ui.state.ProgressionUIState
 import com.example.superstoresimulator.ui.components.common.ScreenHeader
+import com.example.superstoresimulator.ui.theme.ActiveBlueSurface
+import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.InactiveGrey
+import com.example.superstoresimulator.ui.theme.InfoChipSurface
 import com.example.superstoresimulator.ui.theme.LightBackground
+import com.example.superstoresimulator.ui.theme.PlaceholderSurface
 import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.ProgressBarTrack
+import com.example.superstoresimulator.ui.theme.SubtleText
+import com.example.superstoresimulator.ui.theme.Success
+import com.example.superstoresimulator.ui.theme.SuccessChipSurface
+import com.example.superstoresimulator.ui.theme.SuccessSurface
+import com.example.superstoresimulator.ui.theme.SuccessTextDark
+import com.example.superstoresimulator.ui.theme.SuccessTextDarker
+import com.example.superstoresimulator.ui.theme.SurfaceSubtle
+import com.example.superstoresimulator.ui.theme.TextMuted
+import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextWhite
 
 @Composable
 fun UnlocksScreen(
@@ -75,7 +91,7 @@ fun UnlocksScreen(
             if (progression.nextTier != null) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = CardWhite),
                     elevation = CardDefaults.cardElevation(4.dp)
                 ) {
                     Column(
@@ -94,22 +110,22 @@ fun UnlocksScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(8.dp),
-                            color = if (progression.availableTier != null) Color(0xFF16A34A) else Primary,
-                            trackColor = Color(0xFFDBEAFE)
+                            color = if (progression.availableTier != null) Success else Primary,
+                            trackColor = InfoChipSurface
                         )
                         if (progression.availableTier == null) {
                             Text(
                                 text = "${progression.revenueToNextTier} more revenue needed  " +
                                         "(${(progression.tierProgressFraction * 100).toInt()}%)",
                                 fontSize = 13.sp,
-                                color = Color(0xFF64748B)
+                                color = TextSecondary
                             )
                         } else {
                             Text(
                                 text = "Unlock cost: ${progression.availableTier.unlockCost}  •  " +
                                         "Your cash: $money",
                                 fontSize = 13.sp,
-                                color = Color(0xFF64748B)
+                                color = TextSecondary
                             )
                         }
                     }
@@ -117,7 +133,7 @@ fun UnlocksScreen(
             } else {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFDCFCE7)),
+                    colors = CardDefaults.cardColors(containerColor = SuccessChipSurface),
                     elevation = CardDefaults.cardElevation(4.dp)
                 ) {
                     Row(
@@ -125,10 +141,10 @@ fun UnlocksScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Star, null, tint = Color(0xFF16A34A), modifier = Modifier.size(24.dp))
+                        Icon(Icons.Default.Star, null, tint = Success, modifier = Modifier.size(24.dp))
                         Column {
-                            Text("Full Store Unlocked!", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF14532D))
-                            Text("All sections are now available.", fontSize = 13.sp, color = Color(0xFF166534))
+                            Text("Full Store Unlocked!", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = SuccessTextDarker)
+                            Text("All sections are now available.", fontSize = 13.sp, color = SuccessTextDark)
                         }
                     }
                 }
@@ -168,10 +184,10 @@ private fun TierCard(
         else tier.unlockedSections - prevTier.unlockedSections
 
     val containerColor = when {
-        isAvailable -> Color(0xFFF0FDF4)  // soft green — ready to buy
-        isCurrent   -> Color(0xFFEFF6FF)  // blue — active tier
-        isUnlocked  -> Color.White
-        else        -> Color(0xFFF8FAFC)
+        isAvailable -> SuccessSurface     // soft green — ready to buy
+        isCurrent   -> ActiveBlueSurface  // blue — active tier
+        isUnlocked  -> CardWhite
+        else        -> SurfaceSubtle
     }
 
     Card(
@@ -200,18 +216,18 @@ private fun TierCard(
                     Icon(
                         imageVector = if (isUnlocked) Icons.Default.CheckCircle else Icons.Default.Lock,
                         contentDescription = null,
-                        tint = if (isUnlocked) Color(0xFF16A34A) else Color(0xFF94A3B8),
+                        tint = if (isUnlocked) Success else TextMuted,
                         modifier = Modifier.size(22.dp)
                     )
                     Text(
                         text = tier.displayName,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
-                        color = if (isUnlocked || isAvailable) PrimaryDark else Color(0xFF94A3B8)
+                        color = if (isUnlocked || isAvailable) PrimaryDark else TextMuted
                     )
                     when {
                         isCurrent -> Badge("CURRENT", Primary)
-                        isAvailable -> Badge("AVAILABLE", Color(0xFF16A34A))
+                        isAvailable -> Badge("AVAILABLE", Success)
                     }
                 }
                 Text(
@@ -219,23 +235,23 @@ private fun TierCard(
                            else Money(tier.unlockAmount).toString(),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (isUnlocked || isAvailable) Color(0xFF64748B) else Color(0xFFCBD5E1)
+                    color = if (isUnlocked || isAvailable) TextSecondary else InactiveGrey
                 )
             }
 
             // ── Narrative ─────────────────────────────────────────────────────
-            HorizontalDivider(color = Color(0xFFE2E8F0))
+            HorizontalDivider(color = ProgressBarTrack)
             Text(
                 text = tier.narrativeTitle,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = if (isUnlocked || isAvailable) PrimaryDark else Color(0xFF94A3B8)
+                color = if (isUnlocked || isAvailable) PrimaryDark else TextMuted
             )
             Text(
                 text = tier.narrativeDescription,
                 fontSize = 13.sp,
                 fontStyle = FontStyle.Italic,
-                color = if (isUnlocked || isAvailable) Color(0xFF475569) else Color(0xFFCBD5E1)
+                color = if (isUnlocked || isAvailable) SubtleText else InactiveGrey
             )
 
             // ── New sections ──────────────────────────────────────────────────
@@ -244,7 +260,7 @@ private fun TierCard(
                     text = if (prevTier == null) "Starting sections:" else "Newly unlocked sections:",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (isUnlocked || isAvailable) Color(0xFF475569) else Color(0xFFCBD5E1)
+                    color = if (isUnlocked || isAvailable) SubtleText else InactiveGrey
                 )
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -252,13 +268,13 @@ private fun TierCard(
                 ) {
                     newCategories.sortedBy { it.displayName }.forEach { category ->
                         Surface(
-                            color = if (isUnlocked || isAvailable) Color(0xFFDBEAFE) else Color(0xFFF1F5F9),
+                            color = if (isUnlocked || isAvailable) InfoChipSurface else PlaceholderSurface,
                             shape = MaterialTheme.shapes.small
                         ) {
                             Text(
                                 text = category.displayName,
                                 fontSize = 12.sp,
-                                color = if (isUnlocked || isAvailable) PrimaryDark else Color(0xFFCBD5E1),
+                                color = if (isUnlocked || isAvailable) PrimaryDark else InactiveGrey,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
@@ -274,8 +290,8 @@ private fun TierCard(
                     enabled = canAfford,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF16A34A),
-                        disabledContainerColor = Color(0xFF94A3B8)
+                        containerColor = Success,
+                        disabledContainerColor = TextMuted
                     )
                 ) {
                     Text(
@@ -296,7 +312,7 @@ private fun Badge(label: String, color: Color) {
             text = label,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
-            color = Color.White,
+            color = TextWhite,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         )
     }

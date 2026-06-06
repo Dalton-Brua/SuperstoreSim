@@ -44,6 +44,9 @@ class InventoryManager(private val cache: ItemMetadataCache) {
         private const val MAX_TRUCKS_AHEAD = 2
     }
 
+    private fun pendingCasePacksFor(state: GameState, itemId: Int): Int =
+        state.scheduledTrucks.flatMap { it.orders }.filter { it.itemId == itemId }.sumOf { it.casePacksCount }
+
     // ── Stocking operations ───────────────────────────────────────────────────
 
     /**
@@ -199,7 +202,7 @@ class InventoryManager(private val cache: ItemMetadataCache) {
         return state.copy(
             inventory = state.inventory + (itemId to updated),
             currentDayMetrics = state.currentDayMetrics.copy(
-                itemsStocked = state.currentDayMetrics.itemsStocked + 1,
+                itemsStocked = state.currentDayMetrics.itemsStocked + itemsToStock,
             ),
         )
     }
@@ -214,18 +217,19 @@ class InventoryManager(private val cache: ItemMetadataCache) {
      * Uses a strict committed-stock check: counts both backroom stock AND in-transit
      * case packs toward the cap. This prevents indefinite ordering while items are in transit.
      */
-    fun buyItemToBackroom(state: GameState, itemId: Int): BuyResult {
+    fun buyItemToBackroom(
+        state: GameState,
+        itemId: Int,
+        precomputedPendingCasePacks: Map<Int, Int>? = null,
+    ): BuyResult {
         val inv = state.inventory[itemId] ?: return BuyResult(state, emptyList())
         val dbItem = cache.getItem(itemId) ?: return BuyResult(state, emptyList())
         val metadata = cache.get(itemId) ?: return BuyResult(state, emptyList())
 
         val capInCasePacks = state.storeConfig.backroomCapPerItem
         val currentCasePacksInBackroom = inv.backroomStock / dbItem.casePack
-        // Count in-transit case packs so players cannot spam-order while waiting for delivery.
-        val pendingCasePacks = state.scheduledTrucks
-            .flatMap { it.orders }
-            .filter { it.itemId == itemId }
-            .sumOf { it.casePacksCount }
+        val pendingCasePacks = precomputedPendingCasePacks?.get(itemId)
+            ?: pendingCasePacksFor(state, itemId)
         val totalCommitted = currentCasePacksInBackroom + pendingCasePacks
         if (totalCommitted + 1 > capInCasePacks) return BuyResult(state, emptyList())
 
@@ -260,7 +264,12 @@ class InventoryManager(private val cache: ItemMetadataCache) {
      * the order is automatically split into lines of at most [cap] case packs each so that
      * TruckManager distributes them across separate trucks, respecting the per-item-per-truck cap.
      */
-    fun buyItemCasePacks(state: GameState, itemId: Int, numCasePacks: Int): BuyResult {
+    fun buyItemCasePacks(
+        state: GameState,
+        itemId: Int,
+        numCasePacks: Int,
+        precomputedPendingCasePacks: Map<Int, Int>? = null,
+    ): BuyResult {
         val inv = state.inventory[itemId] ?: return BuyResult(state, emptyList())
         val dbItem = cache.getItem(itemId) ?: return BuyResult(state, emptyList())
         val metadata = cache.get(itemId) ?: return BuyResult(state, emptyList())
@@ -268,10 +277,8 @@ class InventoryManager(private val cache: ItemMetadataCache) {
 
         val capInCasePacks = state.storeConfig.backroomCapPerItem
         val currentCasePacksInBackroom = inv.backroomStock / dbItem.casePack
-        val pendingCasePacks = state.scheduledTrucks
-            .flatMap { it.orders }
-            .filter { it.itemId == itemId }
-            .sumOf { it.casePacksCount }
+        val pendingCasePacks = precomputedPendingCasePacks?.get(itemId)
+            ?: pendingCasePacksFor(state, itemId)
         val totalCommitted = currentCasePacksInBackroom + pendingCasePacks
 
         // Allow pre-ordering up to MAX_TRUCKS_AHEAD × cap case packs total (backroom + transit).

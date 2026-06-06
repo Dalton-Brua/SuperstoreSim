@@ -9,6 +9,8 @@ import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.RegisterState
 import com.example.superstoresimulator.domain.StaffShift
+import com.example.superstoresimulator.domain.inventory.InventoryState
+import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.metrics.DailyMetricsAccumulator
 import com.example.superstoresimulator.domain.metrics.OutOfStockEvent
 import com.example.superstoresimulator.domain.store.StoreSize
@@ -40,6 +42,8 @@ class AutoHireTest {
         registers: List<RegisterState> = listOf(RegisterState(0)),
         oosItemIds: List<Int> = emptyList(),
         storeSize: StoreSize = StoreSize.GROCERY_STORE,
+        inventory: Map<Int, InventoryState> = emptyMap(),
+        pendingCustomers: Int = 0,
     ): GameState {
         val reg = HiredEntityRegistry(entities = entities, nextEntityId = (entities.maxOfOrNull { it.id } ?: 0) + 1)
         val schedules = entities.map { StaffShift(entityId = it.id, startHour = 6) }
@@ -52,6 +56,8 @@ class AutoHireTest {
             registers = registers,
             currentStoreSize = storeSize,
             currentDayMetrics = DailyMetricsAccumulator(outOfStockEvents = oosEvents),
+            inventory = inventory,
+            pendingCustomers = pendingCustomers,
         )
     }
 
@@ -66,23 +72,6 @@ class AutoHireTest {
             hasUnzonedItems = false,
             hasFreshWork = false,
         )
-    }
-
-    private fun simulateHighStockerUtilization() {
-        repeat(100) {
-            staffManager.updateUtilization(
-                state = buildState(
-                    entities = listOf(
-                        entity(10, EntityDef.MANAGER),
-                        entity(20, EntityDef.STOCKER),
-                    ),
-                ),
-                currentHour = 10,
-                hasActionableBackroom = true,
-                hasUnzonedItems = false,
-                hasFreshWork = false,
-            )
-        }
     }
 
     // ── MANAGER basic auto-hire ──────────────────────────────────────────────
@@ -103,14 +92,16 @@ class AutoHireTest {
     }
 
     @Test
-    fun `manager auto-hires stocker when utilization at or above 95 pct`() {
-        simulateHighStockerUtilization()
-
+    fun `manager auto-hires stocker when backroom has stock`() {
+        val backroomInventory = mapOf(
+            1 to InventoryState(backroomBatches = listOf(ItemBatch(receivedDay = 1, quantity = 5, expirationDay = Int.MAX_VALUE))),
+        )
         val state = buildState(
             entities = listOf(
                 entity(10, EntityDef.MANAGER),
                 entity(20, EntityDef.STOCKER),
             ),
+            inventory = backroomInventory,
         )
         val beforeCount = state.hiredEntityRegistry.getByDef(EntityDef.STOCKER).size
         val result = staffManager.evaluateAutoHire(state)
@@ -122,6 +113,10 @@ class AutoHireTest {
 
     @Test
     fun `manager auto-hires fresh handler when fresh items went OOS without being ordered`() {
+        val freshInventory = listOf(100, 101, 102).associateWith {
+            InventoryState(shelfBatches = listOf(ItemBatch(receivedDay = 1, quantity = 0, expirationDay = 10)))
+        }
+
         repeat(100) {
             staffManager.updateUtilization(
                 state = buildState(
@@ -129,6 +124,7 @@ class AutoHireTest {
                         entity(10, EntityDef.MANAGER),
                         entity(30, EntityDef.FRESH_HANDLER),
                     ),
+                    inventory = freshInventory,
                 ),
                 currentHour = 10,
                 hasActionableBackroom = false,
@@ -143,6 +139,7 @@ class AutoHireTest {
                 entity(30, EntityDef.FRESH_HANDLER),
             ),
             oosItemIds = listOf(100, 101, 102),
+            inventory = freshInventory,
         )
         val result = staffManager.evaluateAutoHire(state)
         assertTrue(
@@ -210,36 +207,49 @@ class AutoHireTest {
 
     @Test
     fun `senior manager blocks cashier hire when utilization below 100 pct`() {
+        val entities = listOf(
+            entity(10, EntityDef.MANAGER, tier = Tier.FAST),
+            entity(20, EntityDef.CASHIER),
+            entity(21, EntityDef.CASHIER),
+        )
+        val reg = HiredEntityRegistry(entities = entities, nextEntityId = 22)
+        val shifts = listOf(
+            StaffShift(entityId = 10, startHour = 6),
+            StaffShift(entityId = 20, startHour = 6),
+            StaffShift(entityId = 21, startHour = 13),
+        )
+        val registers = listOf(
+            RegisterState(0, assignedCashierId = 20),
+            RegisterState(1),
+        )
+
         repeat(10) {
             staffManager.updateUtilization(
-                state = buildState(
-                    entities = listOf(
-                        entity(10, EntityDef.MANAGER, tier = Tier.FAST),
-                        entity(20, EntityDef.CASHIER),
-                    ),
-                    registers = listOf(
-                        RegisterState(0, assignedCashierId = 20),
-                        RegisterState(1),
-                    ),
+                state = GameState(
+                    money = Money(500_000L),
+                    hiredEntityRegistry = reg,
+                    staffSchedules = shifts,
+                    registers = registers,
+                    pendingCustomers = 1,
+                    currentStoreSize = StoreSize.GROCERY_STORE,
+                    autoHireBudget = Money(1L),
                 ),
-                currentHour = 10,
+                currentHour = 13,
                 hasActionableBackroom = false,
                 hasUnzonedItems = false,
                 hasFreshWork = false,
             )
         }
 
-        val state = buildState(
-            entities = listOf(
-                entity(10, EntityDef.MANAGER, tier = Tier.FAST),
-                entity(20, EntityDef.CASHIER),
-            ),
-            registers = listOf(
-                RegisterState(0, assignedCashierId = 20),
-                RegisterState(1),
-            ),
+        val evalState = GameState(
+            money = Money(500_000L),
+            hiredEntityRegistry = reg,
+            staffSchedules = shifts,
+            registers = registers,
+            currentStoreSize = StoreSize.GROCERY_STORE,
+            autoHireBudget = Money(1L),
         )
-        val result = staffManager.evaluateAutoHire(state)
+        val result = staffManager.evaluateAutoHire(evalState)
         val autoHireEvents = result.currentDayMetrics.autoHireEvents
         assertTrue(
             "Senior manager should block hire with low utilization",

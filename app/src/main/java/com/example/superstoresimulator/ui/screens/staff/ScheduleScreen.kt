@@ -45,12 +45,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.superstoresimulator.ui.state.StaffScheduleEntryUI
+import com.example.superstoresimulator.ui.theme.Amber
 import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.Destructive
+import com.example.superstoresimulator.ui.theme.Emerald
 import com.example.superstoresimulator.ui.theme.LightBackground
+import com.example.superstoresimulator.ui.theme.PlaceholderSurface
 import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.Secondary
 import com.example.superstoresimulator.ui.theme.TextMuted
 import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextWhite
+import com.example.superstoresimulator.ui.theme.Violet
 
 private enum class ScheduleFilter(val label: String) {
     ALL("All"), CASHIER("Cashiers"), STOCKER("Stockers"), FRESH_HANDLER("Fresh"), MANAGER("Managers")
@@ -59,14 +66,14 @@ private enum class ScheduleFilter(val label: String) {
 private val GANTT_HOURS = 6..20
 private const val GANTT_HOUR_COUNT = 15
 
-private val ROLE_COLOR_CASHIER = Color(0xFF3B82F6)
-private val ROLE_COLOR_STOCKER = Color(0xFFF59E0B)
-private val ROLE_COLOR_FRESH = Color(0xFF10B981)
-private val ROLE_COLOR_MANAGER = Color(0xFF8B5CF6)
+private val ROLE_COLOR_CASHIER = Primary
+private val ROLE_COLOR_STOCKER = Amber
+private val ROLE_COLOR_FRESH = Emerald
+private val ROLE_COLOR_MANAGER = Violet
 
-private val COVERAGE_RED = Color(0xFFEF4444)
-private val COVERAGE_AMBER = Color(0xFFF59E0B)
-private val COVERAGE_GREEN = Color(0xFF22C55E)
+private val COVERAGE_RED = Destructive
+private val COVERAGE_AMBER = Amber
+private val COVERAGE_GREEN = Secondary
 
 @Composable
 fun ScheduleScreen(
@@ -139,7 +146,7 @@ fun ScheduleScreen(
                         label = { Text(f.label, fontSize = 12.sp) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Primary,
-                            selectedLabelColor = Color.White,
+                            selectedLabelColor = TextWhite,
                         ),
                     )
                 }
@@ -226,7 +233,7 @@ private fun CoverageRow(coverage: Map<Int, Int>) {
                     text = count.toString(),
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = TextWhite,
                 )
             }
         }
@@ -291,7 +298,7 @@ private fun GanttEmployeeRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(20.dp)
-                .background(Color(0xFFF1F5F9), RoundedCornerShape(2.dp)),
+                .background(PlaceholderSurface, RoundedCornerShape(2.dp)),
         ) {
             if (entry.startHour != null && entry.endHour != null) {
                 val duration = entry.endHour - entry.startHour
@@ -314,7 +321,7 @@ private fun GanttEmployeeRow(
                         text = "${formatHour(entry.startHour)}–${formatHour(entry.endHour)}",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
+                        color = TextWhite,
                     )
                 }
                 val trailingSlots = 21 - entry.endHour.coerceAtMost(21)
@@ -344,7 +351,7 @@ private fun ShiftEditDialog(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = CardWhite),
             elevation = CardDefaults.cardElevation(8.dp),
         ) {
             Column(
@@ -385,7 +392,7 @@ private fun ShiftEditDialog(
                         modifier = Modifier
                             .size(44.dp)
                             .background(
-                                if (currentStart > 6) Primary.copy(alpha = 0.1f) else Color(0xFFF1F5F9),
+                                if (currentStart > 6) Primary.copy(alpha = 0.1f) else PlaceholderSurface,
                                 RoundedCornerShape(12.dp),
                             ),
                     ) {
@@ -399,7 +406,7 @@ private fun ShiftEditDialog(
                         modifier = Modifier
                             .size(44.dp)
                             .background(
-                                if (currentStart < maxStart) Primary.copy(alpha = 0.1f) else Color(0xFFF1F5F9),
+                                if (currentStart < maxStart) Primary.copy(alpha = 0.1f) else PlaceholderSurface,
                                 RoundedCornerShape(12.dp),
                             ),
                     ) {
@@ -425,7 +432,7 @@ private fun ShiftEditDialog(
                         modifier = Modifier
                             .size(44.dp)
                             .background(
-                                if (currentDuration > 2) Primary.copy(alpha = 0.1f) else Color(0xFFF1F5F9),
+                                if (currentDuration > 2) Primary.copy(alpha = 0.1f) else PlaceholderSurface,
                                 RoundedCornerShape(12.dp),
                             ),
                     ) {
@@ -441,7 +448,7 @@ private fun ShiftEditDialog(
                         modifier = Modifier
                             .size(44.dp)
                             .background(
-                                if (currentDuration < 8 && currentStart + currentDuration < 21) Primary.copy(alpha = 0.1f) else Color(0xFFF1F5F9),
+                                if (currentDuration < 8 && currentStart + currentDuration < 21) Primary.copy(alpha = 0.1f) else PlaceholderSurface,
                                 RoundedCornerShape(12.dp),
                             ),
                     ) {
@@ -458,7 +465,7 @@ private fun ShiftEditDialog(
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryDark),
                     shape = RoundedCornerShape(10.dp),
                 ) {
-                    Text("Done", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("Done", color = TextWhite, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

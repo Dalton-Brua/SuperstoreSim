@@ -11,6 +11,8 @@ import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.Secondary
 import com.example.superstoresimulator.ui.theme.Destructive
 import com.example.superstoresimulator.ui.theme.TextWhite
+import com.example.superstoresimulator.ui.theme.ChipSurface
+import com.example.superstoresimulator.ui.theme.TextMuted
 
 object GameButtonStyles {
 
@@ -18,7 +20,9 @@ object GameButtonStyles {
     @Composable
     fun primaryBlueColor(): ButtonColors = ButtonDefaults.buttonColors(
         containerColor = Primary,
-        contentColor = TextWhite
+        contentColor = TextWhite,
+        disabledContainerColor = ChipSurface,
+        disabledContentColor = TextMuted
     )
 
     @Composable

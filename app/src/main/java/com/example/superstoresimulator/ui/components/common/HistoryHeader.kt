@@ -8,12 +8,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.Secondary
 import com.example.superstoresimulator.ui.theme.TextWhite
 import com.example.superstoresimulator.ui.theme.PrimaryDark
@@ -27,7 +27,7 @@ fun HistoryHeader(
         modifier = modifier
             .fillMaxWidth()
             .pointerInteropFilter { false }, // Clicks pass through
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.04f)),
+        colors = CardDefaults.cardColors(containerColor = CardWhite.copy(alpha = 0.04f)),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Column(

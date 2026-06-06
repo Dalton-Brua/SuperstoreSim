@@ -33,13 +33,13 @@ class PricingManager(private val cache: ItemMetadataCache) {
         val meta = cache.get(itemId) ?: return ResolvedPrice(Money.ZERO, Money.ZERO, 0)
         val pricing = state.pricingState
 
+        val baseMarkup = pricing.defaultMarkup
         val categoryMarkup = pricing.categoryMarkups[meta.category] ?: 0
         val itemOverride = pricing.itemOverrides[itemId] ?: 0
         val markdown = pricing.activeMarkdowns[itemId]?.percentOff ?: 0
 
-        val combinedMultiplier = (1.0 + categoryMarkup / 100.0) *
-                (1.0 + itemOverride / 100.0) *
-                (1.0 - markdown / 100.0)
+        val combinedPercent = (baseMarkup + categoryMarkup + itemOverride - markdown).coerceAtLeast(-90)
+        val combinedMultiplier = 1.0 + combinedPercent / 100.0
 
         val rawCents = (meta.price.cents.toDouble() * combinedMultiplier).roundToLong()
         val flooredCents = rawCents.coerceAtLeast(meta.unitCost.cents)
@@ -92,14 +92,9 @@ class PricingManager(private val cache: ItemMetadataCache) {
             EMA_ALPHA * rawIndex + (1 - EMA_ALPHA) * current
         }
 
-        val trafficMult = computeTrafficMultiplier(smoothed)
-        val basketMult = computeBasketMultiplier(smoothed)
-
         return state.copy(
             pricingState = pricing.copy(
                 smoothedPriceIndex = smoothed,
-                priceTrafficMultiplier = trafficMult,
-                basketSizeMultiplier = basketMult,
             )
         )
     }
@@ -205,6 +200,27 @@ class PricingManager(private val cache: ItemMetadataCache) {
         )
     }
 
+    data class PricingData(
+        val multipliers: Map<Int, Float>,
+        val resolvedPrices: Map<Int, ResolvedPrice>,
+    )
+
+    fun computePricingData(state: GameState): PricingData {
+        val multipliers = mutableMapOf<Int, Float>()
+        val prices = mutableMapOf<Int, ResolvedPrice>()
+        for (itemId in state.inventory.keys) {
+            val resolved = resolvePrice(itemId, state)
+            prices[itemId] = resolved
+            if (resolved.basePrice.cents <= 0 || resolved.effectivePrice.cents <= 0) {
+                multipliers[itemId] = 1.0f
+            } else {
+                val ratio = resolved.basePrice.cents.toDouble() / resolved.effectivePrice.cents.toDouble()
+                multipliers[itemId] = ratio.pow(PRICE_ELASTICITY.toDouble()).toFloat()
+            }
+        }
+        return PricingData(multipliers, prices)
+    }
+
     fun computePricingMultipliers(state: GameState): Map<Int, Float> {
         val result = mutableMapOf<Int, Float>()
         for (itemId in state.inventory.keys) {
@@ -224,10 +240,6 @@ class PricingManager(private val cache: ItemMetadataCache) {
     private fun appendHistory(
         history: List<PriceChangeEvent>,
         event: PriceChangeEvent,
-    ): List<PriceChangeEvent> {
-        val updated = history + event
-        return if (updated.size > MAX_PRICE_HISTORY_SIZE) {
-            updated.drop(updated.size - MAX_PRICE_HISTORY_SIZE)
-        } else updated
-    }
+    ): List<PriceChangeEvent> =
+        (history + event).takeLast(MAX_PRICE_HISTORY_SIZE)
 }

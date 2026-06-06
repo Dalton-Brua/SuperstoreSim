@@ -1,5 +1,6 @@
 package com.example.superstoresimulator.ui.components.cards
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,22 +9,33 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.ui.state.InventoryItemUI
 import com.yourapp.ui.theme.GameButtonStyles
+import com.example.superstoresimulator.ui.theme.Amber
 import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.CautionDark
+import com.example.superstoresimulator.ui.theme.ChipSurface
 import com.example.superstoresimulator.ui.theme.Destructive
+import com.example.superstoresimulator.ui.theme.DestructiveDark
+import com.example.superstoresimulator.ui.theme.ErrorSurface
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.ProgressBarTrack
+import com.example.superstoresimulator.ui.theme.Secondary
+import com.example.superstoresimulator.ui.theme.Success
+import com.example.superstoresimulator.ui.theme.SuccessChipSurface
+import com.example.superstoresimulator.ui.theme.TextMuted
 import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextWhite
 
 @Composable
 fun InventoryItemCard(
@@ -58,10 +70,44 @@ fun InventoryItemCard(
             // First stat row
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
             ) {
                 Text("Shelf: ${item.shelfStock}", color = TextSecondary)
-                Text("Price: ${item.price}", color = PrimaryDark)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    val priceSuffix = if (item.soldByWeight) "/lb" else ""
+                    if (item.priceModifierPercent != 0) {
+                        Text("Price: ${item.effectivePrice}$priceSuffix", color = PrimaryDark)
+                        val modSign = if (item.priceModifierPercent > 0) "+" else ""
+                        val modColor = if (item.priceModifierPercent > 0) DestructiveDark else Success
+                        val modBg = if (item.priceModifierPercent > 0) ErrorSurface else SuccessChipSurface
+                        Text(
+                            "$modSign${item.priceModifierPercent}%",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = modColor,
+                            modifier = Modifier
+                                .background(modBg, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    } else {
+                        Text("Price: ${item.price}$priceSuffix", color = PrimaryDark)
+                    }
+                    if (item.hasActiveMarkdown) {
+                        Text(
+                            "SALE",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextWhite,
+                            modifier = Modifier
+                                .background(DestructiveDark, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                }
             }
 
             // Second stat row
@@ -96,9 +142,9 @@ fun InventoryItemCard(
             if (item.shelfStock > 0 && item.zoneScore < 1.0f) {
                 val zonePct = (item.zoneScore * 100).toInt()
                 val zoneColor = when {
-                    zonePct >= 80 -> Color(0xFF22C55E)
-                    zonePct >= 50 -> Color(0xFFF59E0B)
-                    else -> Color(0xFFEF4444)
+                    zonePct >= 80 -> Secondary
+                    zonePct >= 50 -> Amber
+                    else -> Destructive
                 }
                 Row(
                     Modifier.fillMaxWidth(),
@@ -110,7 +156,7 @@ fun InventoryItemCard(
                         progress = { item.zoneScore.coerceIn(0f, 1f) },
                         modifier = Modifier.weight(1f).height(4.dp),
                         color = zoneColor,
-                        trackColor = Color(0xFFE2E8F0),
+                        trackColor = ProgressBarTrack,
                     )
                 }
             }
@@ -125,7 +171,7 @@ fun InventoryItemCard(
                 Text(
                     text = "🚚 ${item.pendingCasePacks} cases in transit$dayLabel",
                     fontSize = 11.sp,
-                    color = Color(0xFFD97706),
+                    color = CautionDark,
                 )
             }
 
@@ -135,13 +181,13 @@ fun InventoryItemCard(
                 onClick = onBuy,
                 modifier = Modifier.fillMaxWidth(),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF1E40AF),  // Primary blue
-                    contentColor = Color.White,
-                    disabledContainerColor = Color(0xFFE2E8F0),  // Light grey
-                    disabledContentColor = Color(0xFF94A3B8)  // Grey text
+                    containerColor = PrimaryDark,
+                    contentColor = TextWhite,
+                    disabledContainerColor = ChipSurface,
+                    disabledContentColor = TextMuted
                 ),
                 enabled = canAffordBuy && !item.backroomFull,
-                shape = GameButtonStyles.Shape
+                shape = GameButtonStyles.Shape,
             ) {
                 Text(
                     if (item.backroomFull) "Backroom Full" else "Order (${item.casePackCost})",

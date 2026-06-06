@@ -28,6 +28,8 @@ data class RegisterState(
     val assignedCashierId: Int? = null,
     val currentTransaction: Transaction = Transaction(),
     val transactionActive: Boolean = false,
+    val dailyTransactions: Int = 0,
+    val dailyRevenue: Money = Money.ZERO,
 )
 
 /** ID-based lookup — never use index arithmetic on the registers list. */
@@ -216,8 +218,6 @@ data class GameState(
     // ── Register System ───────────────────────────────────────────────────────
     /** All owned registers.  Starts with a single register (id=0). */
     val registers: List<RegisterState> = listOf(RegisterState(registerId = 0)),
-    /** Number of registers purchased (always equals registers.size). */
-    val ownedRegisterCount: Int = 1,
     /** Register id the player has claimed as cashier, or null if unassigned. */
     val playerAssignedRegisterId: Int? = null,
     /** Cashier entity IDs manually unassigned from registers today — blocked from auto-reassignment until midnight. */
@@ -229,6 +229,8 @@ data class GameState(
     // Pricing system
     val pricingState: PricingState = PricingState(),
 ) {
+    val ownedRegisterCount: Int get() = registers.size
+
     val avgZoneScore: Float
         get() {
             val withShelf = inventory.values.filter { it.shelfStock > 0 }

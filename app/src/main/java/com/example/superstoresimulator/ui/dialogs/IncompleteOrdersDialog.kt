@@ -29,13 +29,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.superstoresimulator.domain.IncompleteOrderRequest
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.ui.theme.*
 
 @Composable
 fun IncompleteOrdersDialog(
@@ -50,7 +50,7 @@ fun IncompleteOrdersDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(16.dp),
-            color = Color.White,
+            color = CardWhite,
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .padding(16.dp)
@@ -68,7 +68,7 @@ fun IncompleteOrdersDialog(
                     Icon(
                         Icons.Default.ShoppingCart,
                         contentDescription = null,
-                        tint = Color(0xFFDC2626),
+                        tint = DestructiveDark,
                         modifier = Modifier.height(28.dp)
                     )
                     Spacer(Modifier.width(8.dp))
@@ -76,18 +76,18 @@ fun IncompleteOrdersDialog(
                         "Incomplete Orders",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1E293B)
+                        color = ChipTextDark
                     )
                 }
 
                 Text(
                     "These auto-orders couldn't complete due to insufficient funds. Order them manually when funds are available.",
                     fontSize = 13.sp,
-                    color = Color(0xFF64748B),
+                    color = TextSecondary,
                     modifier = Modifier.padding(bottom = 20.dp)
                 )
 
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp)
+                HorizontalDivider(color = ChipSurface, thickness = 1.dp)
 
                 Spacer(Modifier.height(16.dp))
 
@@ -95,7 +95,7 @@ fun IncompleteOrdersDialog(
                     Text(
                         "No incomplete orders",
                         fontSize = 14.sp,
-                        color = Color(0xFF64748B),
+                        color = TextSecondary,
                         modifier = Modifier
                             .align(Alignment.CenterHorizontally)
                             .padding(24.dp)
@@ -116,7 +116,7 @@ fun IncompleteOrdersDialog(
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (canAfford) Color(0xFFF0FDF4) else Color(0xFFFEF2F2)
+                                    containerColor = if (canAfford) SuccessSurface else ErrorSurfaceSubtle
                                 ),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
@@ -133,12 +133,12 @@ fun IncompleteOrdersDialog(
                                                 itemName,
                                                 fontSize = 14.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = Color(0xFF1E293B)
+                                                color = ChipTextDark
                                             )
                                             Text(
                                                 "${order.casePacksRequested} case packs × $costPerPack = $totalCost",
                                                 fontSize = 12.sp,
-                                                color = Color(0xFF64748B)
+                                                color = TextSecondary
                                             )
                                         }
 
@@ -151,18 +151,18 @@ fun IncompleteOrdersDialog(
                                                     .width(80.dp)
                                                     .height(36.dp),
                                                 colors = ButtonDefaults.buttonColors(
-                                                    containerColor = Color(0xFF2563EB),
-                                                    contentColor = Color.White
+                                                    containerColor = TextPrimary,
+                                                    contentColor = TextWhite
                                                 ),
                                                 shape = RoundedCornerShape(8.dp)
                                             ) {
-                                                Text("Order", fontSize = 11.sp, color = Color.White)
+                                                Text("Order", fontSize = 11.sp, color = TextWhite)
                                             }
                                         } else {
                                             Text(
                                                 "Insufficient funds",
                                                 fontSize = 11.sp,
-                                                color = Color(0xFFDC2626),
+                                                color = DestructiveDark,
                                                 fontWeight = FontWeight.SemiBold
                                             )
                                         }
@@ -173,7 +173,7 @@ fun IncompleteOrdersDialog(
                                         Text(
                                             order.reason,
                                             fontSize = 11.sp,
-                                            color = Color(0xFFDC2626)
+                                            color = DestructiveDark
                                         )
                                     }
                                 }
@@ -184,7 +184,7 @@ fun IncompleteOrdersDialog(
 
                 Spacer(Modifier.height(20.dp))
 
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp)
+                HorizontalDivider(color = ChipSurface, thickness = 1.dp)
 
                 Spacer(Modifier.height(20.dp))
 
@@ -213,12 +213,12 @@ fun IncompleteOrdersDialog(
                                 .weight(1f)
                                 .height(44.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF2563EB),
-                                contentColor = Color.White
+                                containerColor = TextPrimary,
+                                contentColor = TextWhite
                             ),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("Order All Available", color = Color.White, fontSize = 12.sp)
+                            Text("Order All Available", color = TextWhite, fontSize = 12.sp)
                         }
                     }
                 }

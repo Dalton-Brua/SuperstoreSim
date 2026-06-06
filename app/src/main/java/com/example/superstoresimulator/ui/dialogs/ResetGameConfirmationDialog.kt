@@ -9,13 +9,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.*
 
 /**
  * Confirmation dialog shown before resetting the game.
@@ -32,7 +31,7 @@ fun ResetGameConfirmationDialog(
                 .fillMaxWidth()
                 .wrapContentHeight(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = CardWhite),
             elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Column(
@@ -47,7 +46,7 @@ fun ResetGameConfirmationDialog(
                     modifier = Modifier
                         .size(64.dp)
                         .background(
-                            Color(0xFFFFEBEE),
+                            DangerSurface,
                             RoundedCornerShape(32.dp)
                         ),
                     contentAlignment = Alignment.Center
@@ -55,7 +54,7 @@ fun ResetGameConfirmationDialog(
                     Icon(
                         imageVector = Icons.Default.Warning,
                         contentDescription = "Warning",
-                        tint = Color(0xFFE74C3C),
+                        tint = ClosedRed,
                         modifier = Modifier.size(40.dp)
                     )
                 }
@@ -79,7 +78,7 @@ fun ResetGameConfirmationDialog(
                             "• Daily metrics history\n\n" +
                             "This action cannot be undone!",
                     fontSize = 14.sp,
-                    color = Color(0xFF6B7280),
+                    color = TextTertiary,
                     textAlign = TextAlign.Start,
                     lineHeight = 20.sp
                 )
@@ -107,10 +106,10 @@ fun ResetGameConfirmationDialog(
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFE74C3C)
+                            containerColor = ClosedRed
                         )
                     ) {
-                        Text("Reset Store", color = Color.White)
+                        Text("Reset Store", color = TextWhite)
                     }
                 }
             }

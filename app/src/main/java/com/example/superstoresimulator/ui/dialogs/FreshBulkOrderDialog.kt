@@ -43,12 +43,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.window.Dialog
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.ui.state.InventoryItemUI
-import com.example.superstoresimulator.ui.theme.Destructive
-import com.example.superstoresimulator.ui.theme.Primary
-import com.example.superstoresimulator.ui.theme.PrimaryDark
-import com.example.superstoresimulator.ui.theme.Secondary
-import com.example.superstoresimulator.ui.theme.TextDark
-import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.*
 import kotlin.math.roundToInt
 
 // ── Fresh discount tier definitions ────────────────────────────────────────────
@@ -105,7 +100,7 @@ fun FreshBulkOrderDialog(
                 .fillMaxWidth()
                 .wrapContentHeight(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = CardWhite),
             elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Column(
@@ -129,13 +124,13 @@ fun FreshBulkOrderDialog(
                         Icon(
                             Icons.Default.LocalShipping,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = TextWhite,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             "Fresh Bulk Order",
-                            color = Color.White,
+                            color = TextWhite,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
@@ -245,7 +240,7 @@ fun FreshBulkOrderDialog(
                         Box(
                             modifier = Modifier
                                 .background(
-                                    Color(0xFFF1F5F9),
+                                    PlaceholderSurface,
                                     RoundedCornerShape(6.dp)
                                 )
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
@@ -426,7 +421,7 @@ fun FreshBulkOrderDialog(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
+                            .background(PlaceholderSurface, RoundedCornerShape(8.dp))
                             .padding(16.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -465,7 +460,7 @@ fun FreshBulkOrderDialog(
                     ) {
                         Text(
                             "Place Order",
-                            color = Color.White,
+                            color = TextWhite,
                             fontWeight = FontWeight.Bold
                         )
                     }

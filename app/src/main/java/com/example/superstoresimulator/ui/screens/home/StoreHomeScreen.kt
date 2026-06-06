@@ -20,7 +20,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,15 +34,19 @@ import com.example.superstoresimulator.ui.components.panels.SettingsPanel
 import com.example.superstoresimulator.ui.components.cards.RegistersCard
 import com.example.superstoresimulator.ui.components.cards.StoreSizeCard
 import com.example.superstoresimulator.ui.components.cards.StoreOverviewCard
+import com.example.superstoresimulator.ui.components.cards.StorePricingCard
 import com.example.superstoresimulator.ui.components.cards.TierProgressCard
 import com.example.superstoresimulator.ui.components.common.TimeDisplayBar
 import com.example.superstoresimulator.ui.dialogs.PendingRefundsDialog
 import com.example.superstoresimulator.ui.dialogs.RegisterDetailDialog
 import com.example.superstoresimulator.ui.state.GameUiState
+import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.DisabledGrey
 import com.example.superstoresimulator.ui.theme.IconBlue
 import com.example.superstoresimulator.ui.theme.LightBackground
 import com.example.superstoresimulator.ui.theme.PlaceholderSurface
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.Scrim
 import com.example.superstoresimulator.ui.theme.TextMuted
 import com.example.superstoresimulator.ui.theme.TextSecondary
 
@@ -77,6 +80,8 @@ fun StoreHomeScreen (
     onPurchaseRegister: () -> Unit = {},
     onAssignPlayerToRegister: (registerId: Int?) -> Unit = {},
     onAssignCashierToRegister: (cashierId: Int?, registerId: Int) -> Unit = { _, _ -> },
+    onSetDefaultMarkup: (Int) -> Unit = {},
+    onSetCategoryMarkup: (com.example.superstoresimulator.domain.items.ItemCategory, Int) -> Unit = { _, _ -> },
 ) {
     var showPendingRefunds by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
@@ -188,6 +193,17 @@ fun StoreHomeScreen (
                 }
             }
 
+            // Store Pricing card
+            item {
+                StorePricingCard(
+                    pricingState = state.pricing,
+                    currentTier = state.progression.currentTier,
+                    onSetDefaultMarkup = onSetDefaultMarkup,
+                    onSetCategoryMarkup = onSetCategoryMarkup,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
+
             // Skip Day button — simulate the rest of the day instantly
             item {
                 Row(
@@ -199,7 +215,7 @@ fun StoreHomeScreen (
                         enabled = !(state.metrics.showEndOfDayReport),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = PrimaryDark,
-                            disabledContentColor = Color.Gray
+                            disabledContentColor = DisabledGrey
                         ),
                         modifier = Modifier.padding(horizontal = 12.dp)
                     ) {
@@ -237,7 +253,7 @@ fun StoreHomeScreen (
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f))
+                    .background(Scrim.copy(alpha = 0.5f))
                     .clickable(
                         onClick = { settingsOpen = false },
                         indication = null,
@@ -279,7 +295,7 @@ fun StoreHomeScreen (
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White)
+                .background(CardWhite)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically

@@ -43,6 +43,9 @@ import com.example.superstoresimulator.domain.time.GameTime
 import org.json.JSONArray
 import org.json.JSONObject
 
+private inline fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> =
+    (0 until length()).map { transform(getJSONObject(it)) }
+
 /**
  * Serializes and deserializes GameState to/from JSON for persistence.
  * Uses org.json (built into Android) to avoid additional dependencies.
@@ -260,7 +263,6 @@ object GameStateSerializer {
                         )
                     )
                 },
-                ownedRegisterCount = json.optInt("ownedRegisterCount", 1),
                 playerAssignedRegisterId = if (json.has("playerAssignedRegisterId") &&
                     !json.isNull("playerAssignedRegisterId")
                 ) json.getInt("playerAssignedRegisterId") else null,
@@ -601,149 +603,126 @@ object GameStateSerializer {
         )
     }
 
+    private fun JSONObject.putCommonMetrics(
+        revenue: Money, subtotal: Money, taxCollected: Money, transactionsCompleted: Int,
+        rentPaid: Money, wagesPaid: Money, refundsProcessed: Int, refundAmount: Money,
+        customersServed: Int, itemsSold: Int, itemsStocked: Int, itemsOrdered: Int,
+        lostRevenue: Money, itemsLostToOutOfStock: Int,
+        outOfStockEvents: List<OutOfStockEvent>, soldItemEvents: List<SoldItemEvent>,
+        itemsExpired: Int, expiredWasteCost: Money, expiredItemEvents: List<ExpiredItemEvent>,
+        autoOrderedFreshItems: List<FreshOrderLineItem>,
+        incompleteOrderedFreshItems: List<IncompleteOrderLineItem>,
+        deliveredTrucks: List<DeliveredTruckRecord>, autoHireEvents: List<AutoHireEvent>,
+        markdownsSaved: Money, markupExtraRevenue: Money, itemsMarkedDown: Int,
+    ) {
+        put("revenue", revenue.cents); put("subtotal", subtotal.cents); put("taxCollected", taxCollected.cents)
+        put("transactionsCompleted", transactionsCompleted)
+        put("rentPaid", rentPaid.cents); put("wagesPaid", wagesPaid.cents)
+        put("refundsProcessed", refundsProcessed); put("refundAmount", refundAmount.cents)
+        put("customersServed", customersServed)
+        put("itemsSold", itemsSold); put("itemsStocked", itemsStocked); put("itemsOrdered", itemsOrdered)
+        put("lostRevenue", lostRevenue.cents); put("itemsLostToOutOfStock", itemsLostToOutOfStock)
+        put("outOfStockEvents", JSONArray().apply { outOfStockEvents.forEach { put(serializeOutOfStockEvent(it)) } })
+        put("soldItemEvents", JSONArray().apply { soldItemEvents.forEach { put(serializeSoldItemEvent(it)) } })
+        put("itemsExpired", itemsExpired); put("expiredWasteCost", expiredWasteCost.cents)
+        put("expiredItemEvents", JSONArray().apply { expiredItemEvents.forEach { put(serializeExpiredItemEvent(it)) } })
+        put("autoOrderedFreshItems", JSONArray().apply { autoOrderedFreshItems.forEach { put(serializeFreshOrderLineItem(it)) } })
+        put("incompleteOrderedFreshItems", JSONArray().apply { incompleteOrderedFreshItems.forEach { put(serializeIncompleteOrderLineItem(it)) } })
+        put("deliveredTrucks", JSONArray().apply { deliveredTrucks.forEach { put(serializeDeliveredTruckRecord(it)) } })
+        put("autoHireEvents", JSONArray().apply { autoHireEvents.forEach { put(serializeAutoHireEvent(it)) } })
+        put("markdownsSaved", markdownsSaved.cents); put("markupExtraRevenue", markupExtraRevenue.cents)
+        put("itemsMarkedDown", itemsMarkedDown)
+    }
+
     private fun serializeDailyMetricsAccumulator(acc: DailyMetricsAccumulator): JSONObject {
         return JSONObject().apply {
             put("dayNumber", acc.dayNumber)
-            put("revenue", acc.revenue.cents)
-            put("subtotal", acc.subtotal.cents)
-            put("taxCollected", acc.taxCollected.cents)
-            put("transactionsCompleted", acc.transactionsCompleted)
-            put("rentPaid", acc.rentPaid.cents)
-            put("wagesPaid", acc.wagesPaid.cents)
-            put("refundsProcessed", acc.refundsProcessed)
-            put("refundAmount", acc.refundAmount.cents)
-            put("customersServed", acc.customersServed)
-            put("itemsSold", acc.itemsSold)
-            put("itemsStocked", acc.itemsStocked)
-            put("itemsOrdered", acc.itemsOrdered)
-            put("lostRevenue", acc.lostRevenue.cents)
-            put("itemsLostToOutOfStock", acc.itemsLostToOutOfStock)
-            
-            val oosArray = JSONArray()
-            acc.outOfStockEvents.forEach { event ->
-                oosArray.put(serializeOutOfStockEvent(event))
-            }
-            put("outOfStockEvents", oosArray)
-            
-            val soldArray = JSONArray()
-            acc.soldItemEvents.forEach { event ->
-                soldArray.put(serializeSoldItemEvent(event))
-            }
-            put("soldItemEvents", soldArray)
-            
-            // Expiration fields
-            put("itemsExpired", acc.itemsExpired)
-            put("expiredWasteCost", acc.expiredWasteCost.cents)
-            
-            val expiredArray = JSONArray()
-            acc.expiredItemEvents.forEach { event ->
-                expiredArray.put(serializeExpiredItemEvent(event))
-            }
-            put("expiredItemEvents", expiredArray)
-
-            val freshOrdersArray = JSONArray()
-            acc.autoOrderedFreshItems.forEach { item ->
-                freshOrdersArray.put(serializeFreshOrderLineItem(item))
-            }
-            put("autoOrderedFreshItems", freshOrdersArray)
-
-            val incompleteOrdersArray = JSONArray()
-            acc.incompleteOrderedFreshItems.forEach { item ->
-                incompleteOrdersArray.put(serializeIncompleteOrderLineItem(item))
-            }
-            put("incompleteOrderedFreshItems", incompleteOrdersArray)
-
-            val deliveredTrucksArray = JSONArray()
-            acc.deliveredTrucks.forEach { record ->
-                deliveredTrucksArray.put(serializeDeliveredTruckRecord(record))
-            }
-            put("deliveredTrucks", deliveredTrucksArray)
-
-            val autoHireArray = JSONArray()
-            acc.autoHireEvents.forEach { event ->
-                autoHireArray.put(serializeAutoHireEvent(event))
-            }
-            put("autoHireEvents", autoHireArray)
-
-            put("markdownsSaved", acc.markdownsSaved.cents)
-            put("markupExtraRevenue", acc.markupExtraRevenue.cents)
-            put("itemsMarkedDown", acc.itemsMarkedDown)
+            putCommonMetrics(
+                acc.revenue, acc.subtotal, acc.taxCollected, acc.transactionsCompleted,
+                acc.rentPaid, acc.wagesPaid, acc.refundsProcessed, acc.refundAmount,
+                acc.customersServed, acc.itemsSold, acc.itemsStocked, acc.itemsOrdered,
+                acc.lostRevenue, acc.itemsLostToOutOfStock,
+                acc.outOfStockEvents, acc.soldItemEvents,
+                acc.itemsExpired, acc.expiredWasteCost, acc.expiredItemEvents,
+                acc.autoOrderedFreshItems, acc.incompleteOrderedFreshItems,
+                acc.deliveredTrucks, acc.autoHireEvents,
+                acc.markdownsSaved, acc.markupExtraRevenue, acc.itemsMarkedDown,
+            )
         }
     }
 
+    private class CommonMetrics(
+        val revenue: Money, val subtotal: Money, val taxCollected: Money,
+        val transactionsCompleted: Int,
+        val rentPaid: Money, val wagesPaid: Money,
+        val refundsProcessed: Int, val refundAmount: Money,
+        val customersServed: Int,
+        val itemsSold: Int, val itemsStocked: Int, val itemsOrdered: Int,
+        val lostRevenue: Money, val itemsLostToOutOfStock: Int,
+        val outOfStockEvents: List<OutOfStockEvent>,
+        val soldItemEvents: List<SoldItemEvent>,
+        val itemsExpired: Int, val expiredWasteCost: Money,
+        val expiredItemEvents: List<ExpiredItemEvent>,
+        val autoOrderedFreshItems: List<FreshOrderLineItem>,
+        val incompleteOrderedFreshItems: List<IncompleteOrderLineItem>,
+        val deliveredTrucks: List<DeliveredTruckRecord>,
+        val autoHireEvents: List<AutoHireEvent>,
+        val markdownsSaved: Money, val markupExtraRevenue: Money, val itemsMarkedDown: Int,
+    )
+
+    private fun optionalList(json: JSONObject, key: String) =
+        if (json.has(key)) json.getJSONArray(key) else null
+
+    private fun deserializeCommonMetrics(json: JSONObject): CommonMetrics = CommonMetrics(
+        revenue = Money(json.getLong("revenue")),
+        subtotal = Money(json.getLong("subtotal")),
+        taxCollected = Money(json.getLong("taxCollected")),
+        transactionsCompleted = json.getInt("transactionsCompleted"),
+        rentPaid = Money(json.getLong("rentPaid")),
+        wagesPaid = Money(json.getLong("wagesPaid")),
+        refundsProcessed = json.getInt("refundsProcessed"),
+        refundAmount = Money(json.getLong("refundAmount")),
+        customersServed = json.getInt("customersServed"),
+        itemsSold = json.getInt("itemsSold"),
+        itemsStocked = json.getInt("itemsStocked"),
+        itemsOrdered = json.getInt("itemsOrdered"),
+        lostRevenue = Money(json.getLong("lostRevenue")),
+        itemsLostToOutOfStock = json.getInt("itemsLostToOutOfStock"),
+        outOfStockEvents = json.getJSONArray("outOfStockEvents").mapObjects { deserializeOutOfStockEvent(it) },
+        soldItemEvents = json.getJSONArray("soldItemEvents").mapObjects { deserializeSoldItemEvent(it) },
+        itemsExpired = json.optInt("itemsExpired", 0),
+        expiredWasteCost = if (json.has("expiredWasteCost")) Money(json.getLong("expiredWasteCost")) else Money.ZERO,
+        expiredItemEvents = optionalList(json, "expiredItemEvents")?.mapObjects { deserializeExpiredItemEvent(it) } ?: emptyList(),
+        autoOrderedFreshItems = optionalList(json, "autoOrderedFreshItems")?.mapObjects { deserializeFreshOrderLineItem(it) } ?: emptyList(),
+        incompleteOrderedFreshItems = optionalList(json, "incompleteOrderedFreshItems")?.mapObjects { deserializeIncompleteOrderLineItem(it) } ?: emptyList(),
+        deliveredTrucks = optionalList(json, "deliveredTrucks")?.mapObjects { deserializeDeliveredTruckRecord(it) } ?: emptyList(),
+        autoHireEvents = optionalList(json, "autoHireEvents")?.mapObjects { deserializeAutoHireEvent(it) } ?: emptyList(),
+        markdownsSaved = if (json.has("markdownsSaved")) Money(json.getLong("markdownsSaved")) else Money.ZERO,
+        markupExtraRevenue = if (json.has("markupExtraRevenue")) Money(json.getLong("markupExtraRevenue")) else Money.ZERO,
+        itemsMarkedDown = json.optInt("itemsMarkedDown", 0),
+    )
+
     private fun deserializeDailyMetricsAccumulator(json: JSONObject): DailyMetricsAccumulator {
-        val oosEvents = mutableListOf<OutOfStockEvent>()
-        val oosArray = json.getJSONArray("outOfStockEvents")
-        for (i in 0 until oosArray.length()) {
-            oosEvents.add(deserializeOutOfStockEvent(oosArray.getJSONObject(i)))
-        }
-        
-        val soldEvents = mutableListOf<SoldItemEvent>()
-        val soldArray = json.getJSONArray("soldItemEvents")
-        for (i in 0 until soldArray.length()) {
-            soldEvents.add(deserializeSoldItemEvent(soldArray.getJSONObject(i)))
-        }
-        
-        val expiredEvents = mutableListOf<ExpiredItemEvent>()
-        if (json.has("expiredItemEvents")) {
-            val expiredArray = json.getJSONArray("expiredItemEvents")
-            for (i in 0 until expiredArray.length()) {
-                expiredEvents.add(deserializeExpiredItemEvent(expiredArray.getJSONObject(i)))
-            }
-        }
-
-        val freshOrderItems = mutableListOf<FreshOrderLineItem>()
-        if (json.has("autoOrderedFreshItems")) {
-            val arr = json.getJSONArray("autoOrderedFreshItems")
-            for (i in 0 until arr.length()) freshOrderItems.add(deserializeFreshOrderLineItem(arr.getJSONObject(i)))
-        }
-
-        val incompleteOrderItems = mutableListOf<IncompleteOrderLineItem>()
-        if (json.has("incompleteOrderedFreshItems")) {
-            val arr = json.getJSONArray("incompleteOrderedFreshItems")
-            for (i in 0 until arr.length()) incompleteOrderItems.add(deserializeIncompleteOrderLineItem(arr.getJSONObject(i)))
-        }
-
-        val deliveredTrucksAcc = mutableListOf<DeliveredTruckRecord>()
-        if (json.has("deliveredTrucks")) {
-            val arr = json.getJSONArray("deliveredTrucks")
-            for (i in 0 until arr.length()) deliveredTrucksAcc.add(deserializeDeliveredTruckRecord(arr.getJSONObject(i)))
-        }
-
-        val autoHireEventsAcc = mutableListOf<AutoHireEvent>()
-        if (json.has("autoHireEvents")) {
-            val arr = json.getJSONArray("autoHireEvents")
-            for (i in 0 until arr.length()) autoHireEventsAcc.add(deserializeAutoHireEvent(arr.getJSONObject(i)))
-        }
-
+        val common = deserializeCommonMetrics(json)
         return DailyMetricsAccumulator(
             dayNumber = if (json.has("dayNumber")) json.getInt("dayNumber") else 0,
-            revenue = Money(json.getLong("revenue")),
-            subtotal = Money(json.getLong("subtotal")),
-            taxCollected = Money(json.getLong("taxCollected")),
-            transactionsCompleted = json.getInt("transactionsCompleted"),
-            rentPaid = Money(json.getLong("rentPaid")),
-            wagesPaid = Money(json.getLong("wagesPaid")),
-            refundsProcessed = json.getInt("refundsProcessed"),
-            refundAmount = Money(json.getLong("refundAmount")),
-            customersServed = json.getInt("customersServed"),
-            itemsSold = json.getInt("itemsSold"),
-            itemsStocked = json.getInt("itemsStocked"),
-            itemsOrdered = json.getInt("itemsOrdered"),
-            lostRevenue = Money(json.getLong("lostRevenue")),
-            itemsLostToOutOfStock = json.getInt("itemsLostToOutOfStock"),
-            outOfStockEvents = oosEvents,
-            soldItemEvents = soldEvents,
-            itemsExpired = if (json.has("itemsExpired")) json.getInt("itemsExpired") else 0,
-            expiredWasteCost = if (json.has("expiredWasteCost")) Money(json.getLong("expiredWasteCost")) else Money.ZERO,
-            expiredItemEvents = expiredEvents,
-            autoOrderedFreshItems = freshOrderItems,
-            incompleteOrderedFreshItems = incompleteOrderItems,
-            deliveredTrucks = deliveredTrucksAcc,
-            autoHireEvents = autoHireEventsAcc,
-            markdownsSaved = if (json.has("markdownsSaved")) Money(json.getLong("markdownsSaved")) else Money.ZERO,
-            markupExtraRevenue = if (json.has("markupExtraRevenue")) Money(json.getLong("markupExtraRevenue")) else Money.ZERO,
-            itemsMarkedDown = if (json.has("itemsMarkedDown")) json.getInt("itemsMarkedDown") else 0,
+            revenue = common.revenue, subtotal = common.subtotal, taxCollected = common.taxCollected,
+            transactionsCompleted = common.transactionsCompleted,
+            rentPaid = common.rentPaid, wagesPaid = common.wagesPaid,
+            refundsProcessed = common.refundsProcessed, refundAmount = common.refundAmount,
+            customersServed = common.customersServed,
+            itemsSold = common.itemsSold, itemsStocked = common.itemsStocked, itemsOrdered = common.itemsOrdered,
+            lostRevenue = common.lostRevenue, itemsLostToOutOfStock = common.itemsLostToOutOfStock,
+            outOfStockEvents = common.outOfStockEvents, soldItemEvents = common.soldItemEvents,
+            itemsExpired = common.itemsExpired, expiredWasteCost = common.expiredWasteCost,
+            expiredItemEvents = common.expiredItemEvents,
+            autoOrderedFreshItems = common.autoOrderedFreshItems,
+            incompleteOrderedFreshItems = common.incompleteOrderedFreshItems,
+            deliveredTrucks = common.deliveredTrucks,
+            autoHireEvents = common.autoHireEvents,
+            markdownsSaved = common.markdownsSaved,
+            markupExtraRevenue = common.markupExtraRevenue,
+            itemsMarkedDown = common.itemsMarkedDown,
         )
     }
 
@@ -751,157 +730,47 @@ object GameStateSerializer {
         return JSONObject().apply {
             put("dayNumber", metrics.dayNumber)
             put("dayOfWeek", metrics.dayOfWeek)
-            put("revenue", metrics.revenue.cents)
-            put("subtotal", metrics.subtotal.cents)
-            put("taxCollected", metrics.taxCollected.cents)
-            put("transactionsCompleted", metrics.transactionsCompleted)
-            put("rentPaid", metrics.rentPaid.cents)
-            put("wagesPaid", metrics.wagesPaid.cents)
-            put("refundsProcessed", metrics.refundsProcessed)
-            put("refundAmount", metrics.refundAmount.cents)
-            put("customersServed", metrics.customersServed)
-            put("itemsSold", metrics.itemsSold)
-            put("itemsStocked", metrics.itemsStocked)
-            put("itemsOrdered", metrics.itemsOrdered)
-            put("lostRevenue", metrics.lostRevenue.cents)
-            put("itemsLostToOutOfStock", metrics.itemsLostToOutOfStock)
-            
-            val oosArray = JSONArray()
-            metrics.outOfStockEvents.forEach { event ->
-                oosArray.put(serializeOutOfStockEvent(event))
-            }
-            put("outOfStockEvents", oosArray)
-            
-            val soldArray = JSONArray()
-            metrics.soldItemEvents.forEach { event ->
-                soldArray.put(serializeSoldItemEvent(event))
-            }
-            put("soldItemEvents", soldArray)
-            
-            // Expiration fields
-            put("itemsExpired", metrics.itemsExpired)
-            put("expiredWasteCost", metrics.expiredWasteCost.cents)
-            
-            val expiredArray = JSONArray()
-            metrics.expiredItemEvents.forEach { event ->
-                expiredArray.put(serializeExpiredItemEvent(event))
-            }
-            put("expiredItemEvents", expiredArray)
-
-            val freshOrdersArray = JSONArray()
-            metrics.autoOrderedFreshItems.forEach { item ->
-                freshOrdersArray.put(serializeFreshOrderLineItem(item))
-            }
-            put("autoOrderedFreshItems", freshOrdersArray)
-
-            val incompleteOrdersArray = JSONArray()
-            metrics.incompleteOrderedFreshItems.forEach { item ->
-                incompleteOrdersArray.put(serializeIncompleteOrderLineItem(item))
-            }
-            put("incompleteOrderedFreshItems", incompleteOrdersArray)
-
-            val deliveredTrucksArray = JSONArray()
-            metrics.deliveredTrucks.forEach { record ->
-                deliveredTrucksArray.put(serializeDeliveredTruckRecord(record))
-            }
-            put("deliveredTrucks", deliveredTrucksArray)
-
-            val autoHireArray = JSONArray()
-            metrics.autoHireEvents.forEach { event ->
-                autoHireArray.put(serializeAutoHireEvent(event))
-            }
-            put("autoHireEvents", autoHireArray)
-
-            put("markdownsSaved", metrics.markdownsSaved.cents)
-            put("markupExtraRevenue", metrics.markupExtraRevenue.cents)
-            put("itemsMarkedDown", metrics.itemsMarkedDown)
+            putCommonMetrics(
+                metrics.revenue, metrics.subtotal, metrics.taxCollected, metrics.transactionsCompleted,
+                metrics.rentPaid, metrics.wagesPaid, metrics.refundsProcessed, metrics.refundAmount,
+                metrics.customersServed, metrics.itemsSold, metrics.itemsStocked, metrics.itemsOrdered,
+                metrics.lostRevenue, metrics.itemsLostToOutOfStock,
+                metrics.outOfStockEvents, metrics.soldItemEvents,
+                metrics.itemsExpired, metrics.expiredWasteCost, metrics.expiredItemEvents,
+                metrics.autoOrderedFreshItems, metrics.incompleteOrderedFreshItems,
+                metrics.deliveredTrucks, metrics.autoHireEvents,
+                metrics.markdownsSaved, metrics.markupExtraRevenue, metrics.itemsMarkedDown,
+            )
         }
     }
 
     private fun deserializeDailyMetrics(json: JSONObject): DailyMetrics {
-        val oosEvents = mutableListOf<OutOfStockEvent>()
-        val oosArray = json.getJSONArray("outOfStockEvents")
-        for (i in 0 until oosArray.length()) {
-            oosEvents.add(deserializeOutOfStockEvent(oosArray.getJSONObject(i)))
-        }
-        
-        val soldEvents = mutableListOf<SoldItemEvent>()
-        val soldArray = json.getJSONArray("soldItemEvents")
-        for (i in 0 until soldArray.length()) {
-            soldEvents.add(deserializeSoldItemEvent(soldArray.getJSONObject(i)))
-        }
-        
-        val expiredEvents = mutableListOf<ExpiredItemEvent>()
-        if (json.has("expiredItemEvents")) {
-            val expiredArray = json.getJSONArray("expiredItemEvents")
-            for (i in 0 until expiredArray.length()) {
-                expiredEvents.add(deserializeExpiredItemEvent(expiredArray.getJSONObject(i)))
-            }
-        }
-
-        val freshOrderItems = mutableListOf<FreshOrderLineItem>()
-        if (json.has("autoOrderedFreshItems")) {
-            val arr = json.getJSONArray("autoOrderedFreshItems")
-            for (i in 0 until arr.length()) freshOrderItems.add(deserializeFreshOrderLineItem(arr.getJSONObject(i)))
-        }
-
-        val incompleteOrderItems = mutableListOf<IncompleteOrderLineItem>()
-        if (json.has("incompleteOrderedFreshItems")) {
-            val arr = json.getJSONArray("incompleteOrderedFreshItems")
-            for (i in 0 until arr.length()) incompleteOrderItems.add(deserializeIncompleteOrderLineItem(arr.getJSONObject(i)))
-        }
-
-        val deliveredTrucksList = mutableListOf<DeliveredTruckRecord>()
-        if (json.has("deliveredTrucks")) {
-            val arr = json.getJSONArray("deliveredTrucks")
-            for (i in 0 until arr.length()) deliveredTrucksList.add(deserializeDeliveredTruckRecord(arr.getJSONObject(i)))
-        }
-
-        val autoHireEventsList = mutableListOf<AutoHireEvent>()
-        if (json.has("autoHireEvents")) {
-            val arr = json.getJSONArray("autoHireEvents")
-            for (i in 0 until arr.length()) autoHireEventsList.add(deserializeAutoHireEvent(arr.getJSONObject(i)))
-        }
-
+        val common = deserializeCommonMetrics(json)
         return DailyMetrics(
             dayNumber = json.getInt("dayNumber"),
             dayOfWeek = json.getInt("dayOfWeek"),
-            revenue = Money(json.getLong("revenue")),
-            subtotal = Money(json.getLong("subtotal")),
-            taxCollected = Money(json.getLong("taxCollected")),
-            transactionsCompleted = json.getInt("transactionsCompleted"),
-            rentPaid = Money(json.getLong("rentPaid")),
-            wagesPaid = Money(json.getLong("wagesPaid")),
-            refundsProcessed = json.getInt("refundsProcessed"),
-            refundAmount = Money(json.getLong("refundAmount")),
-            customersServed = json.getInt("customersServed"),
-            itemsSold = json.getInt("itemsSold"),
-            itemsStocked = json.getInt("itemsStocked"),
-            itemsOrdered = json.getInt("itemsOrdered"),
-            lostRevenue = Money(json.getLong("lostRevenue")),
-            itemsLostToOutOfStock = json.getInt("itemsLostToOutOfStock"),
-            outOfStockEvents = oosEvents,
-            soldItemEvents = soldEvents,
-            itemsExpired = if (json.has("itemsExpired")) json.getInt("itemsExpired") else 0,
-            expiredWasteCost = if (json.has("expiredWasteCost")) Money(json.getLong("expiredWasteCost")) else Money.ZERO,
-            expiredItemEvents = expiredEvents,
-            autoOrderedFreshItems = freshOrderItems,
-            incompleteOrderedFreshItems = incompleteOrderItems,
-            deliveredTrucks = deliveredTrucksList,
-            autoHireEvents = autoHireEventsList,
-            markdownsSaved = if (json.has("markdownsSaved")) Money(json.getLong("markdownsSaved")) else Money.ZERO,
-            markupExtraRevenue = if (json.has("markupExtraRevenue")) Money(json.getLong("markupExtraRevenue")) else Money.ZERO,
-            itemsMarkedDown = if (json.has("itemsMarkedDown")) json.getInt("itemsMarkedDown") else 0,
+            revenue = common.revenue, subtotal = common.subtotal, taxCollected = common.taxCollected,
+            transactionsCompleted = common.transactionsCompleted,
+            rentPaid = common.rentPaid, wagesPaid = common.wagesPaid,
+            refundsProcessed = common.refundsProcessed, refundAmount = common.refundAmount,
+            customersServed = common.customersServed,
+            itemsSold = common.itemsSold, itemsStocked = common.itemsStocked, itemsOrdered = common.itemsOrdered,
+            lostRevenue = common.lostRevenue, itemsLostToOutOfStock = common.itemsLostToOutOfStock,
+            outOfStockEvents = common.outOfStockEvents, soldItemEvents = common.soldItemEvents,
+            itemsExpired = common.itemsExpired, expiredWasteCost = common.expiredWasteCost,
+            expiredItemEvents = common.expiredItemEvents,
+            autoOrderedFreshItems = common.autoOrderedFreshItems,
+            incompleteOrderedFreshItems = common.incompleteOrderedFreshItems,
+            deliveredTrucks = common.deliveredTrucks,
+            autoHireEvents = common.autoHireEvents,
+            markdownsSaved = common.markdownsSaved,
+            markupExtraRevenue = common.markupExtraRevenue,
+            itemsMarkedDown = common.itemsMarkedDown,
         )
     }
 
-    private fun deserializeDailyMetricsList(jsonArray: JSONArray): List<DailyMetrics> {
-        val list = mutableListOf<DailyMetrics>()
-        for (i in 0 until jsonArray.length()) {
-            list.add(deserializeDailyMetrics(jsonArray.getJSONObject(i)))
-        }
-        return list
-    }
+    private fun deserializeDailyMetricsList(jsonArray: JSONArray): List<DailyMetrics> =
+        jsonArray.mapObjects { deserializeDailyMetrics(it) }
 
     private fun serializeOutOfStockEvent(event: OutOfStockEvent): JSONObject {
         return JSONObject().apply {

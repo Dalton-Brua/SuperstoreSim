@@ -49,13 +49,19 @@ import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.ui.state.RegisterUIState
 import com.example.superstoresimulator.ui.state.RegistersUIState
 import com.example.superstoresimulator.ui.state.StaffScheduleEntryUI
+import com.example.superstoresimulator.ui.theme.CardBlue
 import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.ChipSurface
 import com.example.superstoresimulator.ui.theme.Destructive
+import com.example.superstoresimulator.ui.theme.InactiveGrey
 import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
 import com.example.superstoresimulator.ui.theme.Secondary
+import com.example.superstoresimulator.ui.theme.SuccessChipSurface
+import com.example.superstoresimulator.ui.theme.SuccessTextDark
 import com.example.superstoresimulator.ui.theme.TextMuted
 import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextWhite
 import com.yourapp.ui.theme.GameButtonStyles
 
 /**
@@ -123,7 +129,7 @@ fun RegistersCard(
                 }
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFE0EDFF),
+                    color = CardBlue,
                 ) {
                     Text(
                         text = "${registersState.ownedCount} / ${registersState.maxRegisters}",
@@ -141,7 +147,7 @@ fun RegistersCard(
             registersState.registers.forEachIndexed { index, reg ->
                 if (index > 0) {
                     HorizontalDivider(
-                        color = Color(0xFFE2E8F0),
+                        color = ChipSurface,
                         modifier = Modifier.padding(vertical = 10.dp),
                     )
                 }
@@ -162,7 +168,7 @@ fun RegistersCard(
             // ── Buy register button ─────────────────────────────────────────
             if (registersState.ownedCount < registersState.maxRegisters) {
                 Spacer(Modifier.height(12.dp))
-                HorizontalDivider(color = Color(0xFFE2E8F0))
+                HorizontalDivider(color = ChipSurface)
                 Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = onPurchaseRegister,
@@ -180,7 +186,7 @@ fun RegistersCard(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = "Buy Register  (${registersState.nextRegisterCost})",
-                        color = Color.White,
+                        color = TextWhite,
                     )
                 }
             }
@@ -206,7 +212,7 @@ private fun RegisterRow(
         targetValue = when {
             reg.transactionActive -> Secondary
             reg.isManned          -> Primary
-            else                  -> Color(0xFFCBD5E1)
+            else                  -> InactiveGrey
         },
         label = "register_status",
     )
@@ -254,8 +260,8 @@ private fun RegisterRow(
                     if (reg.transactionActive) {
                         StatusChip(
                             label = "Active",
-                            chipColor = Color(0xFFDCFCE7),
-                            textColor = Color(0xFF166534),
+                            chipColor = SuccessChipSurface,
+                            textColor = SuccessTextDark,
                         )
                     }
                 }
@@ -342,7 +348,7 @@ private fun RegisterRow(
                         // Unpin option
                         if (reg.assignedCashierId != null) {
                             DropdownMenuItem(
-                                text = { Text("Remove assignment", color = Color(0xFFEF4444)) },
+                                text = { Text("Remove assignment", color = Destructive) },
                                 onClick = {
                                     onAssignCashier(null, reg.registerId)
                                     assignMenuExpanded = false

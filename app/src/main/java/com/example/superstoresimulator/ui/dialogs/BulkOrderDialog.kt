@@ -48,12 +48,7 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.ui.state.InventoryItemUI
-import com.example.superstoresimulator.ui.theme.Destructive
-import com.example.superstoresimulator.ui.theme.Primary
-import com.example.superstoresimulator.ui.theme.PrimaryDark
-import com.example.superstoresimulator.ui.theme.Secondary
-import com.example.superstoresimulator.ui.theme.TextDark
-import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.*
 import kotlin.math.roundToInt
 
 // ── Discount tier definitions ──────────────────────────────────────────────────
@@ -133,7 +128,7 @@ fun BulkOrderDialog(
                 .fillMaxWidth()
                 .wrapContentHeight(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = CardWhite),
             elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Column(
@@ -157,13 +152,13 @@ fun BulkOrderDialog(
                         Icon(
                             Icons.Default.LocalShipping,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = TextWhite,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             "Bulk Order",
-                            color = Color.White,
+                            color = TextWhite,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
@@ -300,7 +295,7 @@ fun BulkOrderDialog(
                             modifier = Modifier
                                 .background(
                                     if (isActive) Secondary.copy(alpha = 0.15f)
-                                    else Color(0xFFF1F5F9),
+                                    else PlaceholderSurface,
                                     RoundedCornerShape(6.dp)
                                 )
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
@@ -476,7 +471,7 @@ fun BulkOrderDialog(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
+                            .background(PlaceholderSurface, RoundedCornerShape(8.dp))
                             .padding(16.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -512,7 +507,7 @@ fun BulkOrderDialog(
                     ) {
                         Text(
                             "Place Order",
-                            color = Color.White,
+                            color = TextWhite,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -548,8 +543,8 @@ private fun SummaryStat(
 
 @Composable
 private fun BulkChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
-    val bg = if (isSelected) PrimaryDark else Color(0xFFE2E8F0)
-    val fg = if (isSelected) Color.White else Color(0xFF1E293B)
+    val bg = if (isSelected) PrimaryDark else ChipSurface
+    val fg = if (isSelected) TextWhite else ChipTextDark
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = bg,

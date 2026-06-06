@@ -38,7 +38,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,9 +45,15 @@ import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.ui.state.AppUIState
 import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.CautionDark
+import com.example.superstoresimulator.ui.theme.ClosedRed
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.PrimaryLight
+import com.example.superstoresimulator.ui.theme.Teal
 import com.example.superstoresimulator.ui.theme.TextPrimary
 import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextTertiary
+import com.example.superstoresimulator.ui.theme.TextWhite
 import com.example.superstoresimulator.ui.dialogs.ResetGameConfirmationDialog
 
 private val DAY_LABELS = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -172,7 +177,7 @@ fun SettingsPanel(
                         },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = PrimaryDark,
-                            checkedTrackColor = Color(0xFF93C5FD),
+                            checkedTrackColor = PrimaryLight,
                         )
                     )
                 }
@@ -224,7 +229,7 @@ fun SettingsPanel(
                         "Slots used: ${selectedDays.size} / $maxTrucksPerWeek" +
                             if (truckConfig.extraTruckSlotsUnlocked > 0) " (${freeSlotsForSize} free + ${truckConfig.extraTruckSlotsUnlocked} purchased)" else " (free)",
                         fontSize = 11.sp,
-                        color = if (atMaxDays) Color(0xFFD97706) else TextSecondary,
+                        color = if (atMaxDays) CautionDark else TextSecondary,
                     )
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -253,12 +258,12 @@ fun SettingsPanel(
                         onClick = onPurchaseExtraTruckSlot,
                         enabled = app.money >= TruckConfig.EXTRA_SLOT_COST,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
+                        colors = ButtonDefaults.buttonColors(containerColor = Teal),
                     ) {
                         Text(
                             "🚛 Add Truck Slot (${TruckConfig.EXTRA_SLOT_COST})",
                             fontSize = 12.sp,
-                            color = Color.White,
+                            color = TextWhite,
                         )
                     }
                     Text(
@@ -304,12 +309,12 @@ fun SettingsPanel(
                     Button(
                         onClick = { showResetConfirmation = true },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE74C3C))
-                    ) { Text("Reset Store", color = Color.White) }
+                        colors = ButtonDefaults.buttonColors(containerColor = ClosedRed)
+                    ) { Text("Reset Store", color = TextWhite) }
                 }
                 Text(
                     "Tip: Changes to the store name are applied when you press Save.",
-                    color = Color(0xFF6B7280), fontSize = 12.sp,
+                    color = TextTertiary, fontSize = 12.sp,
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }

@@ -37,7 +37,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,11 +44,7 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.ui.state.GameUiState
 import com.example.superstoresimulator.ui.state.RegisterUIState
-import com.example.superstoresimulator.ui.theme.CardWhite
-import com.example.superstoresimulator.ui.theme.Primary
-import com.example.superstoresimulator.ui.theme.PrimaryDark
-import com.example.superstoresimulator.ui.theme.Secondary
-import com.example.superstoresimulator.ui.theme.TextMuted
+import com.example.superstoresimulator.ui.theme.*
 import com.yourapp.ui.theme.GameButtonStyles
 import java.util.Locale
 
@@ -80,7 +75,7 @@ fun RegisterDetailDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        scrimColor = Color.Black.copy(alpha = 0.32f),
+        scrimColor = Scrim.copy(alpha = 0.32f),
     ) {
         Column(
             modifier = Modifier
@@ -104,7 +99,7 @@ fun RegisterDetailDialog(
                     val statusColor = when {
                         liveRegister.transactionActive -> Secondary
                         liveRegister.isManned -> Primary
-                        else -> Color(0xFFCBD5E1)
+                        else -> InactiveGrey
                     }
                     Surface(
                         modifier = Modifier
@@ -137,7 +132,7 @@ fun RegisterDetailDialog(
                 }
             }
 
-            HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
+            HorizontalDivider(color = ChipSurface, thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
 
             // ── Cashier Assignment ────────────────────────────────────────
             Column(
@@ -199,7 +194,7 @@ fun RegisterDetailDialog(
                             // Unassign option
                             if (liveRegister.assignedCashierId != null) {
                                 DropdownMenuItem(
-                                    text = { Text("Remove assignment", color = Color(0xFFEF4444)) },
+                                    text = { Text("Remove assignment", color = Destructive) },
                                     onClick = {
                                         onAssignCashier(null, liveRegister.registerId)
                                         assignMenuExpanded = false
@@ -252,7 +247,7 @@ fun RegisterDetailDialog(
                 }
             }
 
-            HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
+            HorizontalDivider(color = ChipSurface, thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
 
             // ── Transaction Details ────────────────────────────────────────
             val prevTx = state.transactions.previous ?: state.history.salesHistory.lastOrNull()
@@ -282,7 +277,7 @@ fun RegisterDetailDialog(
 
                         if (prevTx != null) {
                             Spacer(modifier = Modifier.height(16.dp))
-                            HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp)
+                            HorizontalDivider(color = ChipSurface, thickness = 1.dp)
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
                                 text = "Previous Transaction",
@@ -295,7 +290,7 @@ fun RegisterDetailDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp)),
-                                color = Color(0xFFFAFAFA),
+                                color = SurfaceElevated,
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     Row(
@@ -396,7 +391,7 @@ private fun TransactionDetails(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp)),
-        color = Color(0xFFFAFAFA),
+        color = SurfaceElevated,
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             val fulfillableLines = transactionLines.filter { !it.lostToOutOfStock }
@@ -422,7 +417,7 @@ private fun TransactionDetails(
                             Text(
                                 text = "Out of stock",
                                 fontSize = 10.sp,
-                                color = Color(0xFFEF4444),
+                                color = Destructive,
                             )
                         }
                     }
@@ -435,13 +430,13 @@ private fun TransactionDetails(
                         else
                             "${line.rungQty}/${line.quantity}",
                         fontSize = 11.sp,
-                        color = if (line.lostToOutOfStock) Color(0xFFEF4444) else TextMuted,
+                        color = if (line.lostToOutOfStock) Destructive else TextMuted,
                         fontWeight = FontWeight.Medium,
                     )
                 }
             }
 
-            HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
+            HorizontalDivider(color = ChipSurface, thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
 
             // Subtotal, Tax, Total
             Row(

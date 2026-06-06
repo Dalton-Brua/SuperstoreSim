@@ -9,17 +9,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.ui.theme.CardBlue
+import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.ClosedRed
+import com.example.superstoresimulator.ui.theme.DisabledGrey
 import com.example.superstoresimulator.ui.theme.IconBlue
+import com.example.superstoresimulator.ui.theme.PositiveGreen
 import com.example.superstoresimulator.ui.theme.PrimaryDark
 import com.example.superstoresimulator.ui.theme.TextDark
 import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextWhite
 
 /**
  * Card showing the current store size, daily rent and wages, with an upgrade button.
@@ -40,7 +44,7 @@ fun StoreSizeCard(
     
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = CardWhite),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -123,11 +127,11 @@ fun StoreSizeCard(
                         text = (dailyRent + dailyWages).toString(),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFE74C3C)
+                        color = ClosedRed
                     )
                 }
             }
-            
+
             // Upgrade button (if not at max size)
             if (nextSize != null && nextSize.upgradeCost != null) {
                 Spacer(Modifier.height(12.dp))
@@ -137,7 +141,7 @@ fun StoreSizeCard(
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = PrimaryDark,
-                        disabledContainerColor = Color.Gray
+                        disabledContainerColor = DisabledGrey
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
@@ -151,7 +155,7 @@ fun StoreSizeCard(
                         text = "Upgrade to ${nextSize.displayName} (${nextSize.upgradeCost})",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = TextWhite
                     )
                 }
                 
@@ -159,7 +163,7 @@ fun StoreSizeCard(
                     Text(
                         text = "Insufficient funds",
                         fontSize = 11.sp,
-                        color = Color(0xFFE74C3C),
+                        color = ClosedRed,
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -169,7 +173,7 @@ fun StoreSizeCard(
                     text = "✓ Maximum store size",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF27AE60),
+                    color = PositiveGreen,
                     modifier = Modifier.fillMaxWidth()
                 )
             }

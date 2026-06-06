@@ -11,17 +11,22 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.ui.theme.CardBlue
+import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.ClosedRed
+import com.example.superstoresimulator.ui.theme.DisabledGrey
 import com.example.superstoresimulator.ui.theme.IconBlue
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.ProgressBarTrack
+import com.example.superstoresimulator.ui.theme.Success
 import com.example.superstoresimulator.ui.theme.TextDark
 import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextWhite
 
 /**
  * Card showing the current tier progression, revenue progress, and unlock button.
@@ -46,7 +51,7 @@ fun TierProgressCard(
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = CardWhite),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -64,7 +69,7 @@ fun TierProgressCard(
                 Icon(
                     imageVector = if (nextTier == null) Icons.Default.CheckCircle else Icons.Default.Star,
                     contentDescription = null,
-                    tint = if (nextTier == null) Color(0xFF16A34A) else IconBlue,
+                    tint = if (nextTier == null) Success else IconBlue,
                     modifier = Modifier.size(24.dp)
                 )
                 Column(modifier = Modifier.weight(1f)) {
@@ -77,7 +82,7 @@ fun TierProgressCard(
                     Text(
                         text = if (nextTier == null) "All sections unlocked" else "Revenue: $totalRevenue",
                         fontSize = 12.sp,
-                        color = Color.White
+                        color = TextWhite
                     )
                 }
             }
@@ -101,7 +106,7 @@ fun TierProgressCard(
                                 "Progress to ${nextTier.displayName}",
                             fontSize = 13.sp,
                             fontWeight = if (availableTier != null) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (availableTier != null) Color(0xFF16A34A) else TextDark
+                            color = if (availableTier != null) Success else TextDark
                         )
                         Text(
                             text = "${(tierProgressFraction * 100).toInt()}%",
@@ -118,8 +123,8 @@ fun TierProgressCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(8.dp),
-                        color = if (availableTier != null) Color(0xFF16A34A) else IconBlue,
-                        trackColor = Color(0xFFE2E8F0)
+                        color = if (availableTier != null) Success else IconBlue,
+                        trackColor = ProgressBarTrack
                     )
                     
                     Spacer(Modifier.height(8.dp))
@@ -153,7 +158,7 @@ fun TierProgressCard(
                                     text = playerMoney.toString(),
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = if (canUnlock) Color(0xFF16A34A) else Color(0xFFE74C3C)
+                                    color = if (canUnlock) Success else ClosedRed
                                 )
                             }
                         }
@@ -175,7 +180,7 @@ fun TierProgressCard(
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = PrimaryDark,
-                            disabledContainerColor = Color.Gray
+                            disabledContainerColor = DisabledGrey
                         ),
                         shape = RoundedCornerShape(8.dp)
                     ) {
@@ -189,7 +194,7 @@ fun TierProgressCard(
                             text = "Unlock ${nextTier.displayName} (${availableTier.unlockCost})",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color.White
+                            color = TextWhite
                         )
                     }
                     
@@ -197,7 +202,7 @@ fun TierProgressCard(
                         Text(
                             text = "Insufficient funds",
                             fontSize = 11.sp,
-                            color = Color(0xFFE74C3C),
+                            color = ClosedRed,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
@@ -214,14 +219,14 @@ fun TierProgressCard(
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = null,
-                        tint = Color(0xFF16A34A),
+                        tint = Success,
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
                         text = "You've unlocked all store sections!",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF16A34A)
+                        color = Success
                     )
                 }
             }

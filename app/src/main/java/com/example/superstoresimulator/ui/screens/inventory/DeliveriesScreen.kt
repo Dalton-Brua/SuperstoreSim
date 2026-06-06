@@ -30,7 +30,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -40,8 +39,17 @@ import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.state.DeliveryUIState
 import com.example.superstoresimulator.ui.state.TruckOrderLineUI
 import com.example.superstoresimulator.ui.state.TruckUIState
+import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.CautionDark
+import com.example.superstoresimulator.ui.theme.ChipTextDark
+import com.example.superstoresimulator.ui.theme.LightBackground
 import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.ProgressBarTrack
+import com.example.superstoresimulator.ui.theme.SuccessAccent
+import com.example.superstoresimulator.ui.theme.TextMuted
+import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextWhite
 
 private val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 private fun dayOfWeekName(dow: Int) = dayNames.getOrElse(dow % 7) { "Day" }
@@ -62,7 +70,7 @@ fun DeliveriesScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F8FF))
+            .background(LightBackground)
             .padding(24.dp),
     ) {
         // Header
@@ -85,7 +93,7 @@ fun DeliveriesScreen(
                 Text(
                     text = "No deliveries scheduled.\nPlace an order to see it here.",
                     fontSize = 16.sp,
-                    color = Color(0xFF64748B),
+                    color = TextSecondary,
                     textAlign = TextAlign.Center,
                     lineHeight = 24.sp,
                 )
@@ -104,7 +112,7 @@ fun DeliveriesScreen(
                         text = "🥦 Fresh Delivery",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF059669),
+                        color = SuccessAccent,
                     )
                 }
                 item(key = "fresh_truck") {
@@ -137,13 +145,13 @@ fun DeliveriesScreen(
                     if (deliveries.earlyTruckAvailable && money >= deliveries.earlyTruckCost) {
                         Button(
                             onClick = onRequestEarlyTruck,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                            colors = ButtonDefaults.buttonColors(containerColor = CautionDark),
                             shape = RoundedCornerShape(8.dp),
                         ) {
                             Text(
                                 "⚡ Early Truck (${deliveries.earlyTruckCost})",
                                 fontSize = 12.sp,
-                                color = Color.White,
+                                color = TextWhite,
                             )
                         }
                     }
@@ -155,7 +163,7 @@ fun DeliveriesScreen(
                     Text(
                         text = "No regular trucks scheduled.",
                         fontSize = 14.sp,
-                        color = Color(0xFF94A3B8),
+                        color = TextMuted,
                         modifier = Modifier.padding(vertical = 8.dp),
                     )
                 }
@@ -186,7 +194,7 @@ private fun TruckCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(Color.White),
+        colors = CardDefaults.cardColors(CardWhite),
         elevation = CardDefaults.cardElevation(2.dp),
         onClick = onToggleExpand,
     ) {
@@ -215,13 +223,13 @@ private fun TruckCard(
                     if (truck.isEarlyTruck) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFFD97706),
+                            color = CautionDark,
                         ) {
                             Text(
                                 text = "EARLY",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White,
+                                color = TextWhite,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }
@@ -229,13 +237,13 @@ private fun TruckCard(
                     if (truck.isFreshTruck) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFF059669),
+                            color = SuccessAccent,
                         ) {
                             Text(
                                 text = "FRESH",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White,
+                                color = TextWhite,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }
@@ -244,7 +252,7 @@ private fun TruckCard(
                 Text(
                     text = if (expanded) "▲" else "▼",
                     fontSize = 12.sp,
-                    color = Color(0xFF94A3B8),
+                    color = TextMuted,
                 )
             }
 
@@ -257,12 +265,12 @@ private fun TruckCard(
                     .fillMaxWidth()
                     .height(6.dp),
                 color = Primary,
-                trackColor = Color(0xFFE2E8F0),
+                trackColor = ProgressBarTrack,
             )
             Text(
                 text = "${truck.capacityUsed} / ${truck.capacityTotal} case packs",
                 fontSize = 12.sp,
-                color = Color(0xFF64748B),
+                color = TextSecondary,
             )
 
             // Collapsible order lines
@@ -272,7 +280,7 @@ private fun TruckCard(
                     Text(
                         text = "No items on this truck.",
                         fontSize = 13.sp,
-                        color = Color(0xFF94A3B8),
+                        color = TextMuted,
                     )
                 } else {
                     truck.orderLines.forEach { line ->
@@ -308,12 +316,12 @@ private fun OrderLineRow(
                 text = line.itemName,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color(0xFF1E293B),
+                color = ChipTextDark,
             )
             Text(
                 text = "${line.casePacks} cases · ${line.quantity} units",
                 fontSize = 12.sp,
-                color = Color(0xFF64748B),
+                color = TextSecondary,
             )
         }
         if (line.canCancel) {

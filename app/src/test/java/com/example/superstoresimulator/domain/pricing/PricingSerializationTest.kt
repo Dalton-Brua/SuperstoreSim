@@ -57,15 +57,11 @@ class PricingSerializationTest {
     }
 
     @Test
-    fun `cached multipliers are not serialized - recomputed on load`() {
-        val state = stateWithPricing(PricingState(
-            priceTrafficMultiplier = 0.5f,
-            basketSizeMultiplier = 0.7f,
-        ))
+    fun `multipliers are computed from smoothedPriceIndex`() {
+        val state = stateWithPricing(PricingState(smoothedPriceIndex = 1.0f))
         val json = GameStateSerializer.serialize(state)
         val restored = GameStateSerializer.deserialize(json)!!
 
-        // Cached multipliers default to 1.0 on deserialization (recomputed by loadState)
         assertEquals(1.0f, restored.pricingState.priceTrafficMultiplier, 0.001f)
         assertEquals(1.0f, restored.pricingState.basketSizeMultiplier, 0.001f)
     }

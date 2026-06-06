@@ -33,8 +33,39 @@ import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
+import com.example.superstoresimulator.ui.components.PriceSlider
 import com.example.superstoresimulator.ui.state.InventoryItemUI
 import com.example.superstoresimulator.ui.state.TruckOrderLineUI
+import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.ChipSurface
+import com.example.superstoresimulator.ui.theme.ChipTextDark
+import com.example.superstoresimulator.ui.theme.CriticalRed
+import com.example.superstoresimulator.ui.theme.DestructiveDark
+import com.example.superstoresimulator.ui.theme.Destructive
+import com.example.superstoresimulator.ui.theme.ErrorSurface
+import com.example.superstoresimulator.ui.theme.ErrorSurfaceSubtle
+import com.example.superstoresimulator.ui.theme.ErrorTextDark
+import com.example.superstoresimulator.ui.theme.FreshnessYellow
+import com.example.superstoresimulator.ui.theme.InfoSurface
+import com.example.superstoresimulator.ui.theme.OrangeAccent
+import com.example.superstoresimulator.ui.theme.PlaceholderSurface
+import com.example.superstoresimulator.ui.theme.Primary
+import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.ProgressBarIndicator
+import com.example.superstoresimulator.ui.theme.ProgressBarTrack
+import com.example.superstoresimulator.ui.theme.Secondary
+import com.example.superstoresimulator.ui.theme.Success
+import com.example.superstoresimulator.ui.theme.SuccessChipSurface
+import com.example.superstoresimulator.ui.theme.SuccessTextDark
+import com.example.superstoresimulator.ui.theme.SurfaceSubtle
+import com.example.superstoresimulator.ui.theme.CautionDark
+import com.example.superstoresimulator.ui.theme.TextMuted
+import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextWhite
+import com.example.superstoresimulator.ui.theme.Violet
+import com.example.superstoresimulator.ui.theme.WarningChipSurface
+import com.example.superstoresimulator.ui.theme.WarningOrangeSurface
+import com.example.superstoresimulator.ui.theme.WarningTextDarker
 import java.util.Locale
 
 // ─── Sales time range ─────────────────────────────────────────────────────────
@@ -98,7 +129,7 @@ fun ItemHeaderCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(Color.White),
+        colors = CardDefaults.cardColors(CardWhite),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Column(
@@ -111,7 +142,7 @@ fun ItemHeaderCard(
                 text = item.name,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF1E40AF)
+                color = PrimaryDark
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -120,17 +151,17 @@ fun ItemHeaderCard(
                 Text(
                     text = "Category: ${item.category.displayName}",
                     fontSize = 14.sp,
-                    color = Color(0xFF64748B)
+                    color = TextSecondary
                 )
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFDEEBFF)
+                    color = InfoSurface
                 ) {
                     Text(
                         text = fullItem?.tier ?: currentTier.name,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1E40AF),
+                        color = PrimaryDark,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -140,7 +171,7 @@ fun ItemHeaderCard(
                 Text(
                     text = desc,
                     fontSize = 14.sp,
-                    color = Color(0xFF334155),
+                    color = ProgressBarIndicator,
                     lineHeight = 20.sp
                 )
             }
@@ -158,7 +189,7 @@ fun StockLevelsCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(Color.White),
+        colors = CardDefaults.cardColors(CardWhite),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(
@@ -167,26 +198,26 @@ fun StockLevelsCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Stock Levels", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+            Text("Stock Levels", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ChipTextDark)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
-                    Text("Shelf Stock", fontSize = 12.sp, color = Color(0xFF64748B))
-                    Text("${item.shelfStock} units", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                    Text("Shelf Stock", fontSize = 12.sp, color = TextSecondary)
+                    Text("${item.shelfStock} units", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = ChipTextDark)
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Backroom Stock", fontSize = 12.sp, color = Color(0xFF64748B))
+                        Text("Backroom Stock", fontSize = 12.sp, color = TextSecondary)
                         if (item.backroomFull) {
-                            Text("FULL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+                            Text("FULL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Destructive)
                         }
                     }
-                    Text("${item.backroomStock} units", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                    Text("${item.backroomStock} units", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = ChipTextDark)
                 }
             }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
+                    .background(PlaceholderSurface, RoundedCornerShape(8.dp))
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -195,7 +226,7 @@ fun StockLevelsCard(
                     text = "${item.shelfStock + item.backroomStock} units",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1E40AF)
+                    color = PrimaryDark
                 )
             }
         }
@@ -218,17 +249,17 @@ fun BatchDetailsCard(
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(Color.White),
+        colors = CardDefaults.cardColors(CardWhite),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Batch Details", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+            Text("Batch Details", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ChipTextDark)
             Text(
                 "${allBatches.size} batch${if (allBatches.size != 1) "es" else ""} in stock",
-                fontSize = 13.sp, color = Color(0xFF64748B)
+                fontSize = 13.sp, color = TextSecondary
             )
             allBatches.forEach { (batch, location) ->
                 BatchRow(
@@ -240,10 +271,10 @@ fun BatchDetailsCard(
                 )
             }
             val totalValueAtRisk = allBatches.sumOf { (batch, _) -> (item.unitCost * batch.quantity).cents }
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Color(0xFFDEEBFF)) {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = InfoSurface) {
                 Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Total Value in Stock", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E40AF))
-                    Text(Money(totalValueAtRisk).toString(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E40AF))
+                    Text("Total Value in Stock", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = PrimaryDark)
+                    Text(Money(totalValueAtRisk).toString(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = PrimaryDark)
                 }
             }
         }
@@ -265,14 +296,14 @@ private fun BatchRow(
     val freshnessColor = freshnessColorFor(freshnessPercent)
     val valueAtRisk = unitCost * batch.quantity
 
-    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Color(0xFFF8FAFC), tonalElevation = 1.dp) {
+    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = SurfaceSubtle, tonalElevation = 1.dp) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(shape = RoundedCornerShape(4.dp), color = if (location == "Shelf") Color(0xFF3B82F6) else Color(0xFF8B5CF6)) {
-                        Text(location, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    Surface(shape = RoundedCornerShape(4.dp), color = if (location == "Shelf") Primary else Violet) {
+                        Text(location, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextWhite, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                     }
-                    Text("${batch.quantity} units", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                    Text("${batch.quantity} units", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = ChipTextDark)
                 }
                 Text("$freshnessPercent%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = freshnessColor)
             }
@@ -280,25 +311,25 @@ private fun BatchRow(
                 Text(
                     text = expirationLabel(daysUntilExpiration),
                     fontSize = 12.sp,
-                    color = if (daysUntilExpiration <= 3) Color(0xFFDC2626) else Color(0xFF64748B),
+                    color = if (daysUntilExpiration <= 3) DestructiveDark else TextSecondary,
                     fontWeight = if (daysUntilExpiration <= 3) FontWeight.Bold else FontWeight.Normal
                 )
-                Text("Received day ${batch.receivedDay}", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                Text("Received day ${batch.receivedDay}", fontSize = 11.sp, color = TextMuted)
             }
             LinearProgressIndicator(
                 progress = { freshnessPercent / 100f },
                 modifier = Modifier.fillMaxWidth().height(6.dp),
-                color = freshnessColor, trackColor = Color(0xFFE2E8F0)
+                color = freshnessColor, trackColor = ProgressBarTrack
             )
             Surface(
                 modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(4.dp),
-                color = when { daysUntilExpiration <= 1 -> Color(0xFFFEE2E2); daysUntilExpiration <= 3 -> Color(0xFFFED7AA); else -> Color(0xFFF1F5F9) }
+                color = when { daysUntilExpiration <= 1 -> ErrorSurface; daysUntilExpiration <= 3 -> WarningOrangeSurface; else -> PlaceholderSurface }
             ) {
                 Row(modifier = Modifier.padding(8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Value at risk:", fontSize = 11.sp, color = Color(0xFF64748B))
+                    Text("Value at risk:", fontSize = 11.sp, color = TextSecondary)
                     Text(
                         text = valueAtRisk.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                        color = when { daysUntilExpiration <= 1 -> Color(0xFFDC2626); daysUntilExpiration <= 3 -> Color(0xFFEA580C); else -> Color(0xFF1E293B) }
+                        color = when { daysUntilExpiration <= 1 -> DestructiveDark; daysUntilExpiration <= 3 -> OrangeAccent; else -> ChipTextDark }
                     )
                 }
             }
@@ -323,13 +354,13 @@ fun FreshnessCard(
     } else 100
     val freshnessColor = freshnessColorFor(freshnessPercent)
 
-    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
+    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(CardWhite), elevation = CardDefaults.cardElevation(2.dp)) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Freshness", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+            Text("Freshness", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ChipTextDark)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = expirationLabel(daysUntilExpiration), fontSize = 14.sp,
-                    color = if (daysUntilExpiration <= 3) Color(0xFFDC2626) else Color(0xFF64748B),
+                    color = if (daysUntilExpiration <= 3) DestructiveDark else TextSecondary,
                     fontWeight = if (daysUntilExpiration <= 3) FontWeight.Bold else FontWeight.Normal
                 )
                 Text("$freshnessPercent% fresh", fontSize = 14.sp, color = freshnessColor, fontWeight = FontWeight.Bold)
@@ -337,30 +368,107 @@ fun FreshnessCard(
             LinearProgressIndicator(
                 progress = { freshnessPercent / 100f },
                 modifier = Modifier.fillMaxWidth().height(10.dp),
-                color = freshnessColor, trackColor = Color(0xFFE2E8F0)
+                color = freshnessColor, trackColor = ProgressBarTrack
             )
-            Text("Shelf life: $shelfLifeDays days", fontSize = 12.sp, color = Color(0xFF64748B))
+            Text("Shelf life: $shelfLifeDays days", fontSize = 12.sp, color = TextSecondary)
         }
     }
 }
 
 // ─── Pricing ─────────────────────────────────────────────────────────────────
 
-/** Card showing retail price, unit cost, and per-unit margin. */
+/** Card showing pricing info with interactive item price override slider. */
 @Composable
 fun PricingCard(
     item: InventoryItemUI,
+    itemOverridePercent: Int = 0,
+    onSetItemOverride: ((Int, Int) -> Unit)? = null,
+    onClearMarkdown: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val margin = item.price - item.unitCost
-    val marginPercent = if (item.unitCost.cents > 0) ((margin.cents.toDouble() / item.unitCost.cents) * 100).toInt() else 0
+    val priceSuffix = if (item.soldByWeight) "/lb" else ""
+    val effectiveMargin = item.effectivePrice - item.unitCost
+    val effectiveMarginPercent = if (item.unitCost.cents > 0)
+        ((effectiveMargin.cents.toDouble() / item.unitCost.cents) * 100).toInt() else 0
 
-    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Pricing & Profit", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-            DetailRow("Retail Price", item.price.toString(), Color(0xFF1E40AF))
-            DetailRow("Unit Cost", item.unitCost.toString(), Color(0xFF64748B))
-            DetailRow("Margin per Unit", "$margin ($marginPercent%)", if (margin.cents >= 0) Color(0xFF22C55E) else Color(0xFFEF4444))
+    val nearCostThreshold = item.unitCost.cents + (item.unitCost.cents * 0.10).toLong()
+    val isAtCost = item.effectivePrice.cents <= item.unitCost.cents
+    val isLowMargin = !isAtCost && item.effectivePrice.cents <= nearCostThreshold
+
+    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(CardWhite), elevation = CardDefaults.cardElevation(2.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Pricing & Profit", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ChipTextDark)
+
+            if (item.priceModifierPercent != 0) {
+                DetailRow("Base Price", "${item.price}$priceSuffix", TextSecondary)
+                val modColor = if (item.priceModifierPercent > 0) DestructiveDark else Secondary
+                val modSign = if (item.priceModifierPercent > 0) "+" else ""
+                DetailRow("Effective Price", "${item.effectivePrice}$priceSuffix ($modSign${item.priceModifierPercent}%)", modColor)
+            } else {
+                DetailRow("Retail Price", "${item.effectivePrice}$priceSuffix", PrimaryDark)
+            }
+
+            DetailRow("Unit Cost", "${item.unitCost}$priceSuffix", TextSecondary)
+            DetailRow(
+                "Margin per Unit",
+                "$effectiveMargin ($effectiveMarginPercent%)",
+                if (effectiveMargin.cents >= 0) Secondary else Destructive
+            )
+
+            if (isAtCost) {
+                Surface(
+                    color = ErrorSurface,
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("At Cost — No Margin", fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        color = DestructiveDark, modifier = Modifier.padding(8.dp))
+                }
+            } else if (isLowMargin) {
+                Surface(
+                    color = WarningChipSurface,
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Low Margin", fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        color = CautionDark, modifier = Modifier.padding(8.dp))
+                }
+            }
+
+            if (item.hasActiveMarkdown) {
+                Surface(
+                    color = SuccessChipSurface,
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Markdown Active", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Success)
+                        if (onClearMarkdown != null) {
+                            Text(
+                                "Clear",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryDark,
+                                modifier = Modifier.clickable { onClearMarkdown(item.id) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (onSetItemOverride != null) {
+                Spacer(Modifier.height(4.dp))
+                PriceSlider(
+                    label = "Item Price Override",
+                    currentPercent = itemOverridePercent,
+                    range = -75f..200f,
+                    onSet = { onSetItemOverride(item.id, it) }
+                )
+            }
         }
     }
 }
@@ -380,18 +488,18 @@ fun CasePackDetailsCard(
     val margin = item.price - item.unitCost
     val casePackProfit = margin * item.casePack
 
-    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
+    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(CardWhite), elevation = CardDefaults.cardElevation(2.dp)) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Case Pack Details", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-            DetailRow("Units per Case", "${item.casePack} units", Color(0xFF1E293B))
-            DetailRow("Case Pack Cost", item.casePackCost.toString(), Color(0xFF1E40AF))
-            DetailRow("Case Pack Profit", casePackProfit.toString(), if (casePackProfit.cents >= 0) Color(0xFF22C55E) else Color(0xFFEF4444))
+            Text("Case Pack Details", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ChipTextDark)
+            DetailRow("Units per Case", "${item.casePack} units", ChipTextDark)
+            DetailRow("Case Pack Cost", item.casePackCost.toString(), PrimaryDark)
+            DetailRow("Case Pack Profit", casePackProfit.toString(), if (casePackProfit.cents >= 0) Secondary else Destructive)
             if (fullItem != null) {
                 // Demand is currently always 100% (baseline); TODO: apply event modifiers when implemented
-                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Color(0xFFDCFCE7)) {
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = SuccessChipSurface) {
                     Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Customer Demand", fontSize = 12.sp, color = Color(0xFF166534))
-                        Text("100%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF166534))
+                        Text("Customer Demand", fontSize = 12.sp, color = SuccessTextDark)
+                        Text("100%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SuccessTextDark)
                     }
                 }
             }
@@ -414,12 +522,12 @@ fun PendingDeliveriesCard(
     modifier: Modifier = Modifier
 ) {
     if (pendingDeliveries.isEmpty()) return
-    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
+    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(CardWhite), elevation = CardDefaults.cardElevation(2.dp)) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("🚚 Pending Deliveries", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+            Text("🚚 Pending Deliveries", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ChipTextDark)
             pendingDeliveries.forEach { line ->
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("${line.casePacks} cases · ${line.quantity} units", fontSize = 13.sp, color = Color(0xFF1E293B))
+                    Text("${line.casePacks} cases · ${line.quantity} units", fontSize = 13.sp, color = ChipTextDark)
                     if (line.canCancel) {
                         if (line.casePacks > 1) {
                             FilterChip(selected = false, onClick = { onDecrementOrderLine(itemId, line.truckId) }, label = { Text("Cancel 1", fontSize = 11.sp) })
@@ -446,21 +554,21 @@ fun SalesAnalysisCard(
         calculateSalesStats(itemId, metricsData, selectedRange)
     }
 
-    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
+    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(CardWhite), elevation = CardDefaults.cardElevation(2.dp)) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Sales Analysis", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+            Text("Sales Analysis", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ChipTextDark)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SalesTimeRange.entries.forEach { range ->
                     val isSelected = selectedRange == range
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = if (isSelected) Color(0xFF1E40AF) else Color(0xFFE2E8F0),
+                        color = if (isSelected) PrimaryDark else ChipSurface,
                         modifier = Modifier.weight(1f).clickable { selectedRange = range }
                     ) {
                         Text(
                             text = when (range) { SalesTimeRange.DAILY -> "Daily"; SalesTimeRange.WEEKLY -> "Weekly"; SalesTimeRange.MONTHLY -> "Monthly" },
                             fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                            color = if (isSelected) Color.White else Color(0xFF1E293B),
+                            color = if (isSelected) TextWhite else ChipTextDark,
                             modifier = Modifier.padding(vertical = 8.dp, horizontal = 12.dp),
                             textAlign = TextAlign.Center
                         )
@@ -469,16 +577,16 @@ fun SalesAnalysisCard(
             }
             Spacer(Modifier.height(4.dp))
             if (salesStats.totalUnitsSold > 0) {
-                DetailRow("Total Units Sold", "${salesStats.totalUnitsSold} units", Color(0xFF1E293B))
-                DetailRow("Total Revenue", salesStats.totalRevenue.toString(), Color(0xFF22C55E))
+                DetailRow("Total Units Sold", "${salesStats.totalUnitsSold} units", ChipTextDark)
+                DetailRow("Total Revenue", salesStats.totalRevenue.toString(), Secondary)
                 DetailRow(
                     "Average per ${getRangeName(selectedRange)}",
                     String.format(Locale.US, "%.1f units", salesStats.averagePerPeriod),
-                    Color(0xFF64748B)
+                    TextSecondary
                 )
                 Surface(
                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp),
-                    color = when { salesStats.averagePerPeriod >= 10 -> Color(0xFFDCFCE7); salesStats.averagePerPeriod >= 5 -> Color(0xFFFEF3C7); else -> Color(0xFFFEE2E2) }
+                    color = when { salesStats.averagePerPeriod >= 10 -> SuccessChipSurface; salesStats.averagePerPeriod >= 5 -> WarningChipSurface; else -> ErrorSurface }
                 ) {
                     Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("Performance", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = performanceLabelColor(salesStats.averagePerPeriod))
@@ -489,10 +597,10 @@ fun SalesAnalysisCard(
                     }
                 }
             } else {
-                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Color(0xFFF1F5F9)) {
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = PlaceholderSurface) {
                     Text(
                         text = "No sales recorded for this ${getRangeName(selectedRange).lowercase()}",
-                        fontSize = 13.sp, color = Color(0xFF64748B),
+                        fontSize = 13.sp, color = TextSecondary,
                         modifier = Modifier.padding(16.dp), textAlign = TextAlign.Center
                     )
                 }
@@ -508,20 +616,20 @@ fun SalesAnalysisCard(
 fun DetailRow(
     label: String,
     value: String,
-    valueColor: Color = Color(0xFF1E293B)
+    valueColor: Color = ChipTextDark
 ) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(text = label, fontSize = 14.sp, color = Color(0xFF64748B))
+        Text(text = label, fontSize = 14.sp, color = TextSecondary)
         Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = valueColor)
     }
 }
 
 /** Returns a freshness progress color based on [freshnessPercent]. */
 fun freshnessColorFor(freshnessPercent: Int): Color = when {
-    freshnessPercent <= 10 -> Color(0xFFDC2626)
-    freshnessPercent <= 25 -> Color(0xFFEA580C)
-    freshnessPercent <= 50 -> Color(0xFFFBBF24)
-    else -> Color(0xFF22C55E)
+    freshnessPercent <= 10 -> DestructiveDark
+    freshnessPercent <= 25 -> OrangeAccent
+    freshnessPercent <= 50 -> FreshnessYellow
+    else -> Secondary
 }
 
 /** Returns a human-readable expiration label for [daysUntilExpiration]. */
@@ -533,8 +641,8 @@ fun expirationLabel(daysUntilExpiration: Int): String = when {
 }
 
 private fun performanceLabelColor(avg: Double): Color = when {
-    avg >= 10 -> Color(0xFF166534)
-    avg >= 5 -> Color(0xFF78350F)
-    else -> Color(0xFF991B1B)
+    avg >= 10 -> SuccessTextDark
+    avg >= 5 -> WarningTextDarker
+    else -> ErrorTextDark
 }
 

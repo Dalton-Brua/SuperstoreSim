@@ -46,7 +46,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,9 +60,15 @@ import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.dialogs.BulkOrderDialog
 import com.example.superstoresimulator.ui.state.InventoryUIState
 import com.example.superstoresimulator.ui.state.InventoryItemUI
+import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.ChipSurface
+import com.example.superstoresimulator.ui.theme.ChipTextDark
 import com.example.superstoresimulator.ui.theme.LightBackground
 import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.TextMuted
+import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextWhite
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -208,7 +213,7 @@ private fun InventoryListScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F8FF))
+            .background(LightBackground)
             .padding(24.dp),
     ) {
         // ── Header row: title + bulk order button ──────────────────────────────
@@ -227,7 +232,7 @@ private fun InventoryListScreen(
             if (currentTier.unlockAmount >= ItemUnlockTier.TIER_2.unlockAmount) {
                 Button(
                     onClick = onShowBulkOrderDialog,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E40AF)),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryDark),
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
@@ -235,14 +240,14 @@ private fun InventoryListScreen(
                         Icons.Default.LocalShipping,
                         contentDescription = "Bulk Order",
                         modifier = Modifier.size(16.dp),
-                        tint = Color.White
+                        tint = TextWhite
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
                         "Bulk Order",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = TextWhite
                     )
                 }
             }
@@ -269,8 +274,8 @@ private fun InventoryListScreen(
             singleLine = true,
             shape = RoundedCornerShape(8.dp),
             colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.White,
-                unfocusedContainerColor = Color.White,
+                focusedContainerColor = CardWhite,
+                unfocusedContainerColor = CardWhite,
                 focusedTextColor = PrimaryDark,  // Dark slate for text
                 unfocusedTextColor = PrimaryDark,  // Dark slate for text
                 cursorColor = Primary  // Blue cursor
@@ -340,8 +345,8 @@ fun CategoryChip(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    val bg = if (isSelected) Color(0xFF1E40AF) else Color(0xFFE2E8F0)
-    val fg = if (isSelected) Color.White else Color(0xFF1E293B)
+    val bg = if (isSelected) PrimaryDark else ChipSurface
+    val fg = if (isSelected) TextWhite else ChipTextDark
 
     Surface(
         shape = RoundedCornerShape(20.dp),
@@ -373,6 +378,9 @@ internal fun InventoryItemDetailScreen(
     onCancelOrderLine: (itemId: Int, truckId: Int) -> Unit = { _, _ -> },
     onDecrementOrderLine: (itemId: Int, truckId: Int) -> Unit = { _, _ -> },
     onBuyItem: (Int) -> Unit,
+    onSetItemOverride: (Int, Int) -> Unit = { _, _ -> },
+    onClearMarkdown: (Int) -> Unit = { _ -> },
+    itemOverridePercent: Int = 0,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -381,7 +389,7 @@ internal fun InventoryItemDetailScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F8FF))
+            .background(LightBackground)
             .statusBarsPadding()
             .padding(16.dp)
     ) {
@@ -395,7 +403,7 @@ internal fun InventoryItemDetailScreen(
                 text = money.toString(),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF1E40AF)
+                color = PrimaryDark
             )
         }
 
@@ -424,7 +432,14 @@ internal fun InventoryItemDetailScreen(
                 item { FreshnessCard(item = item, currentDay = currentDay) }
             }
 
-            item { PricingCard(item = item) }
+            item {
+                PricingCard(
+                    item = item,
+                    itemOverridePercent = itemOverridePercent,
+                    onSetItemOverride = onSetItemOverride,
+                    onClearMarkdown = onClearMarkdown,
+                )
+            }
 
             item { CasePackDetailsCard(item = item, fullItem = fullItem) }
 
@@ -447,8 +462,8 @@ internal fun InventoryItemDetailScreen(
                         .fillMaxWidth()
                         .height(56.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1E40AF),
-                        disabledContainerColor = Color(0xFFE2E8F0)
+                        containerColor = PrimaryDark,
+                        disabledContainerColor = ChipSurface
                     ),
                     enabled = money >= item.casePackCost && !item.backroomFull,
                     shape = RoundedCornerShape(12.dp)
@@ -461,7 +476,7 @@ internal fun InventoryItemDetailScreen(
                         },
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (money >= item.casePackCost && !item.backroomFull) Color.White else Color(0xFF94A3B8)
+                        color = if (money >= item.casePackCost && !item.backroomFull) TextWhite else TextMuted
                     )
                 }
             }
@@ -473,8 +488,8 @@ internal fun InventoryItemDetailScreen(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF1E40AF),
-                contentColor = Color.White
+                containerColor = PrimaryDark,
+                contentColor = TextWhite
             ),
             shape = RoundedCornerShape(8.dp)
         ) {
@@ -558,7 +573,7 @@ fun InventoryAndFreshScreen(
     ) {
         TabRow(
             selectedTabIndex = selectedTab,
-            containerColor = Color.White,
+            containerColor = CardWhite,
             contentColor = PrimaryDark,
             indicator = { tabPositions ->
                 TabRowDefaults.SecondaryIndicator(
@@ -579,7 +594,7 @@ fun InventoryAndFreshScreen(
                     },
                     text = { Text(title, fontWeight = FontWeight.SemiBold) },
                     selectedContentColor = Primary,
-                    unselectedContentColor = Color(0xFF64748B)
+                    unselectedContentColor = TextSecondary
                 )
             }
         }

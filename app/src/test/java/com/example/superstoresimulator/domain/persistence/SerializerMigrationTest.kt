@@ -3,6 +3,7 @@ package com.example.superstoresimulator.domain.persistence
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.player.PlayerRole
+import com.example.superstoresimulator.domain.store.StoreSize
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -83,11 +84,11 @@ class SerializerMigrationTest {
     // ── autoHireBudget defaults ──────────────────────────────────────────────
 
     @Test
-    fun `missing autoHireBudget defaults to ZERO`() {
+    fun `missing autoHireBudget defaults to daily rent`() {
         val json = minimalSaveJson()
         val state = GameStateSerializer.deserialize(json)
         assertNotNull(state)
-        assertEquals(Money.ZERO, state!!.autoHireBudget)
+        assertEquals(StoreSize.MOM_AND_POP.dailyRent, state!!.autoHireBudget)
     }
 
     @Test

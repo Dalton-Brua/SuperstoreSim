@@ -346,6 +346,20 @@ class GameViewModel @Inject constructor(
                 gameEngine.setAutoHireBudget(event.budget)
             }
 
+            // Pricing System
+            is GameEvent.SetCategoryMarkup -> {
+                gameEngine.setCategoryMarkup(event.category, event.percent)
+            }
+            is GameEvent.SetDefaultMarkup -> {
+                gameEngine.setDefaultMarkup(event.percent)
+            }
+            is GameEvent.SetItemPriceOverride -> {
+                gameEngine.setItemPriceOverride(event.itemId, event.percent)
+            }
+            is GameEvent.ClearItemMarkdown -> {
+                gameEngine.clearItemMarkdown(event.itemId)
+            }
+
             GameEvent.Tick -> gameEngine.tick(tickDelta)
 
         }
@@ -610,12 +624,7 @@ class GameViewModel @Inject constructor(
 
     private fun buildRegistersUiState(domain: GameState): RegistersUIState {
         val currentHour = domain.currentTime.hour
-        val currentDay = domain.currentTime.dayNumber
         val playerAssigReg = domain.playerAssignedRegisterId
-
-        val todayByRegister = domain.salesHistory
-            .filter { it.gameDayNumber == currentDay && it.id > 0 }
-            .groupBy { it.registerId }
 
         val registerUiList = domain.registers.map { reg ->
             val cashierId = reg.assignedCashierId
@@ -625,10 +634,8 @@ class GameViewModel @Inject constructor(
             val cashierShift = cashierId?.let { id ->
                 domain.staffSchedules.firstOrNull { it.entityId == id }
             }
-            // If no shift is defined for the cashier, treat them as always on
             val cashierOnShift = cashierShift?.isOnShift(currentHour) ?: (cashierId != null)
             val isPlayerAssigned = reg.registerId == playerAssigReg
-            val todayTxs = todayByRegister[reg.registerId] ?: emptyList()
 
             RegisterUIState(
                 registerId = reg.registerId,
@@ -638,8 +645,8 @@ class GameViewModel @Inject constructor(
                 transactionActive = reg.transactionActive,
                 isManned = (cashierId != null && cashierOnShift) || isPlayerAssigned,
                 cashierOnShift = cashierOnShift,
-                dailyTransactions = todayTxs.size,
-                dailyRevenue = todayTxs.fold(Money.ZERO) { acc, tx -> acc + tx.totalEarned },
+                dailyTransactions = reg.dailyTransactions,
+                dailyRevenue = reg.dailyRevenue,
             )
         }
 

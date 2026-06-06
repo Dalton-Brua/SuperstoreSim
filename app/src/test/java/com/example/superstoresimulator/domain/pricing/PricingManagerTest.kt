@@ -15,24 +15,9 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import kotlin.math.abs
+import com.example.superstoresimulator.domain.helpers.FakeItemDao
 
 class PricingManagerTest {
-
-    private class FakeItemDao(private val items: List<Item>) : ItemDao {
-        override suspend fun getAllItems(): List<Item> = items
-        override suspend fun getItemById(itemId: String): Item? = items.firstOrNull { it.id == itemId }
-        override suspend fun insertItem(item: Item) {}
-        override suspend fun deleteItem(itemId: String) {}
-        override suspend fun deleteAll() {}
-        override suspend fun getItemName(itemId: String): String? = items.firstOrNull { it.id == itemId }?.name
-        override suspend fun getAllItemsWithNames(): List<ItemWithName> = items.map { ItemWithName(it.id, it.name) }
-        override suspend fun getItemsByIds(itemIds: List<String>): List<Item> = items.filter { it.id in itemIds }
-        override suspend fun insertBatch(items: List<Item>) {}
-        override suspend fun getItemCount(): Int = items.size
-        override suspend fun getItemsByCategory(category: String): List<Item> = items.filter { it.category.name == category }
-        override suspend fun searchItemsByName(searchTerm: String): List<Item> = items.filter { it.name.contains(searchTerm, ignoreCase = true) }
-        override suspend fun getItemsForInventory(itemIds: List<String>): List<Item> = items.filter { it.id in itemIds }
-    }
 
     private fun item(
         id: Int, name: String, priceCents: Long, costCents: Long,
@@ -120,16 +105,16 @@ class PricingManagerTest {
     }
 
     @Test
-    fun `all three stack multiplicatively`() {
+    fun `markups stack additively`() {
         val state = baseState().copy(
             pricingState = PricingState(
                 categoryMarkups = mapOf(ItemCategory.DAIRY to 10),
                 itemOverrides = mapOf(2 to 20),
             )
         )
-        // $3.00 * 1.10 * 1.20 = $3.96
+        // $3.00 * (1 + 0.10 + 0.20) = $3.90
         val resolved = mgr.resolvePrice(2, state)
-        assertEquals(Money(396), resolved.effectivePrice)
+        assertEquals(Money(390), resolved.effectivePrice)
     }
 
     @Test
@@ -140,9 +125,9 @@ class PricingManagerTest {
                 activeMarkdowns = mapOf(1 to Markdown(30, MarkdownReason.PLAYER_SALE, 1)),
             )
         )
-        // $5.00 * 1.10 * 0.70 = $3.85
+        // $5.00 * (1 + 0.10 - 0.30) = $4.00
         val resolved = mgr.resolvePrice(1, state)
-        assertEquals(Money(385), resolved.effectivePrice)
+        assertEquals(Money(400), resolved.effectivePrice)
     }
 
     @Test
@@ -195,7 +180,7 @@ class PricingManagerTest {
                 itemOverrides = mapOf(2 to -50),
             )
         )
-        // $3.00 * 0.70 * 0.50 = $1.05 → clamped to unitCost $1.50
+        // $3.00 * (1 + (-0.30) + (-0.50)) = $0.60 → clamped to unitCost $1.50
         val resolved = mgr.resolvePrice(2, state)
         assertEquals(Money(150), resolved.effectivePrice)
     }
@@ -252,16 +237,16 @@ class PricingManagerTest {
     }
 
     @Test
-    fun `chained small percentages - single rounding`() {
+    fun `chained small percentages - additive`() {
         val state = baseState().copy(
             pricingState = PricingState(
                 categoryMarkups = mapOf(ItemCategory.DAIRY to 3),
                 itemOverrides = mapOf(2 to 7),
             )
         )
-        // $3.00 * 1.03 * 1.07 = 3.3063 → rounds to 331 cents
+        // $3.00 * (1 + 0.03 + 0.07) = $3.30
         val resolved = mgr.resolvePrice(2, state)
-        assertEquals(Money(331), resolved.effectivePrice)
+        assertEquals(Money(330), resolved.effectivePrice)
     }
 
     @Test
@@ -272,9 +257,9 @@ class PricingManagerTest {
                 itemOverrides = mapOf(7 to 200),
             )
         )
-        // $199.99 * 2.0 * 3.0 = $1199.94
+        // $199.99 * (1 + 1.0 + 2.0) = $799.96
         val resolved = mgr.resolvePrice(7, state)
-        assertEquals(Money(119994), resolved.effectivePrice)
+        assertEquals(Money(79996), resolved.effectivePrice)
     }
 
     // ── 4. Purchase Probability Multiplier ───────────────────────────────────
@@ -603,9 +588,9 @@ class PricingManagerTest {
                 activeMarkdowns = mapOf(1 to Markdown(30, MarkdownReason.EXPIRING_SOON, 1)),
             )
         )
-        // $5.00 * 1.20 * 0.70 = $4.20
+        // $5.00 * (1 + 0.20 - 0.30) = $4.50
         val resolved = mgr.resolvePrice(1, state)
-        assertEquals(Money(420), resolved.effectivePrice)
+        assertEquals(Money(450), resolved.effectivePrice)
         // Net modifier should be negative (markdown > markup)
         assertTrue(resolved.modifierPercent < 0)
     }

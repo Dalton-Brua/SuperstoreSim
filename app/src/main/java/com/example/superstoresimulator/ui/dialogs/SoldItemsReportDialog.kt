@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -61,7 +60,7 @@ fun SoldItemsReportDialog(
                 .fillMaxWidth()
                 .wrapContentHeight(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = CardWhite),
             elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Column(
@@ -86,19 +85,19 @@ fun SoldItemsReportDialog(
                             Icon(
                                 Icons.Default.ShoppingCart,
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = TextWhite,
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
                                 text = "Items Sold Report",
-                                color = Color.White,
+                                color = TextWhite,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp
                             )
                         }
                         Text(
                             text = "Day ${report.dayNumber + 1} — ${report.dayOfWeekName}",
-                            color = Color.White.copy(alpha = 0.8f),
+                            color = TextWhite.copy(alpha = 0.8f),
                             fontSize = 13.sp
                         )
                     }
@@ -204,7 +203,7 @@ fun SoldItemsReportDialog(
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryDark),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("Close", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("Close", color = TextWhite, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

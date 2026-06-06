@@ -21,11 +21,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.graphics.Color
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.ui.theme.Amber
 import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.Destructive
 import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.Secondary
 import com.example.superstoresimulator.ui.theme.TextSecondary
 
 @Composable
@@ -90,9 +92,9 @@ private fun EmployeeMetric(totalEmployees: Int, activeEmployees: Int = totalEmpl
 private fun ZoneMetric(avgZoneScore: Float) {
     val pct = (avgZoneScore * 100).toInt().coerceIn(0, 100)
     val zoneColor = when {
-        pct >= 80 -> Color(0xFF22C55E)
-        pct >= 50 -> Color(0xFFF59E0B)
-        else -> Color(0xFFEF4444)
+        pct >= 80 -> Secondary
+        pct >= 50 -> Amber
+        else -> Destructive
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically) {

@@ -236,25 +236,22 @@ class StaffManager {
         employeeActivities = activities
     }
 
-    fun currentCashierUtilization(): Float =
-        if (cashierTotalTicks > 0) cashierBusyTicks.toFloat() / cashierTotalTicks else 0f
+    private fun utilization(busy: Int, total: Int): Float =
+        if (total > 0) busy.toFloat() / total else 0f
 
-    fun currentStockerUtilization(): Float =
-        if (stockerTotalTicks > 0) stockerBusyTicks.toFloat() / stockerTotalTicks else 0f
+    fun currentCashierUtilization(): Float = utilization(cashierBusyTicks, cashierTotalTicks)
 
-    fun currentFreshUtilization(): Float =
-        if (freshTotalTicks > 0) freshBusyTicks.toFloat() / freshTotalTicks else 0f
+    fun currentStockerUtilization(): Float = utilization(stockerBusyTicks, stockerTotalTicks)
+
+    fun currentFreshUtilization(): Float = utilization(freshBusyTicks, freshTotalTicks)
 
     fun snapshotDailyMetrics(): DailyStaffMetrics = DailyStaffMetrics(
         peakPendingCustomers = peakPendingCustomers,
         avgHourlyPendingCustomers = if (pendingCustomersByHour.isNotEmpty())
             pendingCustomersByHour.values.sum().toFloat() / pendingCustomersByHour.size else 0f,
-        avgCashierUtilization = if (cashierTotalTicks > 0)
-            cashierBusyTicks.toFloat() / cashierTotalTicks else 0f,
-        avgStockerUtilization = if (stockerTotalTicks > 0)
-            stockerBusyTicks.toFloat() / stockerTotalTicks else 0f,
-        avgFreshUtilization = if (freshTotalTicks > 0)
-            freshBusyTicks.toFloat() / freshTotalTicks else 0f,
+        avgCashierUtilization = utilization(cashierBusyTicks, cashierTotalTicks),
+        avgStockerUtilization = utilization(stockerBusyTicks, stockerTotalTicks),
+        avgFreshUtilization = utilization(freshBusyTicks, freshTotalTicks),
         hasUnstaffedRegisters = hadUnstaffedRegisters,
         freshItemsOutOfStock = 0,
         freshOrdersAttempted = 0,
@@ -288,27 +285,17 @@ class StaffManager {
         val stockerCount = registry.getByDef(EntityDef.STOCKER).size
         val freshCount = registry.getByDef(EntityDef.FRESH_HANDLER).size
 
-        if (cashierCount == 0 && result.registers.isNotEmpty()) {
+        fun bootstrapHireIfNeeded(def: EntityDef, reason: String) {
             val before = result.hiredEntityRegistry.totalCount()
-            result = tryAutoHire(result, EntityDef.CASHIER)
+            result = tryAutoHire(result, def)
             if (result.hiredEntityRegistry.totalCount() > before) {
-                events += AutoHireEvent(EntityDef.CASHIER.displayName, "No cashiers", detail = "Bootstrap hire — zero cashiers on staff")
+                events += AutoHireEvent(def.displayName, reason, detail = "Bootstrap hire — zero ${def.displayName.lowercase()}s on staff")
             }
         }
-        if (stockerCount == 0) {
-            val before = result.hiredEntityRegistry.totalCount()
-            result = tryAutoHire(result, EntityDef.STOCKER)
-            if (result.hiredEntityRegistry.totalCount() > before) {
-                events += AutoHireEvent(EntityDef.STOCKER.displayName, "No stockers", detail = "Bootstrap hire — zero stockers on staff")
-            }
-        }
-        if (freshCount == 0 && state.currentTier >= ItemUnlockTier.TIER_3) {
-            val before = result.hiredEntityRegistry.totalCount()
-            result = tryAutoHire(result, EntityDef.FRESH_HANDLER)
-            if (result.hiredEntityRegistry.totalCount() > before) {
-                events += AutoHireEvent(EntityDef.FRESH_HANDLER.displayName, "No fresh staff", detail = "Bootstrap hire — zero fresh handlers on staff")
-            }
-        }
+
+        if (cashierCount == 0 && result.registers.isNotEmpty()) bootstrapHireIfNeeded(EntityDef.CASHIER, "No cashiers")
+        if (stockerCount == 0) bootstrapHireIfNeeded(EntityDef.STOCKER, "No stockers")
+        if (freshCount == 0 && state.currentTier >= ItemUnlockTier.TIER_3) bootstrapHireIfNeeded(EntityDef.FRESH_HANDLER, "No fresh staff")
 
         // Cashier auto-hire: avg customers in line vs register count
         val registerCount = result.registers.size
@@ -432,7 +419,6 @@ class StaffManager {
                 val newRegisterId = (result.registers.maxOfOrNull { it.registerId } ?: 0) + 1
                 result = result.copy(
                     money = result.money - cost,
-                    ownedRegisterCount = result.ownedRegisterCount + 1,
                     registers = result.registers + RegisterState(registerId = newRegisterId),
                 )
                 events += AutoHireEvent("Register", "New register", detail = "Store Manager purchased register #${result.ownedRegisterCount}",
@@ -446,9 +432,7 @@ class StaffManager {
             val shifts = result.staffSchedules.filter { it.entityId in entityIds }
             if (shifts.size < 2) continue
 
-            val coverageByHour = (6..20).associateWith { hour ->
-                shifts.count { it.isOnShift(hour) }
-            }
+            val coverageByHour = coverageByHour(shifts)
             val hasZeroCoverage = coverageByHour.values.any { it == 0 }
             if (!hasZeroCoverage) continue
 
@@ -497,6 +481,9 @@ class StaffManager {
         return hireEntity(state, def)
     }
 
+    private fun coverageByHour(shifts: List<StaffShift>): Map<Int, Int> =
+        (6..20).associateWith { hour -> shifts.count { it.isOnShift(hour) } }
+
     // ── Pure state operations ─────────────────────────────────────────────────
 
     fun hireEntity(state: GameState, def: EntityDef): GameState {
@@ -508,11 +495,7 @@ class StaffManager {
         val currentTypeEntityIds = state.hiredEntityRegistry.getByDef(def).map { it.id }.toSet()
         val existingShifts = state.staffSchedules.filter { it.entityId in currentTypeEntityIds }
 
-        val coverageByHour = (6..20).associateWith { hour ->
-            existingShifts.count { it.isOnShift(hour) }
-        }
-
-        val newShift = pickBestShift(newEntityId, coverageByHour)
+        val newShift = pickBestShift(newEntityId, coverageByHour(existingShifts))
 
         return state.copy(
             hiredEntityRegistry = newRegistry,
@@ -658,18 +641,84 @@ class StaffManager {
             }.toFloat()
         }
 
+        data class ActiveWeightResult(val weight: Float, val onShiftIds: List<Int>)
+
         fun activeWeightedCount(
             def: EntityDef,
             currentHour: Int,
             schedules: List<StaffShift>,
             registry: HiredEntityRegistry,
-        ): Float {
-            return registry.getByDef(def).sumOf { entity ->
+        ): Float = activeWeightedCountWithIds(def, currentHour, schedules, registry).weight
+
+        fun activeWeightedCountWithIds(
+            def: EntityDef,
+            currentHour: Int,
+            schedules: List<StaffShift>,
+            registry: HiredEntityRegistry,
+        ): ActiveWeightResult {
+            var weight = 0.0
+            val ids = mutableListOf<Int>()
+            for (entity in registry.getByDef(def)) {
                 val shift = schedules.firstOrNull { it.entityId == entity.id }
-                if (shift != null && shift.isOnShift(currentHour))
-                    (entity.throughputWeight * entity.levelMultiplier * entity.trait.throughputMultiplier).toDouble()
-                else 0.0
-            }.toFloat()
+                if (shift != null && shift.isOnShift(currentHour)) {
+                    weight += entity.throughputWeight * entity.levelMultiplier * entity.trait.throughputMultiplier
+                    ids.add(entity.id)
+                }
+            }
+            return ActiveWeightResult(weight.toFloat(), ids)
+        }
+
+        data class TickBonuses(
+            val cashierBonus: Float,
+            val stockerBonus: Float,
+            val freshBonus: Float,
+            val onShiftManagerIds: List<Int>,
+        )
+
+        fun computeAllBonuses(
+            playerRole: PlayerRole,
+            currentHour: Int,
+            schedules: List<StaffShift>,
+            registry: HiredEntityRegistry,
+        ): TickBonuses {
+            var managerBonusSum = 0.0
+            var hasCashierDeptMgr = false
+            var hasStockerDeptMgr = false
+            var hasFreshDeptMgr = false
+            val onShiftManagerIds = mutableListOf<Int>()
+
+            for (entity in registry.hiredEntities) {
+                val isOnShift = schedules.any { s -> s.entityId == entity.id && s.isOnShift(currentHour) }
+                if (!isOnShift) continue
+
+                if (entity.entityDefinition == EntityDef.MANAGER) {
+                    onShiftManagerIds.add(entity.id)
+                    managerBonusSum += when (entity.tier) {
+                        Tier.BASE -> 0.15
+                        Tier.FAST -> 0.25
+                        Tier.MANAGER -> 0.30
+                    }
+                } else if (entity.tier == Tier.MANAGER) {
+                    when (entity.entityDefinition) {
+                        EntityDef.CASHIER -> hasCashierDeptMgr = true
+                        EntityDef.STOCKER -> hasStockerDeptMgr = true
+                        EntityDef.FRESH_HANDLER -> hasFreshDeptMgr = true
+                        else -> {}
+                    }
+                }
+            }
+
+            var globalBonus = 1.0f + managerBonusSum.toFloat()
+            if (playerRole == PlayerRole.MANAGE) {
+                globalBonus *= 1.10f
+            }
+
+            return TickBonuses(
+                cashierBonus = globalBonus * if (hasCashierDeptMgr) 1.10f else 1.0f,
+                stockerBonus = globalBonus * if (hasStockerDeptMgr) 1.10f else 1.0f,
+                freshBonus = globalBonus * if (hasFreshDeptMgr) 1.10f else 1.0f,
+                onShiftManagerIds = onShiftManagerIds,
+            )
         }
 
         fun computeGlobalBonus(
@@ -678,7 +727,6 @@ class StaffManager {
             schedules: List<StaffShift>,
             registry: HiredEntityRegistry,
         ): Float {
-            // Manager bonuses are additive and stack across managers on shift
             val onShiftManagers = registry.getByDef(EntityDef.MANAGER).filter { e ->
                 schedules.any { s -> s.entityId == e.id && s.isOnShift(currentHour) }
             }
@@ -692,7 +740,6 @@ class StaffManager {
 
             var bonus = 1.0f + managerBonus
 
-            // Player manage bonus is multiplicative
             if (playerRole == PlayerRole.MANAGE) {
                 bonus *= 1.10f
             }

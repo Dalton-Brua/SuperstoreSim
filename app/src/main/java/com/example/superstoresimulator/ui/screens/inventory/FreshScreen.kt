@@ -13,7 +13,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -21,8 +20,16 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.state.InventoryItemUI
+import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.DestructiveDark
+import com.example.superstoresimulator.ui.theme.LightBackground
 import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.ProgressBarTrack
+import com.example.superstoresimulator.ui.theme.TextMuted
+import com.example.superstoresimulator.ui.theme.TextPrimary
+import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextWhite
 import kotlin.math.max
 
 /**
@@ -56,7 +63,7 @@ fun FreshScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F8FF))
+            .background(LightBackground)
             .padding(24.dp)
     ) {
         if (selectedCategory == null) {
@@ -71,7 +78,7 @@ fun FreshScreen(
             Text(
                 text = "Track expiration dates for perishable items",
                 fontSize = 14.sp,
-                color = Color(0xFF64748B),
+                color = TextSecondary,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
@@ -88,7 +95,7 @@ fun FreshScreen(
                         .weight(1f)
                         .height(40.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF2563EB)
+                        containerColor = TextPrimary
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
@@ -98,10 +105,10 @@ fun FreshScreen(
                         modifier = Modifier
                             .height(16.dp)
                             .width(16.dp),
-                        tint = Color.White
+                        tint = TextWhite
                     )
                     Spacer(Modifier.width(4.dp))
-                    Text("Fresh Bulk Order", fontSize = 12.sp, color = Color.White)
+                    Text("Fresh Bulk Order", fontSize = 12.sp, color = TextWhite)
                 }
 
                 if (incompleteFreshOrdersCount > 0) {
@@ -111,14 +118,14 @@ fun FreshScreen(
                             .weight(1f)
                             .height(40.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFDC2626)
+                            containerColor = DestructiveDark
                         ),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
                             "Incomplete ($incompleteFreshOrdersCount)",
                             fontSize = 12.sp,
-                            color = Color.White
+                            color = TextWhite
                         )
                     }
                 }
@@ -198,18 +205,13 @@ private fun CategoryCard(
         } ?: 100
     } else 100
     
-    val freshnessColor = when {
-        freshnessPercent <= 10 -> Color(0xFFDC2626) // Critical - Red
-        freshnessPercent <= 25 -> Color(0xFFEA580C) // Warning - Orange
-        freshnessPercent <= 50 -> Color(0xFFFBBF24) // Caution - Yellow
-        else -> Color(0xFF22C55E) // Good - Green
-    }
-    
+    val freshnessColor = freshnessColorFor(freshnessPercent)
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = CardWhite),
         elevation = CardDefaults.cardElevation(2.dp),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -231,7 +233,7 @@ private fun CategoryCard(
                 Text(
                     text = "${items.size} items",
                     fontSize = 14.sp,
-                    color = Color(0xFF64748B)
+                    color = TextSecondary
                 )
             }
             
@@ -250,10 +252,10 @@ private fun CategoryCard(
                             else -> "Expires in $daysUntilExpiration days"
                         },
                         fontSize = 14.sp,
-                        color = if (daysUntilExpiration <= 1) Color(0xFFDC2626) else Color(0xFF64748B),
+                        color = if (daysUntilExpiration <= 1) DestructiveDark else TextSecondary,
                         fontWeight = if (daysUntilExpiration <= 1) FontWeight.Bold else FontWeight.Normal
                     )
-                    
+
                     Text(
                         text = "$freshnessPercent% fresh",
                         fontSize = 14.sp,
@@ -261,9 +263,9 @@ private fun CategoryCard(
                         fontWeight = FontWeight.SemiBold
                     )
                 }
-                
+
                 Spacer(Modifier.height(8.dp))
-                
+
                 // Freshness progress bar
                 LinearProgressIndicator(
                     progress = { freshnessPercent / 100f },
@@ -271,14 +273,14 @@ private fun CategoryCard(
                         .fillMaxWidth()
                         .height(8.dp),
                     color = freshnessColor,
-                    trackColor = Color(0xFFE2E8F0),
+                    trackColor = ProgressBarTrack,
                 )
             } else {
                 Spacer(Modifier.height(12.dp))
                 Text(
                     text = "No items in stock",
                     fontSize = 14.sp,
-                    color = Color(0xFF64748B)
+                    color = TextSecondary
                 )
             }
         }
@@ -300,20 +302,15 @@ private fun ExpiringItemCard(
         ((daysRemaining.toFloat() / item.shelfLifeDays) * 100).toInt().coerceIn(0, 100)
     } else 100
     
-    val freshnessColor = when {
-        freshnessPercent <= 10 -> Color(0xFFDC2626) // Critical - Red
-        freshnessPercent <= 25 -> Color(0xFFEA580C) // Warning - Orange
-        freshnessPercent <= 50 -> Color(0xFFFBBF24) // Caution - Yellow
-        else -> Color(0xFF22C55E) // Good - Green
-    }
-    
+    val freshnessColor = freshnessColorFor(freshnessPercent)
+
     val totalStock = item.shelfStock + item.backroomStock
-    
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = CardWhite),
         elevation = CardDefaults.cardElevation(2.dp),
         shape = RoundedCornerShape(8.dp)
     ) {
@@ -338,7 +335,7 @@ private fun ExpiringItemCard(
                     Text(
                         text = "Shelf: ${item.shelfStock} • Backroom: ${item.backroomStock}",
                         fontSize = 13.sp,
-                        color = Color(0xFF64748B)
+                        color = TextSecondary
                     )
                 }
                 
@@ -366,10 +363,10 @@ private fun ExpiringItemCard(
                             else -> "Expires in $daysUntilExpiration days"
                         },
                         fontSize = 13.sp,
-                        color = if (daysUntilExpiration <= 3) Color(0xFFDC2626) else Color(0xFF64748B),
+                        color = if (daysUntilExpiration <= 3) DestructiveDark else TextSecondary,
                         fontWeight = if (daysUntilExpiration <= 3) FontWeight.Bold else FontWeight.Normal
                     )
-                    
+
                     Text(
                         text = "$freshnessPercent%",
                         fontSize = 13.sp,
@@ -377,23 +374,23 @@ private fun ExpiringItemCard(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                
+
                 Spacer(Modifier.height(8.dp))
-                
+
                 LinearProgressIndicator(
                     progress = { freshnessPercent / 100f },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(6.dp),
                     color = freshnessColor,
-                    trackColor = Color(0xFFE2E8F0),
+                    trackColor = ProgressBarTrack,
                 )
             } else if (totalStock == 0) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = "Out of stock",
                     fontSize = 13.sp,
-                    color = Color(0xFF94A3B8)
+                    color = TextMuted
                 )
             }
         }

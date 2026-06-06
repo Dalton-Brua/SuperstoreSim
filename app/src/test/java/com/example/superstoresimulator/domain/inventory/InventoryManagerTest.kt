@@ -17,6 +17,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import com.example.superstoresimulator.domain.helpers.FakeItemDao
 
 /**
  * Unit tests for [InventoryManager].
@@ -71,25 +72,6 @@ import org.junit.Test
 class InventoryManagerTest {
 
     // ── FakeItemDao ───────────────────────────────────────────────────────────
-
-    private class FakeItemDao(private val items: List<Item>) : ItemDao {
-        override suspend fun getItemById(itemId: String) = items.firstOrNull { it.id == itemId }
-        override suspend fun getAllItems() = items
-        override suspend fun insertItem(item: Item) {}
-        override suspend fun deleteItem(itemId: String) {}
-        override suspend fun deleteAll() {}
-        override suspend fun getItemName(itemId: String) = items.firstOrNull { it.id == itemId }?.name
-        override suspend fun getAllItemsWithNames() = items.map { ItemWithName(it.id, it.name) }
-        override suspend fun getItemsByIds(itemIds: List<String>) = items.filter { it.id in itemIds }
-        override suspend fun insertBatch(items: List<Item>) {}
-        override suspend fun getItemCount() = items.size
-        override suspend fun getItemsByCategory(category: String) =
-            items.filter { it.category.name == category }
-        override suspend fun searchItemsByName(searchTerm: String) =
-            items.filter { it.name.contains(searchTerm, ignoreCase = true) }
-        override suspend fun getItemsForInventory(itemIds: List<String>) =
-            items.filter { it.id in itemIds }
-    }
 
     // ── Catalogue ─────────────────────────────────────────────────────────────
 
@@ -542,4 +524,3 @@ class InventoryManagerTest {
         assertEquals("Backroom should not change", initialBackroom, finalBackroom)
     }
 }
-

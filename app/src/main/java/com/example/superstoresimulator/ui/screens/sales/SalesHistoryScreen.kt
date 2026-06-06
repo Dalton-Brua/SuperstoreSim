@@ -11,7 +11,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -23,10 +22,14 @@ import com.example.superstoresimulator.ui.dialogs.TransactionDetailDialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.superstoresimulator.ui.viewmodels.ItemViewModel
 import com.example.superstoresimulator.ui.state.HistoryUIState
-import com.example.superstoresimulator.ui.theme.Secondary
-import com.example.superstoresimulator.ui.theme.TextWhite
+import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.CriticalRed
+import com.example.superstoresimulator.ui.theme.ErrorSurfaceSubtle
 import com.example.superstoresimulator.ui.theme.LightBackground
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.Secondary
+import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextWhite
 import java.util.Locale
 
 @Composable
@@ -108,7 +111,7 @@ private fun PaginatedHistoryList(
             item {
                 Text(
                     text = "No transactions yet.",
-                    color = Color(0xFF64748B),
+                    color = TextSecondary,
                     fontSize = 14.sp,
                     modifier = Modifier.padding(16.dp)
                 )
@@ -143,7 +146,7 @@ private fun TransactionCard(transaction: Transaction, onClick: () -> Unit, itemV
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = CardWhite),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(Modifier.padding(12.dp)) {
@@ -156,7 +159,7 @@ private fun TransactionCard(transaction: Transaction, onClick: () -> Unit, itemV
 
             Text(
                 text = "Total: ${transaction.totalEarned}",
-                color = Color(0xFF1E40AF),
+                color = PrimaryDark,
                 fontSize = 14.sp
             )
 
@@ -167,14 +170,14 @@ private fun TransactionCard(transaction: Transaction, onClick: () -> Unit, itemV
                 Text(
                     text = "$itemName: ${line.quantity} × ${line.unitPrice} = ${line.lineTotal}",
                     fontSize = 13.sp,
-                    color = Color(0xFF64748B)
+                    color = TextSecondary
                 )
             }
 
             Text(
                 text = "Tax: ${transaction.tax}",
                 fontSize = 13.sp,
-                color = Color(0xFF64748B)
+                color = TextSecondary
             )
         }
     }
@@ -197,7 +200,7 @@ private fun RefundCard(transaction: Transaction, onClick: () -> Unit, itemViewMo
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3F2)),
+        colors = CardDefaults.cardColors(containerColor = ErrorSurfaceSubtle),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(Modifier.padding(12.dp)) {
@@ -205,12 +208,12 @@ private fun RefundCard(transaction: Transaction, onClick: () -> Unit, itemViewMo
                 text = "Refund #${transaction.id}",
                 fontWeight = FontWeight.Medium,
                 fontSize = 16.sp,
-                color = Color(0xFFB91C1C)
+                color = CriticalRed
             )
 
             Text(
                 text = "Total refunded: ${-transaction.subtotal}",
-                color = Color(0xFFB91C1C),
+                color = CriticalRed,
                 fontSize = 14.sp
             )
 
@@ -221,14 +224,14 @@ private fun RefundCard(transaction: Transaction, onClick: () -> Unit, itemViewMo
                 Text(
                     text = "$itemName: ${line.quantity} × ${line.unitPrice} = ${line.lineTotal}",
                     fontSize = 13.sp,
-                    color = Color(0xFF64748B)
+                    color = TextSecondary
                 )
             }
 
             Text(
                 text = "Tax refunded: ${-transaction.tax}",
                 fontSize = 13.sp,
-                color = Color(0xFF64748B)
+                color = TextSecondary
             )
         }
     }

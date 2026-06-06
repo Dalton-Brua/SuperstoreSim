@@ -50,7 +50,7 @@ fun EndOfDayReportDialog(
                 .fillMaxWidth()
                 .wrapContentHeight(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = CardWhite),
             elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Column(
@@ -71,13 +71,13 @@ fun EndOfDayReportDialog(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = "End of Day Report",
-                            color = Color.White,
+                            color = TextWhite,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
                         Text(
                             text = "Day ${report.dayNumber + 1} — ${report.dayOfWeekName}",
-                            color = Color.White.copy(alpha = 0.8f),
+                            color = TextWhite.copy(alpha = 0.8f),
                             fontSize = 13.sp
                         )
                     }
@@ -97,7 +97,7 @@ fun EndOfDayReportDialog(
                     Spacer(Modifier.height(4.dp))
                     StatRow(Icons.AutoMirrored.Filled.Undo, "Refunds Issued",
                         "${report.refundsProcessed} (${report.refundAmount})",
-                        tint = Color(0xFFE74C3C))
+                        tint = ClosedRed)
                 }
 
                 if (report.lostRevenue.cents > 0) {
@@ -106,7 +106,7 @@ fun EndOfDayReportDialog(
                         Icons.Default.RemoveShoppingCart,
                         "Lost Revenue (OOS)",
                         "${report.itemsLostToOutOfStock} units · ${report.lostRevenue}",
-                        tint = Color(0xFFB91C1C)
+                        tint = CriticalRed
                     )
                 }
 
@@ -114,8 +114,8 @@ fun EndOfDayReportDialog(
 
                 // ── Operating Costs section ──────────────────────────────
                 SectionHeader("💸 Operating Costs")
-                StatRow(Icons.Default.Home, "Daily Rent", "-${report.rentPaid}", tint = Color(0xFFE74C3C))
-                StatRow(Icons.Default.People, "Staff Wages", "-${report.wagesPaid}", tint = Color(0xFFE74C3C))
+                StatRow(Icons.Default.Home, "Daily Rent", "-${report.rentPaid}", tint = ClosedRed)
+                StatRow(Icons.Default.People, "Staff Wages", "-${report.wagesPaid}", tint = ClosedRed)
                 
                 // Net revenue calculation
                 val netAfterCosts = report.netRevenue
@@ -124,7 +124,7 @@ fun EndOfDayReportDialog(
                     "Net Revenue",
                     netAfterCosts.toString(),
                     highlight = true,
-                    tint = if (netAfterCosts.cents >= 0) Color(0xFF27AE60) else Color(0xFFE74C3C)
+                    tint = if (netAfterCosts.cents >= 0) PositiveGreen else ClosedRed
                 )
 
                 Spacer(Modifier.height(12.dp))
@@ -136,13 +136,13 @@ fun EndOfDayReportDialog(
                         Icons.Default.Delete,
                         "Items Expired",
                         "${report.itemsExpired} units",
-                        tint = Color(0xFFE74C3C)
+                        tint = ClosedRed
                     )
                     StatRow(
                         Icons.Default.AttachMoney,
                         "Waste Cost",
                         "-${report.expiredWasteCost}",
-                        tint = Color(0xFFE74C3C)
+                        tint = ClosedRed
                     )
                     
                     Spacer(Modifier.height(12.dp))
@@ -189,7 +189,7 @@ fun EndOfDayReportDialog(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFFF0FDF4), RoundedCornerShape(8.dp))
+                                .background(SuccessSurface, RoundedCornerShape(8.dp))
                                 .clickable { successfulExpanded = !successfulExpanded }
                                 .padding(12.dp)
                         ) {
@@ -204,12 +204,12 @@ fun EndOfDayReportDialog(
                                         "Successfully Ordered",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF059669)
+                                        color = SuccessAccent
                                     )
                                     Text(
                                         "${aggregatedOrders.size} items • ${aggregatedOrders.sumOf { it.casePacksOrdered }} packs total",
                                         fontSize = 11.sp,
-                                        color = Color(0xFF059669).copy(alpha = 0.8f)
+                                        color = SuccessAccent.copy(alpha = 0.8f)
                                     )
                                 }
                                 Row(
@@ -220,12 +220,12 @@ fun EndOfDayReportDialog(
                                         totalSuccessfulCost.toString(),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF059669)
+                                        color = SuccessAccent
                                     )
                                     Icon(
                                         imageVector = if (successfulExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                                         contentDescription = if (successfulExpanded) "Collapse" else "Expand",
-                                        tint = Color(0xFF059669),
+                                        tint = SuccessAccent,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -234,7 +234,7 @@ fun EndOfDayReportDialog(
                             // Details - shown when expanded
                             if (successfulExpanded) {
                                 Spacer(Modifier.height(8.dp))
-                                HorizontalDivider(color = Color(0xFF059669).copy(alpha = 0.2f), thickness = 1.dp)
+                                HorizontalDivider(color = SuccessAccent.copy(alpha = 0.2f), thickness = 1.dp)
                                 Spacer(Modifier.height(8.dp))
                                 
                                 aggregatedOrders.forEach { order ->
@@ -247,13 +247,13 @@ fun EndOfDayReportDialog(
                                         Text(
                                             "${order.itemName}: ${order.casePacksOrdered} packs",
                                             fontSize = 11.sp,
-                                            color = Color(0xFF1F2937)
+                                            color = TextNeutralDark
                                         )
                                         Text(
                                             order.totalCost.toString(),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = Color(0xFF059669)
+                                            color = SuccessAccent
                                         )
                                     }
                                 }
@@ -283,7 +283,7 @@ fun EndOfDayReportDialog(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFFFEF2F2), RoundedCornerShape(8.dp))
+                                .background(ErrorSurfaceSubtle, RoundedCornerShape(8.dp))
                                 .clickable { incompleteExpanded = !incompleteExpanded }
                                 .padding(12.dp)
                         ) {
@@ -298,12 +298,12 @@ fun EndOfDayReportDialog(
                                         "Incomplete (Insufficient Funds)",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFFDC2626)
+                                        color = DestructiveDark
                                     )
                                     Text(
                                         "${aggregatedIncomplete.size} items • ${aggregatedIncomplete.sumOf { it.casePacksRequested }} packs needed",
                                         fontSize = 11.sp,
-                                        color = Color(0xFFDC2626).copy(alpha = 0.8f)
+                                        color = DestructiveDark.copy(alpha = 0.8f)
                                     )
                                 }
                                 Row(
@@ -314,12 +314,12 @@ fun EndOfDayReportDialog(
                                         totalIncompleteCost.toString(),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFDC2626)
+                                        color = DestructiveDark
                                     )
                                     Icon(
                                         imageVector = if (incompleteExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                                         contentDescription = if (incompleteExpanded) "Collapse" else "Expand",
-                                        tint = Color(0xFFDC2626),
+                                        tint = DestructiveDark,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -328,7 +328,7 @@ fun EndOfDayReportDialog(
                             // Details - shown when expanded
                             if (incompleteExpanded) {
                                 Spacer(Modifier.height(8.dp))
-                                HorizontalDivider(color = Color(0xFFDC2626).copy(alpha = 0.2f), thickness = 1.dp)
+                                HorizontalDivider(color = DestructiveDark.copy(alpha = 0.2f), thickness = 1.dp)
                                 Spacer(Modifier.height(8.dp))
                                 
                                 aggregatedIncomplete.forEach { order ->
@@ -342,19 +342,19 @@ fun EndOfDayReportDialog(
                                             Text(
                                                 "${order.itemName}: ${order.casePacksRequested} packs",
                                                 fontSize = 11.sp,
-                                                color = Color(0xFF1F2937)
+                                                color = TextNeutralDark
                                             )
                                             Text(
                                                 order.reason,
                                                 fontSize = 10.sp,
-                                                color = Color(0xFFDC2626)
+                                                color = DestructiveDark
                                             )
                                         }
                                         Text(
                                             order.totalCost.toString(),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = Color(0xFFDC2626)
+                                            color = DestructiveDark
                                         )
                                     }
                                 }
@@ -363,7 +363,7 @@ fun EndOfDayReportDialog(
                                 Text(
                                     "These can be manually ordered from the Fresh screen.",
                                     fontSize = 10.sp,
-                                    color = Color(0xFF64748B)
+                                    color = TextSecondary
                                 )
                             }
                         }
@@ -389,7 +389,7 @@ fun EndOfDayReportDialog(
                     val totalCasePacks = report.deliveredTrucks.sumOf { it.totalCasePacks }
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                        colors = CardDefaults.cardColors(containerColor = SuccessSurface),
                         elevation = CardDefaults.cardElevation(2.dp),
                         shape = RoundedCornerShape(10.dp)
                     ) {
@@ -408,17 +408,17 @@ fun EndOfDayReportDialog(
                                     "🚚 Deliveries Received",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
-                                    color = Color(0xFF166534)
+                                    color = SuccessTextDark
                                 )
                                 Text(
                                     "${report.deliveredTrucks.size} truck(s) · $totalCasePacks cases ${if (deliveriesExpanded) "▲" else "▼"}",
                                     fontSize = 11.sp,
-                                    color = Color(0xFF166534)
+                                    color = SuccessTextDark
                                 )
                             }
                             if (deliveriesExpanded) {
                                 Spacer(Modifier.height(8.dp))
-                                HorizontalDivider(color = Color(0xFF166534).copy(alpha = 0.2f), thickness = 1.dp)
+                                HorizontalDivider(color = SuccessTextDark.copy(alpha = 0.2f), thickness = 1.dp)
                                 Spacer(Modifier.height(8.dp))
                                 report.deliveredTrucks.forEach { truck ->
                                     val label = when {
@@ -430,14 +430,14 @@ fun EndOfDayReportDialog(
                                         "$label — Day ${truck.arrivalDay + 1} — ${truck.totalCasePacks} cases",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF1F2937),
+                                        color = TextNeutralDark,
                                         modifier = Modifier.padding(vertical = 2.dp)
                                     )
                                     truck.lines.forEach { line ->
                                         Text(
                                             "  ${line.itemName}: ${line.casePacks} packs (${line.quantity} units)",
                                             fontSize = 11.sp,
-                                            color = Color(0xFF374151)
+                                            color = TextNeutralMedium
                                         )
                                     }
                                     Spacer(Modifier.height(4.dp))
@@ -457,7 +457,7 @@ fun EndOfDayReportDialog(
                 ) {
                     Text(
                         text = if (isAutoShown) "Start Day ${report.dayNumber + 2}" else "Close",
-                        color = Color.White,
+                        color = TextWhite,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
@@ -523,10 +523,10 @@ private fun StatRow(
 private fun AutoHireRow(event: AutoHireEvent) {
     var showTooltip by remember { mutableStateOf(false) }
     val (icon, tint, prefix) = when (event.action) {
-        AutoHireAction.HIRED -> Triple(Icons.Default.PersonAdd, Color(0xFF22C55E), "Hired")
-        AutoHireAction.SKIPPED -> Triple(Icons.Default.Block, Color(0xFFF59E0B), "Skipped")
-        AutoHireAction.REBALANCED -> Triple(Icons.Default.SwapHoriz, Color(0xFF3B82F6), "Rebalanced")
-        AutoHireAction.PURCHASED -> Triple(Icons.Default.ShoppingCart, Color(0xFF8B5CF6), "Purchased")
+        AutoHireAction.HIRED -> Triple(Icons.Default.PersonAdd, Secondary, "Hired")
+        AutoHireAction.SKIPPED -> Triple(Icons.Default.Block, Amber, "Skipped")
+        AutoHireAction.REBALANCED -> Triple(Icons.Default.SwapHoriz, Primary, "Rebalanced")
+        AutoHireAction.PURCHASED -> Triple(Icons.Default.ShoppingCart, Violet, "Purchased")
     }
     val displayReason = if (event.blocked) event.blockReason else event.reason
     val detail = event.detail
@@ -562,7 +562,7 @@ private fun AutoHireRow(event: AutoHireEvent) {
                 Icon(
                     imageVector = Icons.Default.Info,
                     contentDescription = "Details",
-                    tint = Color(0xFF94A3B8),
+                    tint = TextMuted,
                     modifier = Modifier
                         .size(16.dp)
                         .clickable { showTooltip = !showTooltip }
@@ -573,7 +573,7 @@ private fun AutoHireRow(event: AutoHireEvent) {
             Text(
                 text = detail,
                 fontSize = 11.sp,
-                color = Color(0xFF64748B),
+                color = TextSecondary,
                 modifier = Modifier.padding(start = 24.dp, bottom = 4.dp)
             )
         }

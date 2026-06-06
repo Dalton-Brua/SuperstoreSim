@@ -13,11 +13,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.player.PlayerRole
+import com.example.superstoresimulator.ui.theme.DarkBackground
+import com.example.superstoresimulator.ui.theme.DarkNavy
+import com.example.superstoresimulator.ui.theme.ManageGrey
+import com.example.superstoresimulator.ui.theme.OpenGreen
+import com.example.superstoresimulator.ui.theme.OpeningBlue
+import com.example.superstoresimulator.ui.theme.TextWhite
 
 /**
  * Compact status bar showing what role the player is currently performing.
@@ -36,9 +41,9 @@ fun PlayerRoleIndicator(
     modifier: Modifier = Modifier
 ) {
     val roleColor = when (playerRole) {
-        PlayerRole.CASHIER -> Color(0xFF2ECC71)
-        PlayerRole.STOCKER -> Color(0xFF3498DB)
-        PlayerRole.MANAGE    -> Color(0xFF95A5A6)
+        PlayerRole.CASHIER -> OpenGreen
+        PlayerRole.STOCKER -> OpeningBlue
+        PlayerRole.MANAGE    -> ManageGrey
     }
 
     val roleLabel = when (playerRole) {
@@ -56,7 +61,7 @@ fun PlayerRoleIndicator(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color(0xFF1E2A3A))
+            .background(DarkNavy)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -70,7 +75,7 @@ fun PlayerRoleIndicator(
                 text = roleLabel,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = TextWhite
             )
         }
 
@@ -81,13 +86,13 @@ fun PlayerRoleIndicator(
                 progress = { progress.coerceIn(0f, 1f) },
                 modifier = Modifier.weight(1f),
                 color = roleColor,
-                trackColor = Color(0xFF2C3E50)
+                trackColor = DarkBackground
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 text = "${(progress * 100).toInt()}%",
                 fontSize = 10.sp,
-                color = Color.White
+                color = TextWhite
             )
         }
     }

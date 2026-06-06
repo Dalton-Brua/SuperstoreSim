@@ -70,7 +70,6 @@ class SerializerSchedulingTest {
         )
         val state = GameState(
             registers = registers,
-            ownedRegisterCount = 3,
             playerAssignedRegisterId = 1,
         )
         val restored = roundTrip(state)
@@ -263,7 +262,6 @@ class SerializerSchedulingTest {
                 RegisterState(registerId = 0, assignedCashierId = 1),
                 RegisterState(registerId = 1),
             ),
-            ownedRegisterCount = 2,
             playerAssignedRegisterId = 1,
             autoHireBudget = Money(100_000L),
             manuallyUnassignedCashiers = setOf(5),

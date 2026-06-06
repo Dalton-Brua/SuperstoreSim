@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -60,7 +59,7 @@ fun OutOfStockReportDialog(
                 .fillMaxWidth()
                 .wrapContentHeight(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = CardWhite),
             elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Column(
@@ -73,7 +72,7 @@ fun OutOfStockReportDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFB91C1C), RoundedCornerShape(10.dp))
+                        .background(CriticalRed, RoundedCornerShape(10.dp))
                         .padding(12.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -85,19 +84,19 @@ fun OutOfStockReportDialog(
                             Icon(
                                 Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = TextWhite,
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
                                 text = "Out-of-Stock Report",
-                                color = Color.White,
+                                color = TextWhite,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp
                             )
                         }
                         Text(
                             text = "Day ${report.dayNumber + 1} — ${report.dayOfWeekName}",
-                            color = Color.White.copy(alpha = 0.8f),
+                            color = TextWhite.copy(alpha = 0.8f),
                             fontSize = 13.sp
                         )
                     }
@@ -177,7 +176,7 @@ fun OutOfStockReportDialog(
                             Icon(
                                 Icons.Default.RemoveShoppingCart,
                                 contentDescription = null,
-                                tint = Color(0xFFB91C1C),
+                                tint = CriticalRed,
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
@@ -191,7 +190,7 @@ fun OutOfStockReportDialog(
                             text = totalLost.toString(),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFB91C1C)
+                            color = CriticalRed
                         )
                     }
                 }
@@ -204,7 +203,7 @@ fun OutOfStockReportDialog(
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryDark),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("Close", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("Close", color = TextWhite, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -242,7 +241,7 @@ private fun OutOfStockRow(
             text = event.revenueLost.toString(),
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFFB91C1C),
+            color = CriticalRed,
             textAlign = TextAlign.End,
             modifier = Modifier.width(72.dp)
         )

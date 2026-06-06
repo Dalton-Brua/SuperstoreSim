@@ -48,13 +48,13 @@ class TransactionEngine(
         val numLines = (1..availableItemIds.size.coerceAtMost(5)).random(random)
         val lines = mutableListOf<TransactionLine>()
 
-        val pricingMultipliers = pricingManager?.computePricingMultipliers(state)
-        val chosen = weightedSample(availableItemIds, numLines, pricingMultipliers = pricingMultipliers)
+        val pricingData = pricingManager?.computePricingData(state)
+        val chosen = weightedSample(availableItemIds, numLines, pricingMultipliers = pricingData?.multipliers)
 
         repeat(numLines) { index ->
             val itemId = chosen[index]
             val meta = cache?.get(itemId)
-            val resolved = pricingManager?.resolvePrice(itemId, state)
+            val resolved = pricingData?.resolvedPrices?.get(itemId)
 
             val unitPrice = resolved?.effectivePrice ?: meta?.price ?: Money.Companion.fromDollars(9.99)
             val basePrice = resolved?.basePrice ?: unitPrice
@@ -129,16 +129,13 @@ class TransactionEngine(
             (itemCount * basketMult).toInt().coerceAtLeast(1)
         } else itemCount
         val numLines = adjustedItemCount.coerceIn(1, availableItemIds.size.coerceAtMost(7))
-        val zoneMultipliers = state.inventory.mapValues { (_, inv) ->
-            StaffManager.zonePurchaseMultiplier(inv.zoneScore)
-        }
-        val pricingMultipliers = pricingManager?.computePricingMultipliers(state)
-        val chosen = weightedSample(availableItemIds, numLines, zoneMultipliers, pricingMultipliers)
+        val pricingData = pricingManager?.computePricingData(state)
+        val chosen = weightedSample(availableItemIds, numLines, state.inventory, pricingData?.multipliers)
         val lines = mutableListOf<TransactionLine>()
 
         for (itemId in chosen) {
             val meta = cache?.get(itemId)
-            val resolved = pricingManager?.resolvePrice(itemId, state)
+            val resolved = pricingData?.resolvedPrices?.get(itemId)
 
             val unitPrice = resolved?.effectivePrice ?: meta?.price ?: Money.Companion.fromDollars(9.99)
             val basePrice = resolved?.basePrice ?: unitPrice
@@ -331,14 +328,14 @@ class TransactionEngine(
     private fun weightedSample(
         pool: List<Int>,
         count: Int,
-        zoneMultipliers: Map<Int, Float>? = null,
+        inventory: Map<Int, com.example.superstoresimulator.domain.inventory.InventoryState>? = null,
         pricingMultipliers: Map<Int, Float>? = null,
     ): List<Int> {
         if (cache == null) return pool.shuffled(random).take(count)
 
         val weighted = pool.map { id ->
             val baseWeight = (cache.get(id)?.purchaseWeight ?: 1.0f).coerceAtLeast(0.01f)
-            val zoneMultiplier = zoneMultipliers?.get(id) ?: 1.0f
+            val zoneMultiplier = inventory?.get(id)?.let { StaffManager.zonePurchaseMultiplier(it.zoneScore) } ?: 1.0f
             val priceMultiplier = pricingMultipliers?.get(id) ?: 1.0f
             id to (baseWeight * zoneMultiplier * priceMultiplier)
         }.toMutableList()

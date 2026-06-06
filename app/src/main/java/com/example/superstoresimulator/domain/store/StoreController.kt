@@ -86,7 +86,6 @@ class StoreController {
         val newRegisterId = (state.registers.maxOfOrNull { it.registerId } ?: 0) + 1
         return state.copy(
             money = state.money - cost,
-            ownedRegisterCount = state.ownedRegisterCount + 1,
             registers = state.registers + RegisterState(registerId = newRegisterId),
         )
     }

@@ -85,7 +85,6 @@ class RegisterTest {
         val state = GameState(
             money = Money(500_000L),
             currentStoreSize = StoreSize.MOM_AND_POP,
-            ownedRegisterCount = 1,
         )
         val result = controller.purchaseRegister(state)
         assertEquals("Should not add register at MOM_AND_POP max", 1, result.registers.size)

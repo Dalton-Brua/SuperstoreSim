@@ -18,18 +18,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.store.StoreState
 import com.example.superstoresimulator.ui.state.TimeUIState
 import com.example.superstoresimulator.ui.theme.DarkBackground
+import com.example.superstoresimulator.ui.theme.DarkSurface
 import com.example.superstoresimulator.ui.theme.OpenGreen
 import com.example.superstoresimulator.ui.theme.ClosedRed
 import com.example.superstoresimulator.ui.theme.ClosingOrange
 import com.example.superstoresimulator.ui.theme.ClosingProceduresPurple
 import com.example.superstoresimulator.ui.theme.OpeningBlue
+import com.example.superstoresimulator.ui.theme.PausedOrange
 import com.example.superstoresimulator.ui.theme.TextWhite
 
 /**
@@ -71,7 +72,7 @@ fun TimeDisplayBar(
             // Show PAUSED if player has paused the time, otherwise show actual store state
             val displayState = if (timeUI.playerPausedTime) "PAUSED" else timeUI.storeState.name
             val stateColor = if (timeUI.playerPausedTime) {
-                Color(0xFFE67E22)  // Orange for paused
+                PausedOrange
             } else {
                 when (timeUI.storeState) {
                     StoreState.OPEN -> OpenGreen
@@ -125,7 +126,7 @@ private fun SpeedButton(
     Button(
         onClick = { onSpeedChanged(speed) },
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (current == speed) OpeningBlue else Color(0xFF34495E),
+            containerColor = if (current == speed) OpeningBlue else DarkSurface,
             contentColor = TextWhite
         ),
         modifier = Modifier.size(48.dp),

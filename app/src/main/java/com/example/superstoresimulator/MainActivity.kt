@@ -59,6 +59,7 @@ import com.example.superstoresimulator.ui.screens.inventory.InventoryItemDetailS
 import com.example.superstoresimulator.ui.screens.metrics.MetricsScreen
 import com.example.superstoresimulator.ui.screens.sales.SalesHistoryScreen
 import com.example.superstoresimulator.ui.screens.staff.StaffAndUnlocksScreen
+import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.ui.screens.staff.EntityTypeDetailScreen
 import com.example.superstoresimulator.ui.dialogs.EndOfDayReportDialog
 import com.example.superstoresimulator.ui.dialogs.FreshBulkOrderDialog
@@ -266,6 +267,12 @@ class MainActivity : ComponentActivity() {
                                  onAssignCashierToRegister = { cashierId, registerId ->
                                      viewModel.onEvent(GameEvent.AssignCashierToRegister(cashierId, registerId))
                                  },
+                                 onSetDefaultMarkup = { percent ->
+                                     viewModel.onEvent(GameEvent.SetDefaultMarkup(percent))
+                                 },
+                                 onSetCategoryMarkup = { category, percent ->
+                                     viewModel.onEvent(GameEvent.SetCategoryMarkup(category, percent))
+                                 },
                              )
 
                             Screen.INVENTORY -> InventoryAndFreshScreen(
@@ -363,6 +370,7 @@ class MainActivity : ComponentActivity() {
                                 money = state.app.money,
                                 def = state.staff.selectedDef,
                                 currentTier = state.progression.currentTier,
+                                currentStoreSize = state.time?.currentStoreSize ?: StoreSize.MOM_AND_POP,
                                 onHire = { def -> viewModel.onEvent(GameEvent.HireStaff(def)) },
                                 onFire = { id -> viewModel.onEvent(GameEvent.FireStaff(id)) },
                                 onUpgrade = { id -> viewModel.onEvent(GameEvent.PromoteStaff(id)) },
@@ -409,6 +417,13 @@ class MainActivity : ComponentActivity() {
                                         viewModel.onEvent(GameEvent.DecrementOrderLine(itemId, truckId))
                                     },
                                     onBuyItem = { itemId -> viewModel.onEvent(GameEvent.BuyItem(itemId)) },
+                                    onSetItemOverride = { itemId, percent ->
+                                        viewModel.onEvent(GameEvent.SetItemPriceOverride(itemId, percent))
+                                    },
+                                    onClearMarkdown = { itemId ->
+                                        viewModel.onEvent(GameEvent.ClearItemMarkdown(itemId))
+                                    },
+                                    itemOverridePercent = state.pricing.pricingState.itemOverrides[selectedId] ?: 0,
                                     onBack = { selectedInventoryItemId = null }
                                 )
                             }
