@@ -239,15 +239,18 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 }
 
             // Pricing metrics: markup extra revenue and markdown savings
+            // Use lineTotal vs base*effective_qty so weighted items are correct
             var txMarkupExtra = Money.ZERO
             var txMarkdownSaved = Money.ZERO
             for (line in tx.lines) {
                 if (line.lostToOutOfStock || line.quantity <= 0) continue
-                val diff = line.unitPrice.cents - line.basePrice.cents
+                val effectiveQty = line.weight?.toDouble() ?: line.quantity.toDouble()
+                val baseCents = (line.basePrice.cents * effectiveQty).toLong()
+                val diff = line.lineTotal.cents - baseCents
                 if (diff > 0) {
-                    txMarkupExtra += Money(diff * line.quantity)
+                    txMarkupExtra += Money(diff)
                 } else if (diff < 0) {
-                    txMarkdownSaved += Money(-diff * line.quantity)
+                    txMarkdownSaved += Money(-diff)
                 }
             }
 
