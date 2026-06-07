@@ -457,6 +457,7 @@ class GameViewModel @Inject constructor(
             ),
             metrics = MetricsUIState(
                 completedDays = domain.completedDayMetrics.sortedByDescending { it.dayNumber },
+                activeDay = domain.currentDayMetrics.toSnapshot(domain.currentTime.dayOfWeek),
                 showEndOfDayReport = domain.showEndOfDayReport,
                 lastReport = domain.lastEndOfDayReport,
             ),
@@ -566,6 +567,7 @@ class GameViewModel @Inject constructor(
             ),
             metrics = MetricsUIState(
                 completedDays = domain.completedDayMetrics.sortedByDescending { it.dayNumber },
+                activeDay = domain.currentDayMetrics.toSnapshot(domain.currentTime.dayOfWeek),
                 showEndOfDayReport = domain.showEndOfDayReport,
                 lastReport = domain.lastEndOfDayReport,
             ),

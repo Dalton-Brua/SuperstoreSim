@@ -141,6 +141,8 @@ data class TimeUIState(
 data class MetricsUIState(
     /** All completed day snapshots, newest first. */
     val completedDays: List<DailyMetrics> = emptyList(),
+    /** Live snapshot of the current in-progress day (null before first tick). */
+    val activeDay: DailyMetrics? = null,
     /** Whether the end-of-day summary dialog should be shown. */
     val showEndOfDayReport: Boolean = false,
     /** The most recently completed day's snapshot (shown in the dialog). */
