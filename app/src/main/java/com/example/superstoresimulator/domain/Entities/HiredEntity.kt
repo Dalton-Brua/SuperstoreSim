@@ -35,6 +35,8 @@ data class HiredEntity(
             Tier.MANAGER -> error("Already at max tier")
         }
 
+    val isStoreManager: Boolean get() = entityDefinition == EntityDef.MANAGER && tier == Tier.MANAGER
+    val isDeptManager: Boolean get() = entityDefinition != EntityDef.MANAGER && tier == Tier.MANAGER
     val canPromote: Boolean get() = tier != Tier.MANAGER && level >= PROMOTE_UNLOCK_LEVEL
 
     fun upgrade(): HiredEntity {

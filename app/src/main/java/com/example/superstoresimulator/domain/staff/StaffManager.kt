@@ -462,7 +462,7 @@ class StaffManager {
 
     fun evaluateStoreManagerActions(state: GameState): GameState {
         val hasStoreManager = state.hiredEntityRegistry.getByDef(EntityDef.MANAGER)
-            .any { it.tier == Tier.MANAGER }
+            .any { it.isStoreManager }
         if (!hasStoreManager) return state
 
         var result = state
@@ -599,7 +599,7 @@ class StaffManager {
         if (entity.tier == Tier.MANAGER) return state
         // Only one Store Manager allowed
         if (entity.entityDefinition == EntityDef.MANAGER && entity.tier == Tier.FAST) {
-            val hasStoreManager = state.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.tier == Tier.MANAGER }
+            val hasStoreManager = state.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.isStoreManager }
             if (hasStoreManager) return state
         }
         val cost = entity.upgradeCost
@@ -667,7 +667,7 @@ class StaffManager {
         const val SHIFT_CLOSING = 13
 
         // Zoning constants
-        const val ZONE_DECAY_RATE = 0.005f
+        const val ZONE_DECAY_PER_SALE = 0.08f
         const val ZONE_ACTIONS_PER_SECOND = 0.1f
         const val ZONE_PER_ACTION = 0.35f
         const val ZONE_FLOOR = 0.4f
@@ -767,7 +767,7 @@ class StaffManager {
                         Tier.FAST -> 0.25
                         Tier.MANAGER -> 0.30
                     }
-                } else if (entity.tier == Tier.MANAGER) {
+                } else if (entity.isDeptManager) {
                     when (entity.entityDefinition) {
                         EntityDef.CASHIER -> hasCashierDeptMgr = true
                         EntityDef.STOCKER -> hasStockerDeptMgr = true

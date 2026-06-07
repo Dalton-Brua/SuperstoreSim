@@ -31,7 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
-    val pricingManager = PricingManager(itemMetadataCache)
+    private val pricingManager = PricingManager(itemMetadataCache)
     private val txEngine = TransactionEngine(cache = itemMetadataCache, pricingManager = pricingManager)
 
     private companion object {
@@ -49,7 +49,6 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     private val inventoryManager = InventoryManager(itemMetadataCache)
     private val spoilageManager = SpoilageManager(itemMetadataCache)
     private val truckManager = TruckManager(itemMetadataCache)
-    private var lastPriceIndexHour = -1
 
     // Emit incremental changes instead of full state reconstructions
     private val _changes = MutableStateFlow<GameStateChange?>(null)
@@ -190,7 +189,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         val currentDay = state.currentTime.dayNumber
         val hasExpiring = (inv.shelfBatches + inv.backroomBatches).any { batch ->
             batch.expirationDay != Int.MAX_VALUE &&
-                batch.expirationDay - currentDay <= PricingManager.EXPIRY_THRESHOLD_DAYS
+                batch.expirationDay - currentDay <= pricingManager.config.expiryThresholdDays
         }
         if (!hasExpiring) {
             state = pricingManager.clearMarkdown(state, itemId)
@@ -204,7 +203,6 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
     private fun ringUpItemAndTrackMetrics(itemId: Int, registerId: Int) {
         val prevCompleted = state.totalTransactionsCompleted
         state = txEngine.ringUpSingleItem(state, itemId, registerId)
-        clearStaleExpiryMarkdown(itemId)
         // If a transaction just completed, record it in today's accumulator
         if (state.totalTransactionsCompleted > prevCompleted && state.salesHistory.isNotEmpty()) {
             val tx = state.salesHistory.last()
@@ -255,6 +253,17 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 }
             }
 
+            // Update per-register daily stats
+            val completedReg = state.registers.findRegisterById(tx.registerId)
+            val updatedRegisters = if (completedReg != null) {
+                state.registers.updateRegister(
+                    completedReg.copy(
+                        dailyTransactions = completedReg.dailyTransactions + 1,
+                        dailyRevenue = completedReg.dailyRevenue + tx.totalEarned,
+                    )
+                )
+            } else state.registers
+
             state = state.copy(
                 currentDayMetrics = acc.copy(
                     revenue = acc.revenue + tx.totalEarned,
@@ -271,21 +280,9 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                     soldItemEvents = acc.soldItemEvents + soldEvents,
                     markupExtraRevenue = acc.markupExtraRevenue + txMarkupExtra,
                     markdownsSaved = acc.markdownsSaved + txMarkdownSaved,
-                )
+                ),
+                registers = updatedRegisters,
             )
-
-            // Update per-register daily stats
-            val completedReg = state.registers.findRegisterById(tx.registerId)
-            if (completedReg != null) {
-                state = state.copy(
-                    registers = state.registers.updateRegister(
-                        completedReg.copy(
-                            dailyTransactions = completedReg.dailyTransactions + 1,
-                            dailyRevenue = completedReg.dailyRevenue + tx.totalEarned,
-                        )
-                    )
-                )
-            }
 
             // Grant XP to the hired cashier assigned to this register (not the player).
             val reg = state.registers.findRegisterById(tx.registerId)
@@ -294,6 +291,11 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 state = state.copy(
                     hiredEntityRegistry = state.hiredEntityRegistry.grantXp(cashierId, XP_PER_TRANSACTION)
                 )
+            }
+
+            // Clear stale expiry markdowns for items consumed in this transaction
+            for (line in tx.lines) {
+                clearStaleExpiryMarkdown(line.itemId)
             }
         }
     }
@@ -413,10 +415,13 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             state = state.copy(currentTime = timeManager.currentTime)
 
             // Phase 1.5: Process item expiration (remove expired batches)
-            state = spoilageManager.processExpiration(state)
-            // Clear expiry markdowns for items whose expiring batches just expired
-            for (itemId in state.pricingState.activeMarkdowns.keys.toList()) {
-                clearStaleExpiryMarkdown(itemId)
+            val spoilageResult = spoilageManager.processExpiration(state)
+            state = spoilageResult.state
+            // Clear expiry markdowns only for items whose batches just expired
+            if (spoilageResult.expiredItemIds.isNotEmpty()) {
+                for (itemId in spoilageResult.expiredItemIds) {
+                    clearStaleExpiryMarkdown(itemId)
+                }
             }
 
             // Phase 3: Detect day rollover (midnight)
@@ -454,8 +459,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
 
             // Hourly price index EMA update
             val currentHourForPricing = state.currentTime.hour
-            if (currentHourForPricing != lastPriceIndexHour) {
-                lastPriceIndexHour = currentHourForPricing
+            if (currentHourForPricing != state.pricingState.lastPriceIndexHour) {
                 state = pricingManager.updateSmoothedPriceIndex(state)
             }
 
@@ -518,7 +522,8 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                     if (state.pendingCustomers <= 0) break
                     if (reg.transactionActive) continue
                     if (!isRegisterMannedAndOnShift(reg.registerId, state, currentHour)) continue
-                    val basketSize = (2..5).random()
+                    val baseBasket = (2..5).random()
+                    val basketSize = (baseBasket * state.currentStoreSize.basketSizeMultiplier).toInt().coerceAtLeast(1)
                     state = txEngine.generateRandomTransaction(state, basketSize, reg.registerId)
                     if (state.registers.findRegisterById(reg.registerId)?.transactionActive == true) {
                         state = state.copy(pendingCustomers = (state.pendingCustomers - 1).coerceAtLeast(0))
@@ -541,26 +546,6 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                 }
             }
 
-            // ── Zone decay (Phase 5B) ────────────────────────────────────────
-            if (state.storeState == StoreState.OPEN) {
-                val pattern = TrafficSchedule.getPatternForTime(state.currentTime)
-                val trafficRate = (pattern.baseCustomerRate / 60f) * state.currentStoreSize.trafficMultiplier
-                val decayAmount = StaffManager.ZONE_DECAY_RATE * trafficRate * delta.toFloat() * speedMultiplier
-                if (decayAmount > 0.0001f) {
-                    var changed = false
-                    val updatedInventory = HashMap(state.inventory)
-                    for ((itemId, inv) in state.inventory) {
-                        if (inv.shelfStock > 0 && inv.zoneScore > 0f) {
-                            val newScore = (inv.zoneScore - decayAmount).coerceAtLeast(0f)
-                            if (newScore != inv.zoneScore) {
-                                updatedInventory[itemId] = inv.copy(zoneScore = newScore)
-                                changed = true
-                            }
-                        }
-                    }
-                    if (changed) state = state.copy(inventory = updatedInventory)
-                }
-            }
 
             // ── Inventory scan: collect flags in a single pass ────────────────
             var hasActionableBackroom = false
@@ -585,9 +570,19 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
             )
             val activeStockers = stockerResult.weight
 
-            if (hasActionableBackroom) {
+            if (hasActionableBackroom || hasFreshBackroomStock) {
                 val assignedStockers = staffManager.advanceStockerProgressWithAssignment(stockerResult, delta, speedMultiplier * stockerBonus)
-                repeat(assignedStockers.size) { stockRandomItemFromBackroom() }
+                var remainingStockerActions = assignedStockers.size
+                // Fresh items first
+                while (remainingStockerActions > 0 && hasFreshBackroomStock) {
+                    stockRandomFreshItemFromBackroom()
+                    remainingStockerActions--
+                    hasFreshBackroomStock = state.inventory.any { (itemId, inv) ->
+                        inv.backroomStock > 0 && itemMetadataCache.get(itemId)?.isPerishable == true
+                    }
+                }
+                // Then regular items
+                repeat(remainingStockerActions) { stockRandomItemFromBackroom() }
                 if (assignedStockers.isNotEmpty()) {
                     var registry = state.hiredEntityRegistry
                     for (entityId in assignedStockers) {
@@ -617,7 +612,7 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
                     if (!meta.isPerishable) continue
                     if (state.pricingState.activeMarkdowns.containsKey(itemId)) continue
                     val hasExpiringBatch = inv.shelfBatches.any { batch ->
-                        batch.expirationDay - currentDay <= PricingManager.EXPIRY_THRESHOLD_DAYS
+                        batch.expirationDay - currentDay <= pricingManager.config.expiryThresholdDays
                     }
                     if (hasExpiringBatch) {
                         state = pricingManager.applyExpiryMarkdown(state, itemId, currentDay)
@@ -735,7 +730,15 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         val result = playerActionHandler.calculateStockerWork(state, deltaSeconds)
         val hasActionableBackroom = state.inventory.values.any { it.backroomStock > 0 }
         if (hasActionableBackroom) {
-            repeat(result.actionsToTake) { stockRandomItemFromBackroom() }
+            var actionsRemaining = result.actionsToTake
+            // Fresh items first
+            while (actionsRemaining > 0 && state.inventory.any { (itemId, inv) ->
+                inv.backroomStock > 0 && itemMetadataCache.get(itemId)?.isPerishable == true
+            }) {
+                stockRandomFreshItemFromBackroom()
+                actionsRemaining--
+            }
+            repeat(actionsRemaining) { stockRandomItemFromBackroom() }
             state = state.copy(playerStockerProgress = result.newProgress)
         } else {
             val unzonedItems = state.inventory.entries
@@ -1308,12 +1311,13 @@ class GameEngine(private val itemMetadataCache: ItemMetadataCache) {
         trafficManager.reset()
         // Recompute cached pricing multipliers from current pricing state
         state = pricingManager.updateSmoothedPriceIndex(state)
-        lastPriceIndexHour = savedState.currentTime.hour
         // Clear any pending changes
         _changes.value = null
     }
 
     // ── Pricing System ───────────────────────────────────────────────────────
+
+    fun resolvePrice(itemId: Int) = pricingManager.resolvePrice(itemId, state)
 
     fun setCategoryMarkup(category: com.example.superstoresimulator.domain.items.ItemCategory, percent: Int) {
         state = pricingManager.setCategoryMarkup(state, category, percent)

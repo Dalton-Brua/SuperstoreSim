@@ -59,7 +59,8 @@ class TrafficManager {
 
         // Convert whole accumulated customers into transaction requests
         while (accumulatedCustomers >= 1.0) {
-            val basketSize = (pattern.averageBasketSize - 1 + Random.nextInt(3)).coerceIn(1, 7)
+            val baseBasket = pattern.averageBasketSize - 1 + Random.nextInt(3)
+            val basketSize = (baseBasket * state.currentStoreSize.basketSizeMultiplier).toInt().coerceAtLeast(1)
             results.add(
                 TransactionRequest(
                     itemCount = basketSize,

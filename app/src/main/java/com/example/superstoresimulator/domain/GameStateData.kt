@@ -218,6 +218,8 @@ data class GameState(
     // ── Register System ───────────────────────────────────────────────────────
     /** All owned registers.  Starts with a single register (id=0). */
     val registers: List<RegisterState> = listOf(RegisterState(registerId = 0)),
+    /** Global monotonic counter for unique transaction IDs across all registers. */
+    val nextTransactionId: Int = 1,
     /** Register id the player has claimed as cashier, or null if unassigned. */
     val playerAssignedRegisterId: Int? = null,
     /** Cashier entity IDs manually unassigned from registers today — blocked from auto-reassignment until midnight. */

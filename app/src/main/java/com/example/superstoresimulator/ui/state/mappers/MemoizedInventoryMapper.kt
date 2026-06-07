@@ -6,8 +6,8 @@ import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.ItemMetadata
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
-import com.example.superstoresimulator.domain.pricing.PricingManager
 import com.example.superstoresimulator.domain.pricing.PricingState
+import com.example.superstoresimulator.domain.pricing.ResolvedPrice
 import com.example.superstoresimulator.ui.state.InventoryItemUI
 import com.example.superstoresimulator.ui.state.InventoryUIState
 
@@ -46,7 +46,7 @@ class MemoizedInventoryMapper(
         tier: ItemUnlockTier,
         backroomCap: Int,
         scheduledTrucks: List<ScheduledTruck> = emptyList(),
-        pricingManager: PricingManager? = null,
+        priceResolver: ((Int) -> ResolvedPrice)? = null,
         gameState: GameState? = null,
     ): InventoryUIState {
         val domainInventory = currentInventory
@@ -127,9 +127,7 @@ class MemoizedInventoryMapper(
             } else null
 
 
-            val resolved = if (pricingManager != null && gameState != null) {
-                pricingManager.resolvePrice(itemId, gameState)
-            } else null
+            val resolved = priceResolver?.invoke(itemId)
 
             itemCache[itemId] = InventoryItemUI(
                 id = itemId,

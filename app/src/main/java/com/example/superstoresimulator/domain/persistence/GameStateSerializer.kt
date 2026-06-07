@@ -16,6 +16,7 @@ import com.example.superstoresimulator.domain.StaffShift
 import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.Transactions.TransactionLine
+import java.time.Instant
 import com.example.superstoresimulator.domain.RefundRequest
 import com.example.superstoresimulator.domain.RefundLine
 import com.example.superstoresimulator.domain.inventory.InventoryState
@@ -146,6 +147,7 @@ object GameStateSerializer {
             registersArray.put(serializeRegisterState(reg))
         }
         json.put("registers", registersArray)
+        json.put("nextTransactionId", state.nextTransactionId)
         json.put("ownedRegisterCount", state.ownedRegisterCount)
         if (state.playerAssignedRegisterId != null) {
             json.put("playerAssignedRegisterId", state.playerAssignedRegisterId)
@@ -263,6 +265,18 @@ object GameStateSerializer {
                         )
                     )
                 },
+                nextTransactionId = if (json.has("nextTransactionId")) {
+                    json.getInt("nextTransactionId")
+                } else {
+                    // Migration: derive from existing sales history
+                    val history = json.optJSONArray("salesHistory")
+                    val maxPositiveId = if (history != null) {
+                        (0 until history.length()).maxOfOrNull {
+                            history.getJSONObject(it).optInt("id", 0)
+                        } ?: 0
+                    } else 0
+                    maxPositiveId + 1
+                },
                 playerAssignedRegisterId = if (json.has("playerAssignedRegisterId") &&
                     !json.isNull("playerAssignedRegisterId")
                 ) json.getInt("playerAssignedRegisterId") else null,
@@ -354,6 +368,7 @@ object GameStateSerializer {
             put("totalEarned", tx.totalEarned.cents)
             put("registerId", tx.registerId)
             put("gameDayNumber", tx.gameDayNumber)
+            if (tx.completedAt != null) put("completedAt", tx.completedAt.toEpochMilli())
             val linesArray = JSONArray()
             tx.lines.forEach { line ->
                 linesArray.put(serializeTransactionLine(line))
@@ -374,7 +389,7 @@ object GameStateSerializer {
             subtotal = Money(json.optLong("subtotal", 0L)),
             tax = Money(json.optLong("tax", 0L)),
             totalEarned = Money(json.optLong("totalEarned", 0L)),
-            completedAt = null,
+            completedAt = if (json.has("completedAt")) Instant.ofEpochMilli(json.getLong("completedAt")) else null,
             registerId = json.optInt("registerId", 0),
             gameDayNumber = json.optInt("gameDayNumber", 0),
         )
@@ -1026,6 +1041,7 @@ object GameStateSerializer {
 
             put("defaultMarkup", pricing.defaultMarkup)
             put("smoothedPriceIndex", pricing.smoothedPriceIndex.toDouble())
+            put("lastPriceIndexHour", pricing.lastPriceIndexHour)
 
             val historyArr = JSONArray()
             pricing.priceHistory.forEach { evt ->
@@ -1098,6 +1114,7 @@ object GameStateSerializer {
             activeMarkdowns = markdowns,
             defaultMarkup = json.optInt("defaultMarkup", 0),
             smoothedPriceIndex = json.optDouble("smoothedPriceIndex", 1.0).toFloat(),
+            lastPriceIndexHour = json.optInt("lastPriceIndexHour", -1),
             priceHistory = history,
         )
     }

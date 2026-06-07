@@ -49,6 +49,8 @@ import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.persistence.GameStateRepository
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.Entities.EntityDef
+import com.example.superstoresimulator.domain.Transactions.Transaction
+import com.example.superstoresimulator.domain.store.StaffWageCalculator.calculateTotalWages
 
 @HiltViewModel
 class GameViewModel @Inject constructor(
@@ -409,7 +411,7 @@ class GameViewModel @Inject constructor(
                 avgZoneScore = domain.avgZoneScore,
             ),
             transactions = TransactionUIState(
-                current = domain.registers.firstOrNull()?.currentTransaction ?: com.example.superstoresimulator.domain.Transactions.Transaction(),
+                current = domain.registers.firstOrNull()?.currentTransaction ?: Transaction(),
                 totalCompleted = domain.totalTransactionsCompleted,
                 isActive = domain.registers.firstOrNull()?.transactionActive ?: false,
                 isDialogOpen = false,
@@ -419,7 +421,7 @@ class GameViewModel @Inject constructor(
             ),
             inventory = inventoryMapper.map(
                 domain.inventory, domain.currentTier, domain.storeConfig.backroomCapPerItem,
-                pricingManager = if (gameEngineInitialized) gameEngine.pricingManager else null,
+                priceResolver = if (gameEngineInitialized) gameEngine::resolvePrice else null,
                 gameState = domain,
             ).copy(
                 selectedCategory = null,
@@ -465,8 +467,8 @@ class GameViewModel @Inject constructor(
         )
     }
 
-    private fun calculateDailyWages(domain: GameState): com.example.superstoresimulator.domain.Money {
-        return com.example.superstoresimulator.domain.store.StaffWageCalculator.calculateTotalWages(domain.hiredEntityRegistry, domain.staffSchedules)
+    private fun calculateDailyWages(domain: GameState): Money {
+        return calculateTotalWages(domain.hiredEntityRegistry, domain.staffSchedules)
     }
 
     private fun buildProgressionUiState(domain: GameState, old: ProgressionUIState?): ProgressionUIState {
@@ -480,7 +482,7 @@ class GameViewModel @Inject constructor(
             currentTier = domain.currentTier,
             totalRevenue = domain.totalRevenue,
             nextTier = nextTier,
-            revenueToNextTier = tierEnd?.let { com.example.superstoresimulator.domain.Money(it - earned) },
+            revenueToNextTier = tierEnd?.let { Money(it - earned) },
             tierProgressFraction = if (tierEnd != null && tierEnd > tierStart)
                 ((earned - tierStart).toFloat() / (tierEnd - tierStart)).coerceIn(0f, 1f)
             else 1f,
@@ -505,7 +507,7 @@ class GameViewModel @Inject constructor(
                 avgZoneScore = domain.avgZoneScore,
             ),
             transactions = TransactionUIState(
-                current = domain.registers.firstOrNull()?.currentTransaction ?: com.example.superstoresimulator.domain.Transactions.Transaction(),
+                current = domain.registers.firstOrNull()?.currentTransaction ?: Transaction(),
                 totalCompleted = domain.totalTransactionsCompleted,
                 isActive = domain.registers.firstOrNull()?.transactionActive ?: false,
                 isDialogOpen = oldUi?.transactions?.isDialogOpen ?: false,
@@ -516,7 +518,7 @@ class GameViewModel @Inject constructor(
             inventory = inventoryMapper.map(
                 domain.inventory, domain.currentTier, domain.storeConfig.backroomCapPerItem,
                 domain.scheduledTrucks,
-                pricingManager = gameEngine.pricingManager,
+                priceResolver = gameEngine::resolvePrice,
                 gameState = domain,
             ).copy(
                 selectedCategory = oldUi?.inventory?.selectedCategory,
@@ -676,9 +678,9 @@ class GameViewModel @Inject constructor(
             val shift = shiftMap[entity.id]
             val isOnShift = shift?.isOnShift(currentHour) ?: true
             val tierLabel = when (entity.tier) {
-                com.example.superstoresimulator.domain.Entities.Tier.BASE -> ""
-                com.example.superstoresimulator.domain.Entities.Tier.FAST -> "Fast"
-                com.example.superstoresimulator.domain.Entities.Tier.MANAGER -> "Dept. Mgr"
+                Tier.BASE -> ""
+                Tier.FAST -> "Fast"
+                Tier.MANAGER -> "Dept. Mgr"
             }
 
             StaffScheduleEntryUI(
@@ -745,7 +747,7 @@ class GameViewModel @Inject constructor(
             regularTrucks = regularTrucks,
             freshTruck = freshTruck,
             earlyTruckAvailable = !earlyTruckAlreadyExists,
-            earlyTruckCost = com.example.superstoresimulator.domain.Money(10_000L),
+            earlyTruckCost = Money(10_000L),
             maxTrucksPerWeek = maxTrucks,
             freeTrucksPerWeek = freeTrucks,
             extraTruckSlotsUnlocked = domain.truckConfig.extraTruckSlotsUnlocked,

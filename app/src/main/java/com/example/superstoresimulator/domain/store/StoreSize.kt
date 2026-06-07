@@ -19,6 +19,7 @@ enum class StoreSize(
     val shelfCapacity: Int,
     val backroomCapPerItem: Int,  // In CASE PACKS, not units
     val trafficMultiplier: Float,  // Customer traffic multiplier
+    val basketSizeMultiplier: Float,  // Basket size multiplier (+25% per tier)
     val upgradeCost: Money? = null,  // null for starting size
     /** Maximum number of registers that can be owned at this store size. */
     val maxRegisters: Int,
@@ -29,6 +30,7 @@ enum class StoreSize(
         shelfCapacity = 2_000,
         backroomCapPerItem = 2,          // 2 case packs per item
         trafficMultiplier = 1.0f,        // Baseline traffic
+        basketSizeMultiplier = 1.0f,     // Baseline basket
         upgradeCost = null,              // Starting size
         maxRegisters = 1
     ),
@@ -38,6 +40,7 @@ enum class StoreSize(
         shelfCapacity = 5_000,
         backroomCapPerItem = 5,          // 5 case packs per item (2.5x)
         trafficMultiplier = 2.0f,        // 2× traffic
+        basketSizeMultiplier = 1.25f,    // +25% basket
         upgradeCost = Money(100_000),    // $1,000 to upgrade
         maxRegisters = 2
     ),
@@ -47,6 +50,7 @@ enum class StoreSize(
         shelfCapacity = 10_000,
         backroomCapPerItem = 10,         // 10 case packs per item (5x)
         trafficMultiplier = 4.0f,        // 4× traffic (3² = 3×3)
+        basketSizeMultiplier = 1.5f,     // +50% basket
         upgradeCost = Money(2_000_000),  // $20,000 to upgrade
         maxRegisters = 3
     ),
@@ -56,6 +60,7 @@ enum class StoreSize(
         shelfCapacity = 20_000,
         backroomCapPerItem = 30,         // 30 case packs per item (15x)
         trafficMultiplier = 8.0f,       // 8× traffic (3³ = 9×3)
+        basketSizeMultiplier = 1.75f,    // +75% basket
         upgradeCost = Money(20_000_000), // $200,000 to upgrade
         maxRegisters = 5
     ),
@@ -65,6 +70,7 @@ enum class StoreSize(
         shelfCapacity = 40_000,
         backroomCapPerItem = 999,        // Effectively unlimited case packs
         trafficMultiplier = 16.0f,       // 16× traffic (3⁴ = 27×3)
+        basketSizeMultiplier = 2.0f,     // +100% basket
         upgradeCost = Money(100_000_000), // $1,000,000 to upgrade
         maxRegisters = 8
     );

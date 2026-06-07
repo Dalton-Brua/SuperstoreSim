@@ -2,10 +2,13 @@ package com.example.superstoresimulator.domain.expiration
 
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
-import com.example.superstoresimulator.domain.inventory.ItemBatch
-import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.metrics.ExpiredItemEvent
+
+data class SpoilageResult(
+    val state: GameState,
+    val expiredItemIds: Set<Int>,
+)
 
 /**
  * Manages item expiration logic.
@@ -38,38 +41,43 @@ class SpoilageManager(
      * @param state Current game state
      * @return New game state with expired batches removed and metrics updated
      */
-    fun processExpiration(state: GameState): GameState {
+    fun processExpiration(state: GameState): SpoilageResult {
         val currentDay = state.currentTime.dayNumber
+
+        val hasAnyExpired = state.inventory.any { (itemId, inv) ->
+            val meta = itemMetadataCache.get(itemId) ?: return@any false
+            meta.isPerishable && (inv.shelfBatches + inv.backroomBatches).any { it.expirationDay <= currentDay }
+        }
+        if (!hasAnyExpired) return SpoilageResult(state, emptySet())
+
         var totalExpired = 0
         var totalWasteCost = Money.ZERO
         val expirationEvents = mutableListOf<ExpiredItemEvent>()
-        
-        // Process each item in inventory
+        val expiredItemIds = mutableSetOf<Int>()
+
         val updatedInventory = state.inventory.mapValues { (itemId, inv) ->
             val metadata = itemMetadataCache.get(itemId)
             if (metadata == null || !metadata.isPerishable) {
-                return@mapValues inv  // Skip non-perishables
+                return@mapValues inv
             }
-            
-            // Remove expired batches from shelf
+
             val (validShelfBatches, expiredShelfBatches) = inv.shelfBatches.partition { batch ->
                 batch.expirationDay > currentDay
             }
-            
-            // Remove expired batches from backroom
+
             val (validBackroomBatches, expiredBackroomBatches) = inv.backroomBatches.partition { batch ->
                 batch.expirationDay > currentDay
             }
-            
-            // Track expiration events
-            val totalExpiredForItem = expiredShelfBatches.sumOf { it.quantity } + 
+
+            val totalExpiredForItem = expiredShelfBatches.sumOf { it.quantity } +
                                      expiredBackroomBatches.sumOf { it.quantity }
-            
+
             if (totalExpiredForItem > 0) {
                 val wasteCost = metadata.unitCost * totalExpiredForItem
                 totalExpired += totalExpiredForItem
                 totalWasteCost += wasteCost
-                
+                expiredItemIds.add(itemId)
+
                 expirationEvents.add(
                     ExpiredItemEvent(
                         itemId = itemId,
@@ -79,28 +87,22 @@ class SpoilageManager(
                     )
                 )
             }
-            
-            // Return updated inventory with expired batches removed
+
             inv.copy(
                 shelfBatches = validShelfBatches,
                 backroomBatches = validBackroomBatches
             )
         }
-        
-        // Update game state with new inventory and metrics
-        return if (totalExpired > 0) {
-            state.copy(
-                inventory = updatedInventory,
-                currentDayMetrics = state.currentDayMetrics.copy(
-                    itemsExpired = state.currentDayMetrics.itemsExpired + totalExpired,
-                    expiredWasteCost = state.currentDayMetrics.expiredWasteCost + totalWasteCost,
-                    expiredItemEvents = state.currentDayMetrics.expiredItemEvents + expirationEvents
-                )
+
+        val newState = state.copy(
+            inventory = updatedInventory,
+            currentDayMetrics = state.currentDayMetrics.copy(
+                itemsExpired = state.currentDayMetrics.itemsExpired + totalExpired,
+                expiredWasteCost = state.currentDayMetrics.expiredWasteCost + totalWasteCost,
+                expiredItemEvents = state.currentDayMetrics.expiredItemEvents + expirationEvents
             )
-        } else {
-            // No expiration, return state with updated inventory (in case batches were reorganized)
-            state.copy(inventory = updatedInventory)
-        }
+        )
+        return SpoilageResult(newState, expiredItemIds)
     }
 }
 

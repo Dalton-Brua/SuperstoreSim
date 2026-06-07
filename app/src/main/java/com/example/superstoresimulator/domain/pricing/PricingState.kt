@@ -10,14 +10,15 @@ data class PricingState(
     val defaultMarkup: Int = 0,
     val smoothedPriceIndex: Float = 1.0f,
     val priceHistory: List<PriceChangeEvent> = emptyList(),
+    val lastPriceIndexHour: Int = -1,
 ) {
     val priceTrafficMultiplier: Float get() =
         if (smoothedPriceIndex <= 0f) 1.0f
-        else (1.0 / smoothedPriceIndex).pow(PricingManager.TRAFFIC_ELASTICITY.toDouble()).toFloat()
+        else (1.0 / smoothedPriceIndex).pow(PricingConfig.DEFAULT.trafficElasticity.toDouble()).toFloat()
 
     val basketSizeMultiplier: Float get() =
         if (smoothedPriceIndex <= 1.0f) 1.0f
-        else (1.0 / smoothedPriceIndex).pow(PricingManager.BASKET_ELASTICITY.toDouble()).toFloat()
+        else (1.0 / smoothedPriceIndex).pow(PricingConfig.DEFAULT.basketElasticity.toDouble()).toFloat()
 }
 
 data class Markdown(

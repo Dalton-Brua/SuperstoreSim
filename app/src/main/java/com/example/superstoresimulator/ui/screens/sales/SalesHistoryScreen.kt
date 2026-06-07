@@ -62,7 +62,7 @@ private fun PaginatedHistoryList(
     itemViewModel: ItemViewModel
 ) {
     val pageSize = 10
-    val sortedSalesHistory = remember(salesHistory) { salesHistory.sortedByDescending { it.completedAt } }
+    val sortedSalesHistory = remember(salesHistory) { salesHistory.asReversed() }
     var itemsToShow by remember { mutableStateOf(pageSize.coerceAtMost(sortedSalesHistory.size)) }
     val listState = rememberLazyListState()
 

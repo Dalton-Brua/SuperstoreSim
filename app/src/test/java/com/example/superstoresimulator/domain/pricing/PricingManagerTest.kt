@@ -16,6 +16,7 @@ import org.junit.Before
 import org.junit.Test
 import kotlin.math.abs
 import com.example.superstoresimulator.domain.helpers.FakeItemDao
+import com.example.superstoresimulator.domain.pricing.PricingConfig
 
 class PricingManagerTest {
 
@@ -558,7 +559,7 @@ class PricingManagerTest {
         repeat(250) { i ->
             state = mgr.setCategoryMarkup(state, ItemCategory.GROCERY, i % 100)
         }
-        assertEquals(PricingManager.MAX_PRICE_HISTORY_SIZE, state.pricingState.priceHistory.size)
+        assertEquals(PricingConfig.DEFAULT.maxPriceHistorySize, state.pricingState.priceHistory.size)
     }
 
     // ── 13. Edge Cases ───────────────────────────────────────────────────────

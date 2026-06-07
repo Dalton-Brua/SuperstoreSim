@@ -13,21 +13,10 @@ data class ResolvedPrice(
     val modifierPercent: Int,
 )
 
-class PricingManager(private val cache: ItemMetadataCache) {
-
-    companion object {
-        const val PRICE_ELASTICITY = 1.5f
-        const val TRAFFIC_ELASTICITY = 0.5f
-        const val BASKET_ELASTICITY = 1.0f
-        const val FRESH_MARKDOWN_PERCENT = 30
-        const val EXPIRY_THRESHOLD_DAYS = 1
-        const val EMA_ALPHA = 0.3f
-        const val MAX_PRICE_HISTORY_SIZE = 200
-        const val PRODUCE_WEIGHT_MIN = 0.5f
-        const val PRODUCE_WEIGHT_MAX = 3.0f
-        const val MEAT_WEIGHT_MIN = 0.75f
-        const val MEAT_WEIGHT_MAX = 2.5f
-    }
+class PricingManager(
+    private val cache: ItemMetadataCache,
+    val config: PricingConfig = PricingConfig.DEFAULT,
+) {
 
     fun resolvePrice(itemId: Int, state: GameState): ResolvedPrice {
         val meta = cache.get(itemId) ?: return ResolvedPrice(Money.ZERO, Money.ZERO, 0)
@@ -56,7 +45,7 @@ class PricingManager(private val cache: ItemMetadataCache) {
         val resolved = resolvePrice(itemId, state)
         if (resolved.basePrice.cents <= 0 || resolved.effectivePrice.cents <= 0) return 1.0f
         val ratio = resolved.basePrice.cents.toDouble() / resolved.effectivePrice.cents.toDouble()
-        return ratio.pow(PRICE_ELASTICITY.toDouble()).toFloat()
+        return ratio.pow(config.priceElasticity.toDouble()).toFloat()
     }
 
     fun computePriceIndex(state: GameState): Float {
@@ -89,12 +78,13 @@ class PricingManager(private val cache: ItemMetadataCache) {
         ) {
             rawIndex
         } else {
-            EMA_ALPHA * rawIndex + (1 - EMA_ALPHA) * current
+            config.emaAlpha * rawIndex + (1 - config.emaAlpha) * current
         }
 
         return state.copy(
             pricingState = pricing.copy(
                 smoothedPriceIndex = smoothed,
+                lastPriceIndexHour = state.currentTime.hour,
             )
         )
     }
@@ -157,7 +147,7 @@ class PricingManager(private val cache: ItemMetadataCache) {
         if (pricing.activeMarkdowns.containsKey(itemId)) return state
 
         val markdown = Markdown(
-            percentOff = FRESH_MARKDOWN_PERCENT,
+            percentOff = config.freshMarkdownPercent,
             reason = MarkdownReason.EXPIRING_SOON,
             appliedOnDay = currentDay,
         )
@@ -167,7 +157,7 @@ class PricingManager(private val cache: ItemMetadataCache) {
             itemId = itemId,
             category = null,
             oldPercent = 0,
-            newPercent = -FRESH_MARKDOWN_PERCENT,
+            newPercent = -config.freshMarkdownPercent,
             source = MarkdownReason.EXPIRING_SOON,
         )
 
@@ -190,31 +180,31 @@ class PricingManager(private val cache: ItemMetadataCache) {
         )
     }
 
-    data class PricingData(
+    class PricingData(
         val multipliers: Map<Int, Float>,
-        val resolvedPrices: Map<Int, ResolvedPrice>,
-    )
+        private val resolvedPrices: Map<Int, ResolvedPrice>,
+    ) {
+        fun resolvePrice(itemId: Int): ResolvedPrice =
+            resolvedPrices[itemId] ?: ResolvedPrice(Money.ZERO, Money.ZERO, 0)
+    }
 
     fun computePricingData(state: GameState): PricingData {
         val multipliers = mutableMapOf<Int, Float>()
-        val prices = mutableMapOf<Int, ResolvedPrice>()
+        val resolved = mutableMapOf<Int, ResolvedPrice>()
         for (itemId in state.inventory.keys) {
-            val resolved = resolvePrice(itemId, state)
-            prices[itemId] = resolved
-            if (resolved.basePrice.cents <= 0 || resolved.effectivePrice.cents <= 0) {
-                multipliers[itemId] = 1.0f
-            } else {
-                val ratio = resolved.basePrice.cents.toDouble() / resolved.effectivePrice.cents.toDouble()
-                multipliers[itemId] = ratio.pow(PRICE_ELASTICITY.toDouble()).toFloat()
-            }
+            val r = resolvePrice(itemId, state)
+            resolved[itemId] = r
+            multipliers[itemId] = if (r.basePrice.cents <= 0 || r.effectivePrice.cents <= 0) 1.0f
+            else (r.basePrice.cents.toDouble() / r.effectivePrice.cents.toDouble())
+                .pow(config.priceElasticity.toDouble()).toFloat()
         }
-        return PricingData(multipliers, prices)
+        return PricingData(multipliers, resolved)
     }
 
     fun randomWeight(category: ItemCategory, random: kotlin.random.Random = kotlin.random.Random): Float {
         return when (category) {
-            ItemCategory.PRODUCE -> random.nextFloat() * (PRODUCE_WEIGHT_MAX - PRODUCE_WEIGHT_MIN) + PRODUCE_WEIGHT_MIN
-            ItemCategory.MEAT -> random.nextFloat() * (MEAT_WEIGHT_MAX - MEAT_WEIGHT_MIN) + MEAT_WEIGHT_MIN
+            ItemCategory.PRODUCE -> random.nextFloat() * (config.produceWeightMax - config.produceWeightMin) + config.produceWeightMin
+            ItemCategory.MEAT -> random.nextFloat() * (config.meatWeightMax - config.meatWeightMin) + config.meatWeightMin
             else -> 1.0f
         }
     }
@@ -223,5 +213,5 @@ class PricingManager(private val cache: ItemMetadataCache) {
         history: List<PriceChangeEvent>,
         event: PriceChangeEvent,
     ): List<PriceChangeEvent> =
-        (history + event).takeLast(MAX_PRICE_HISTORY_SIZE)
+        (history + event).takeLast(config.maxPriceHistorySize)
 }

@@ -60,7 +60,7 @@ class TransactionEngine(
         val totalEarned = subtotal + tax
 
         val newTransaction = Transaction(
-            id = register.currentTransaction.id + 1,
+            id = state.nextTransactionId,
             lines = lines,
             subtotal = subtotal,
             tax = tax,
@@ -68,6 +68,7 @@ class TransactionEngine(
         )
 
         return state.copy(
+            nextTransactionId = state.nextTransactionId + 1,
             registers = state.registers.updateRegister(
                 register.copy(
                     currentTransaction = newTransaction,
@@ -105,7 +106,7 @@ class TransactionEngine(
         val adjustedItemCount = if (basketMult < 1.0f) {
             (itemCount * basketMult).toInt().coerceAtLeast(1)
         } else itemCount
-        val numLines = adjustedItemCount.coerceIn(1, availableItemIds.size.coerceAtMost(7))
+        val numLines = adjustedItemCount.coerceIn(1, availableItemIds.size)
         val pricingData = pricingManager?.computePricingData(state)
         val chosen = weightedSample(availableItemIds, numLines, state.inventory, pricingData?.multipliers)
         val lines = mutableListOf<TransactionLine>()
@@ -119,7 +120,7 @@ class TransactionEngine(
         val totalEarned = subtotal + tax
 
         val newTransaction = Transaction(
-            id = register.currentTransaction.id + 1,
+            id = state.nextTransactionId,
             lines = lines,
             subtotal = subtotal,
             tax = tax,
@@ -127,6 +128,7 @@ class TransactionEngine(
         )
 
         return state.copy(
+            nextTransactionId = state.nextTransactionId + 1,
             registers = state.registers.updateRegister(
                 register.copy(
                     currentTransaction = newTransaction,
@@ -189,7 +191,7 @@ class TransactionEngine(
         pricingData: PricingManager.PricingData?,
     ): TransactionLine {
         val meta = cache?.get(itemId)
-        val resolved = pricingData?.resolvedPrices?.get(itemId)
+        val resolved = pricingData?.resolvePrice(itemId)
 
         val unitPrice = resolved?.effectivePrice ?: meta?.price ?: Money.Companion.fromDollars(9.99)
         val basePrice = resolved?.basePrice ?: unitPrice
@@ -230,7 +232,8 @@ class TransactionEngine(
             }
         }
         
-        val updated = inv.copy(shelfBatches = updatedShelfBatches)
+        val newZone = (inv.zoneScore - StaffManager.ZONE_DECAY_PER_SALE).coerceAtLeast(0f)
+        val updated = inv.copy(shelfBatches = updatedShelfBatches, zoneScore = newZone)
         return inventory + (itemId to updated)
     }
 
