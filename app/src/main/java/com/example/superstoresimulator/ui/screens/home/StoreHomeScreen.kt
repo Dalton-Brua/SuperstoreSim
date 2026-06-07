@@ -26,12 +26,11 @@ import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.player.PlayerRole
-import com.example.superstoresimulator.domain.store.StoreState
-import com.example.superstoresimulator.ui.components.CustomerQueueIndicator
 import com.example.superstoresimulator.ui.components.PlayerRoleButtons
 import com.example.superstoresimulator.ui.components.buttons.PendingRefundsButton
 import com.example.superstoresimulator.ui.components.panels.SettingsPanel
 import com.example.superstoresimulator.ui.components.cards.RegistersCard
+import com.example.superstoresimulator.ui.components.cards.StaffActivityCard
 import com.example.superstoresimulator.ui.components.cards.StoreSizeCard
 import com.example.superstoresimulator.ui.components.cards.StoreOverviewCard
 import com.example.superstoresimulator.ui.components.cards.StorePricingCard
@@ -135,19 +134,7 @@ fun StoreHomeScreen (
                 )
             }
 
-            // Customer queue indicator
-            item {
-                val storeState = state.time?.storeState
-                if (storeState == StoreState.OPEN) {
-                    CustomerQueueIndicator(
-                        pendingCustomers = state.transactions.pendingCustomers,
-                        transactionActive = state.transactions.isActive,
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    )
-                }
-            }
-
-            // Registers card
+            // Registers card (collapsible, always shows active count + queue)
             item {
                 val cashierEntries = state.staff.scheduleEntries.filter {
                     it.entityTypeName.lowercase().contains("cashier")
@@ -155,28 +142,40 @@ fun StoreHomeScreen (
                 RegistersCard(
                     registersState = state.registers,
                     cashierEntries = cashierEntries,
+                    pendingCustomers = state.transactions.pendingCustomers,
                     onAssignPlayer = onAssignPlayerToRegister,
                     onAssignCashier = onAssignCashierToRegister,
                     onPurchaseRegister = onPurchaseRegister,
                     onRegisterClick = { register -> selectedRegisterId = register.registerId },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp),
                 )
             }
 
-            // Tier progress card (NEW - card style)
+            // Staff activity card (stockers, fresh handlers)
             item {
-                TierProgressCard(
-                    currentTier = state.progression.currentTier,
-                    totalRevenue = state.progression.totalRevenue,
-                    nextTier = state.progression.nextTier,
-                    revenueToNextTier = state.progression.revenueToNextTier,
-                    tierProgressFraction = state.progression.tierProgressFraction,
-                    availableTier = state.progression.availableTier,
-                    playerMoney = state.app.money,
-                    onUnlockNextTier = onUnlockNextTier,
-                    onClick = onNavigateToUnlocks,
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                StaffActivityCard(
+                    scheduleEntries = state.staff.scheduleEntries,
+                    employeeActivities = state.staff.employeeActivities,
+                    modifier = Modifier.padding(horizontal = 12.dp),
                 )
+            }
+
+            // Tier progress card — hidden once all tiers unlocked
+            if (state.progression.nextTier != null) {
+                item {
+                    TierProgressCard(
+                        currentTier = state.progression.currentTier,
+                        totalRevenue = state.progression.totalRevenue,
+                        nextTier = state.progression.nextTier,
+                        revenueToNextTier = state.progression.revenueToNextTier,
+                        tierProgressFraction = state.progression.tierProgressFraction,
+                        availableTier = state.progression.availableTier,
+                        playerMoney = state.app.money,
+                        onUnlockNextTier = onUnlockNextTier,
+                        onClick = onNavigateToUnlocks,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
             }
 
             // Store size card
