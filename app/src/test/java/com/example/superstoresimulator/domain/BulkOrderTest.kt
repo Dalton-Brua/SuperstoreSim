@@ -85,7 +85,7 @@ class BulkOrderTest {
     private fun newEngine(items: List<Item>): GameEngine {
         val cache = ItemMetadataCache(FakeItemDao(items))
         runBlocking { cache.initialize() }
-        val engine = GameEngine(cache)
+        val engine = createTestGameEngine(cache)
         // Keep non-cap tests focused on pricing/filtering, not store-size cap limits.
         // Also reset currentTier to TIER_1 — GameEngine init may override it for dev convenience.
         engine.state = engine.state.copy(

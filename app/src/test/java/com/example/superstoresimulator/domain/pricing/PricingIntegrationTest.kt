@@ -1,6 +1,7 @@
 package com.example.superstoresimulator.domain.pricing
 
 import com.example.superstoresimulator.domain.GameEngine
+import com.example.superstoresimulator.domain.createTestGameEngine
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.inventory.InventoryState
@@ -34,7 +35,7 @@ class PricingIntegrationTest {
     fun setUp() {
         cache = ItemMetadataCache(FakeItemDao(testItems))
         runBlocking { cache.initialize() }
-        engine = GameEngine(cache)
+        engine = createTestGameEngine(cache)
     }
 
     private fun setMoney(amount: Long) {

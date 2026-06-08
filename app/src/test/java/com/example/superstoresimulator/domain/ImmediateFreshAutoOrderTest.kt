@@ -73,7 +73,7 @@ class ImmediateFreshAutoOrderTest {
     private fun newEngine(items: List<Item>): GameEngine {
         val cache = ItemMetadataCache(FakeItemDao(items))
         runBlocking { cache.initialize() }
-        val engine = GameEngine(cache)
+        val engine = createTestGameEngine(cache)
         // Generous backroom cap and money to avoid unrelated guards firing.
         engine.state = engine.state.copy(
             storeConfig = engine.state.storeConfig.copy(backroomCapPerItem = 100),

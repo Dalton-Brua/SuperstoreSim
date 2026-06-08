@@ -6,6 +6,7 @@ import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.GameEngine
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.createTestGameEngine
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemWithName
@@ -331,7 +332,7 @@ class StaffManagerTest {
             }
         )
         runBlocking { cache.initialize() }
-        return GameEngine(cache)
+        return createTestGameEngine(cache)
     }
 
     private fun setEngineMoneyTo(engine: GameEngine, cents: Long) {

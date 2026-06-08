@@ -1,10 +1,16 @@
 package com.example.superstoresimulator.domain.inventory
 
+import com.example.superstoresimulator.domain.FreshAutoOrderConfig
 import com.example.superstoresimulator.domain.GameState
+import com.example.superstoresimulator.domain.GameStateChange
+import com.example.superstoresimulator.domain.IncompleteOrderRequest
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.PendingOrderLine
+import com.example.superstoresimulator.domain.delivery.TruckManager
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
+import com.example.superstoresimulator.domain.metrics.FreshOrderLineItem
+import com.example.superstoresimulator.domain.metrics.IncompleteOrderLineItem
 
 /**
  * Result of a buy operation: the updated [GameState] (money deducted, NO backroom change)
@@ -32,7 +38,10 @@ data class BuyResult(
  *  - Buy single case-packs or multi-pack orders into the backroom, respecting the cap
  *  - Execute a bulk order across an entire category with tiered volume discounts
  */
-class InventoryManager(private val cache: ItemMetadataCache) {
+class InventoryManager(
+    private val cache: ItemMetadataCache,
+    private val truckManager: TruckManager? = null,
+) {
 
     companion object {
         /**
@@ -513,7 +522,7 @@ class InventoryManager(private val cache: ItemMetadataCache) {
     fun shouldAutoOrderFreshItem(
         state: GameState,
         itemId: Int,
-        config: com.example.superstoresimulator.domain.FreshAutoOrderConfig
+        config: FreshAutoOrderConfig
     ): Boolean {
         if (!config.enabled) return false
         if (!isFreshItem(itemId)) return false
@@ -522,5 +531,118 @@ class InventoryManager(private val cache: ItemMetadataCache) {
         val totalStock = inv.shelfStock + inv.backroomStock
 
         return totalStock < config.minStockThreshold
+    }
+
+    // ── Order scheduling (moved from GameEngine) ─────────────────────────────
+
+    data class OrderResult(val state: GameState, val changes: List<GameStateChange>)
+
+    fun scheduleAndEmitOrder(state: GameState, result: BuyResult, moneyBefore: Money): OrderResult {
+        val tm = truckManager ?: return OrderResult(result.state, emptyList())
+        var s = result.state
+        val changes = mutableListOf<GameStateChange>()
+        if (result.orderLines.isNotEmpty()) {
+            val currentDay = s.currentTime.dayNumber
+            val fresh = result.orderLines.filter { it.isFresh }
+            val regular = result.orderLines.filter { !it.isFresh }
+            if (regular.isNotEmpty()) s = tm.scheduleRegularOrderLines(s, regular, currentDay)
+            if (fresh.isNotEmpty()) s = tm.scheduleFreshOrderLines(s, fresh, currentDay)
+            val arrivalDay = s.scheduledTrucks
+                .filter { t -> result.orderLines.any { l -> t.orders.any { o -> o.itemId == l.itemId } } }
+                .minOfOrNull { it.scheduledArrivalDay } ?: (currentDay + 1)
+            changes.add(GameStateChange.OrderScheduled(arrivalDay))
+        }
+        if (s.money != moneyBefore) changes.add(GameStateChange.MoneyChanged(s.money))
+        return OrderResult(s, changes)
+    }
+
+    fun orderIncompleteItem(state: GameState, itemId: Int, casePacksRequested: Int): OrderResult {
+        val tm = truckManager ?: return OrderResult(state, emptyList())
+        val item = cache.getItem(itemId) ?: return OrderResult(state, emptyList())
+        val totalCost = item.getCasePackCostAsMoney() * casePacksRequested
+
+        if (state.money < totalCost) return OrderResult(state, emptyList())
+
+        val result = buyItemCasePacks(state, itemId, casePacksRequested)
+        var s = result.state
+        val changes = mutableListOf<GameStateChange>()
+        if (result.orderLines.isNotEmpty()) {
+            val currentDay = s.currentTime.dayNumber
+            s = tm.scheduleFreshOrderLines(s, result.orderLines, currentDay)
+            changes.add(GameStateChange.OrderScheduled(currentDay + 1))
+        }
+        s = s.copy(
+            incompleteFreshOrders = s.incompleteFreshOrders.filter { it.itemId != itemId }
+        )
+        changes.add(GameStateChange.MoneyChanged(s.money))
+        return OrderResult(s, changes)
+    }
+
+    fun attemptFreshHandlerAutoOrder(state: GameState): GameState {
+        val tm = truckManager ?: return state
+        if (!state.freshAutoOrderConfig.enabled) return state
+
+        val alreadyHandled = (state.currentDayMetrics.autoOrderedFreshItems.map { it.itemId } +
+            state.currentDayMetrics.incompleteOrderedFreshItems.map { it.itemId }).toSet()
+
+        val pendingCasePacksByItem = mutableMapOf<Int, Int>()
+        for (truck in state.scheduledTrucks) {
+            for (line in truck.orders) {
+                pendingCasePacksByItem[line.itemId] = (pendingCasePacksByItem[line.itemId] ?: 0) + line.casePacksCount
+            }
+        }
+
+        var s = state
+        for ((itemId, _) in s.inventory) {
+            if (itemId in alreadyHandled) continue
+            if (!shouldAutoOrderFreshItem(s, itemId, s.freshAutoOrderConfig)) continue
+
+            val item = cache.getItem(itemId) ?: continue
+            val casePacks = s.freshAutoOrderConfig.casePacksPerItem
+            val totalCost = item.getCasePackCostAsMoney() * casePacks
+
+            if (s.money >= totalCost) {
+                val result = buyItemCasePacks(s, itemId, casePacks, pendingCasePacksByItem)
+                s = result.state
+                if (result.orderLines.isNotEmpty()) {
+                    val currentDay = s.currentTime.dayNumber
+                    s = tm.scheduleFreshOrderLines(s, result.orderLines, currentDay)
+                }
+                s = s.copy(
+                    currentDayMetrics = s.currentDayMetrics.copy(
+                        autoOrderedFreshItems = s.currentDayMetrics.autoOrderedFreshItems +
+                            FreshOrderLineItem(
+                                itemId = itemId,
+                                itemName = item.name,
+                                casePacksOrdered = casePacks,
+                                costPerCasePack = item.getCasePackCostAsMoney(),
+                                totalCost = totalCost,
+                            )
+                    )
+                )
+            } else {
+                s = s.copy(
+                    currentDayMetrics = s.currentDayMetrics.copy(
+                        incompleteOrderedFreshItems = s.currentDayMetrics.incompleteOrderedFreshItems +
+                            IncompleteOrderLineItem(
+                                itemId = itemId,
+                                itemName = item.name,
+                                casePacksRequested = casePacks,
+                                costPerCasePack = item.getCasePackCostAsMoney(),
+                                totalCost = totalCost,
+                                reason = "Insufficient funds",
+                            )
+                    ),
+                    incompleteFreshOrders = s.incompleteFreshOrders.filter { it.itemId != itemId } +
+                        IncompleteOrderRequest(
+                            itemId = itemId,
+                            casePacksRequested = casePacks,
+                            requestedOnDay = s.currentTime.dayNumber,
+                            reason = "Insufficient funds",
+                        )
+                )
+            }
+        }
+        return s
     }
 }

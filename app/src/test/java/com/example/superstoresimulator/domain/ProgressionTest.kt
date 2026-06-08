@@ -67,7 +67,7 @@ class ProgressionTest {
     private fun newEngine(items: List<Item> = emptyList()): GameEngine {
         val cache = ItemMetadataCache(FakeItemDao(items))
         runBlocking { cache.initialize() }
-        val engine = GameEngine(cache)
+        val engine = createTestGameEngine(cache)
         // Reset to TIER_1 / zero revenue so progression tests start from a clean baseline.
         engine.state = engine.state.copy(
             currentTier = ItemUnlockTier.TIER_1,

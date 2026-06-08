@@ -1,6 +1,6 @@
 package com.example.superstoresimulator.domain
 
-import com.example.superstoresimulator.domain.store.StoreController
+import com.example.superstoresimulator.domain.registers.RegisterManager
 import com.example.superstoresimulator.domain.store.StoreSize
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -68,12 +68,12 @@ class RegisterTest {
 
     @Test
     fun `purchaseRegister adds register and deducts cost`() {
-        val controller = StoreController()
+        val registerManager = RegisterManager()
         val state = GameState(
             money = Money(50_000L),
             currentStoreSize = StoreSize.SMALL_GROCERY,
         )
-        val result = controller.purchaseRegister(state)
+        val result = registerManager.purchaseRegister(state)
         assertEquals(2, result.registers.size)
         assertEquals(2, result.ownedRegisterCount)
         assertEquals(Money(50_000L) - StoreSize.nextRegisterCost(1), result.money)
@@ -81,37 +81,37 @@ class RegisterTest {
 
     @Test
     fun `purchaseRegister blocked when at max for store size`() {
-        val controller = StoreController()
+        val registerManager = RegisterManager()
         val state = GameState(
             money = Money(500_000L),
             currentStoreSize = StoreSize.MOM_AND_POP,
         )
-        val result = controller.purchaseRegister(state)
+        val result = registerManager.purchaseRegister(state)
         assertEquals("Should not add register at MOM_AND_POP max", 1, result.registers.size)
         assertEquals(Money(500_000L), result.money)
     }
 
     @Test
     fun `purchaseRegister blocked when insufficient funds`() {
-        val controller = StoreController()
+        val registerManager = RegisterManager()
         val state = GameState(
             money = Money(100L),
             currentStoreSize = StoreSize.SMALL_GROCERY,
         )
-        val result = controller.purchaseRegister(state)
+        val result = registerManager.purchaseRegister(state)
         assertEquals(1, result.registers.size)
         assertEquals(Money(100L), result.money)
     }
 
     @Test
     fun `purchased register gets unique incrementing id`() {
-        val controller = StoreController()
+        val registerManager = RegisterManager()
         var state = GameState(
             money = Money(500_000L),
             currentStoreSize = StoreSize.GROCERY_STORE,
         )
-        state = controller.purchaseRegister(state)
-        state = controller.purchaseRegister(state)
+        state = registerManager.purchaseRegister(state)
+        state = registerManager.purchaseRegister(state)
         val ids = state.registers.map { it.registerId }
         assertEquals(3, ids.size)
         assertEquals(ids.toSet().size, ids.size)

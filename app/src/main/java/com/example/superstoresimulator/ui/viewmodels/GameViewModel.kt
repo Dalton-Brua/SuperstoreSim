@@ -56,79 +56,53 @@ import com.example.superstoresimulator.domain.store.StaffWageCalculator.calculat
 class GameViewModel @Inject constructor(
     private val itemDao: ItemDao,
     @param:ApplicationContext private val context: Context,
-    @param:TickDelta private val tickDelta: Long = 16, // Milliseconds per tick
-    private val gameStateRepository: GameStateRepository
+    @param:TickDelta private val tickDelta: Long = 16,
+    private val gameStateRepository: GameStateRepository,
+    private val gameEngine: GameEngine,
+    val itemMetadataCache: ItemMetadataCache,
 ) : ViewModel() {
 
-    // Lazy initialization of GameEngine - will be created after data loading
-    private lateinit var gameEngine: GameEngine
     private var gameEngineInitialized = false
 
-    // Expose an immutable UI state (GameUiState) via StateFlow so UI can collect it.
     private val _uiState = MutableStateFlow<GameUiState?>(null)
 
     val uiState = _uiState.asStateFlow()
 
-    /** One-shot snackbar messages from truck ordering feedback.
-     *  extraBufferCapacity = 1 + DROP_OLDEST: holds at most one pending message so rapid
-     *  orders (e.g. bulk order) never queue up dozens of banners.  The collector in
-     *  MainActivity shows each message one at a time and checks currentSnackbarData so
-     *  a new one only appears after the previous one has been dismissed. */
     private val _snackbarMessage = MutableSharedFlow<String>(
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val snackbarMessage: SharedFlow<String> = _snackbarMessage.asSharedFlow()
 
-    // Cache previous states to detect changes
-    // Only rebuild UI state when domain state actually changes
     private var lastDomainState: GameState? = null
     private var lastUiState: GameUiState? = null
 
-    // Metadata cache + memoized inventory mapper
-    val itemMetadataCache = ItemMetadataCache(itemDao)
     private val inventoryMapper = MemoizedInventoryMapper(itemMetadataCache)
 
     private var incrementalBuilder: IncrementalUiStateBuilder? = null
 
     init {
-        // Load items from JSON file BEFORE creating GameEngine
         viewModelScope.launch {
             ItemDataLoader.loadItemsIfNeeded(context, itemDao)
-            
-            // Initialize metadata cache for fast inventory mapping
             itemMetadataCache.initialize()
-            
-            // Try to load saved game state
+
             val savedState = gameStateRepository.loadGameState()
-            
-            // Now create GameEngine with the cached items (no additional database load)
-            gameEngine = GameEngine(itemMetadataCache)
-            
-            // If we have a saved state, load it into the engine
             if (savedState != null) {
                 gameEngine.loadState(savedState)
             }
-            
+
             gameEngineInitialized = true
-            
-            // Update UI state with the initialized engine
+
             val initialState = gameEngine.currentState()
             _uiState.value = initialUiState(initialState)
-            
-            // ✅ Problem #4: Initialize incremental builder with full state
+
             incrementalBuilder = IncrementalUiStateBuilder(_uiState.value!!)
-            
-            // Listen for incremental state changes and apply them
+
             gameEngine.changes.collect { change ->
                 if (change != null && incrementalBuilder != null) {
-                    // Pass the current _uiState.value as the base so that any
-                    // pure-UI writes (SelectItemCategory, FocusInventoryItem, etc.)
-                    // that bypassed the builder are not overwritten by a stale patch.
                     val newState = incrementalBuilder!!.applyChange(change, _uiState.value)
                     _uiState.value = newState
                 }
-                // Handle snackbar for order scheduling
                 if (change is GameStateChange.OrderScheduled) {
                     val day = change.arrivalDay
                     val dayOfWeekName = when (day % 7) {
@@ -815,24 +789,18 @@ class GameViewModel @Inject constructor(
      */
     private fun resetGame() {
         viewModelScope.launch {
-            // Clear saved game data
             gameStateRepository.clearSave()
-            
-            // Reinitialize the game engine with fresh state
+
             if (gameEngineInitialized) {
-                // Re-create the engine with fresh state
-                gameEngine = GameEngine(itemMetadataCache)
-                
-                // Reset domain state trackers
+                gameEngine.resetState()
+
                 lastDomainState = null
                 lastUiState = null
-                
-                // Rebuild UI state from fresh engine state
+
                 val freshState = gameEngine.currentState()
                 val freshUiState = initialUiState(freshState)
                 _uiState.value = freshUiState
-                
-                // Reinitialize the incremental builder with the fresh state
+
                 incrementalBuilder = IncrementalUiStateBuilder(freshUiState)
             }
         }

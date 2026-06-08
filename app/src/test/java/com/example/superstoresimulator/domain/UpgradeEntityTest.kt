@@ -45,7 +45,7 @@ class UpgradeEntityTest {
     fun setUp() {
         val cache = ItemMetadataCache(FakeItemDao(testItems))
         runBlocking { cache.initialize() }
-        gameEngine = GameEngine(cache)
+        gameEngine = createTestGameEngine(cache)
     }
 
     private fun setMoney(cents: Long) {

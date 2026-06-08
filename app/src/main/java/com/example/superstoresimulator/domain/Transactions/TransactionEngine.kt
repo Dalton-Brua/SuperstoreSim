@@ -12,6 +12,9 @@ import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
+import com.example.superstoresimulator.domain.metrics.OutOfStockEvent
+import com.example.superstoresimulator.domain.metrics.SoldItemEvent
+import com.example.superstoresimulator.domain.pricing.MarkdownReason
 import com.example.superstoresimulator.domain.pricing.PricingManager
 import com.example.superstoresimulator.domain.staff.StaffManager
 import java.time.Instant
@@ -592,4 +595,128 @@ class TransactionEngine(
         )
     }
 
+    // ── Metrics-tracked ring-up (moved from GameEngine) ──────────────────────
+
+    companion object {
+        const val XP_PER_TRANSACTION = 5
+    }
+
+    fun ringUpItemOnRegister(state: GameState, registerId: Int): GameState {
+        val register = state.registers.findRegisterById(registerId) ?: return state
+        val lines = register.currentTransaction.lines
+        val ringable = lines.filter { it.rungQty < it.quantity && !it.lostToOutOfStock }
+        if (ringable.isEmpty()) return state
+        val randomLine = ringable.random()
+        return ringUpItemAndTrackMetrics(state, randomLine.itemId, registerId)
+    }
+
+    fun ringUpItemAndTrackMetrics(state: GameState, itemId: Int, registerId: Int): GameState {
+        val prevCompleted = state.totalTransactionsCompleted
+        var s = ringUpSingleItem(state, itemId, registerId)
+        if (s.totalTransactionsCompleted <= prevCompleted || s.salesHistory.isEmpty()) return s
+
+        val tx = s.salesHistory.last()
+        val acc = s.currentDayMetrics
+
+        val lostLines = tx.lines.filter { it.lostToOutOfStock }
+        val txLostRevenue = lostLines.fold(Money.ZERO) { m, l ->
+            m + l.unitPrice * (l.quantity - l.rungQty)
+        }
+        val txLostItemCount = lostLines.sumOf { it.quantity - it.rungQty }
+        val oosEvents = lostLines.map { l ->
+            OutOfStockEvent(
+                itemId = l.itemId,
+                itemName = cache?.get(l.itemId)?.name ?: "Item ${l.itemId}",
+                quantityLost = l.quantity - l.rungQty,
+                revenueLost = l.unitPrice * (l.quantity - l.rungQty),
+            )
+        }
+
+        val soldEvents = tx.lines
+            .filter { !it.lostToOutOfStock && it.quantity > 0 }
+            .map { l ->
+                SoldItemEvent(
+                    itemId = l.itemId,
+                    itemName = cache?.get(l.itemId)?.name ?: "Item ${l.itemId}",
+                    quantitySold = l.quantity,
+                    revenue = l.lineTotal,
+                    effectivePrice = l.unitPrice,
+                    basePrice = l.basePrice,
+                )
+            }
+
+        var txMarkupExtra = Money.ZERO
+        var txMarkdownSaved = Money.ZERO
+        for (line in tx.lines) {
+            if (line.lostToOutOfStock || line.quantity <= 0) continue
+            val effectiveQty = line.weight?.toDouble() ?: line.quantity.toDouble()
+            val baseCents = (line.basePrice.cents * effectiveQty).toLong()
+            val diff = line.lineTotal.cents - baseCents
+            if (diff > 0) {
+                txMarkupExtra += Money(diff)
+            } else if (diff < 0) {
+                txMarkdownSaved += Money(-diff)
+            }
+        }
+
+        val completedReg = s.registers.findRegisterById(tx.registerId)
+        val updatedRegisters = if (completedReg != null) {
+            s.registers.updateRegister(
+                completedReg.copy(
+                    dailyTransactions = completedReg.dailyTransactions + 1,
+                    dailyRevenue = completedReg.dailyRevenue + tx.totalEarned,
+                )
+            )
+        } else s.registers
+
+        s = s.copy(
+            currentDayMetrics = acc.copy(
+                revenue = acc.revenue + tx.totalEarned,
+                subtotal = acc.subtotal + tx.subtotal,
+                taxCollected = acc.taxCollected + tx.tax,
+                transactionsCompleted = acc.transactionsCompleted + 1,
+                customersServed = acc.customersServed + 1,
+                itemsSold = acc.itemsSold + tx.lines
+                    .filter { !it.lostToOutOfStock }
+                    .sumOf { it.quantity },
+                lostRevenue = acc.lostRevenue + txLostRevenue,
+                itemsLostToOutOfStock = acc.itemsLostToOutOfStock + txLostItemCount,
+                outOfStockEvents = acc.outOfStockEvents + oosEvents,
+                soldItemEvents = acc.soldItemEvents + soldEvents,
+                markupExtraRevenue = acc.markupExtraRevenue + txMarkupExtra,
+                markdownsSaved = acc.markdownsSaved + txMarkdownSaved,
+            ),
+            registers = updatedRegisters,
+        )
+
+        val reg = s.registers.findRegisterById(tx.registerId)
+        val cashierId = reg?.assignedCashierId
+        if (cashierId != null) {
+            s = s.copy(
+                hiredEntityRegistry = s.hiredEntityRegistry.grantXp(cashierId, XP_PER_TRANSACTION)
+            )
+        }
+
+        for (line in tx.lines) {
+            s = clearStaleExpiryMarkdown(s, line.itemId)
+        }
+
+        return s
+    }
+
+    fun clearStaleExpiryMarkdown(state: GameState, itemId: Int): GameState {
+        val pm = pricingManager ?: return state
+        val md = state.pricingState.activeMarkdowns[itemId] ?: return state
+        if (md.reason != MarkdownReason.EXPIRING_SOON) return state
+        val inv = state.inventory[itemId] ?: return state
+        val currentDay = state.currentTime.dayNumber
+        val hasExpiring = (inv.shelfBatches + inv.backroomBatches).any { batch ->
+            batch.expirationDay != Int.MAX_VALUE &&
+                batch.expirationDay - currentDay <= pm.config.expiryThresholdDays
+        }
+        if (!hasExpiring) {
+            return pm.clearMarkdown(state, itemId)
+        }
+        return state
+    }
 }

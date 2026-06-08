@@ -54,7 +54,7 @@ class TierUnlockTest {
     private fun newEngine(items: List<Item> = emptyList()): GameEngine {
         val cache = ItemMetadataCache(FakeItemDao(items))
         runBlocking { cache.initialize() }
-        return GameEngine(cache)
+        return createTestGameEngine(cache)
     }
 
     /** Injects money directly into the engine state (bypasses the purchase path). */

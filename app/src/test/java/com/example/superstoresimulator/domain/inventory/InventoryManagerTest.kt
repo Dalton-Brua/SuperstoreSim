@@ -1,6 +1,7 @@
 package com.example.superstoresimulator.domain.inventory
 
 import com.example.superstoresimulator.domain.GameEngine
+import com.example.superstoresimulator.domain.createTestGameEngine
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.Money
@@ -428,7 +429,7 @@ class InventoryManagerTest {
     private fun newGameEngineWithItems(): GameEngine {
         val cache = ItemMetadataCache(FakeItemDao(testItems))
         runBlocking { cache.initialize() }
-        val engine = GameEngine(cache)
+        val engine = createTestGameEngine(cache)
         engine.state = engine.state.copy(
             storeConfig = engine.state.storeConfig.copy(backroomCapPerItem = 100)
         )

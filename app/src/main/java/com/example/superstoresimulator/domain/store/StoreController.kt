@@ -1,7 +1,6 @@
 package com.example.superstoresimulator.domain.store
 
 import com.example.superstoresimulator.domain.GameState
-import com.example.superstoresimulator.domain.RegisterState
 import com.example.superstoresimulator.domain.traffic.TrafficManager
 
 /**
@@ -68,27 +67,6 @@ class StoreController {
      */
     fun setGameSpeedState(state: GameState, multiplier: Float): GameState =
         state.copy(storeConfig = state.storeConfig.copy(gameSpeedMultiplier = multiplier))
-
-    /**
-     * Purchase one additional register.
-     *
-     * Guards:
-     *  - Returns unchanged if already at the max for the current store size.
-     *  - Returns unchanged if player doesn't have enough cash.
-     *
-     * On success: deducts [StoreSize.nextRegisterCost] and appends a new [RegisterState]
-     * with the next available register id.
-     */
-    fun purchaseRegister(state: GameState): GameState {
-        if (state.ownedRegisterCount >= state.currentStoreSize.maxRegisters) return state
-        val cost = StoreSize.nextRegisterCost(state.ownedRegisterCount)
-        if (state.money < cost) return state
-        val newRegisterId = (state.registers.maxOfOrNull { it.registerId } ?: 0) + 1
-        return state.copy(
-            money = state.money - cost,
-            registers = state.registers + RegisterState(registerId = newRegisterId),
-        )
-    }
 
     /**
      * Apply any side-effects triggered by a store-state transition and return the

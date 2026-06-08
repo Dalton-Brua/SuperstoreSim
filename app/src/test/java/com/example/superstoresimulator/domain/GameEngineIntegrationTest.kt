@@ -58,7 +58,7 @@ class GameEngineIntegrationTest {
     private fun newEngine(items: List<Item> = testItems): GameEngine {
         val cache = ItemMetadataCache(FakeItemDao(items))
         runBlocking { cache.initialize() }
-        return GameEngine(cache)
+        return createTestGameEngine(cache)
     }
 
     // ── fields ────────────────────────────────────────────────────────────────
