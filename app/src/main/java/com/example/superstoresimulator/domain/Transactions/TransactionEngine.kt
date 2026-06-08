@@ -263,6 +263,33 @@ class TransactionEngine(
     ): GameState {
         val register = prev.registers.findRegisterById(registerId) ?: return prev
 
+        if (lines.all { it.lostToOutOfStock && it.rungQty == 0 }) {
+            val oosEvents = lines.map { l ->
+                OutOfStockEvent(
+                    itemId = l.itemId,
+                    itemName = cache?.get(l.itemId)?.name ?: "Item ${l.itemId}",
+                    quantityLost = l.quantity,
+                    revenueLost = l.unitPrice * l.quantity,
+                )
+            }
+            val lostRevenue = oosEvents.fold(Money.ZERO) { m, e -> m + e.revenueLost }
+            val lostCount = oosEvents.sumOf { it.quantityLost }
+            val acc = prev.currentDayMetrics
+            return prev.copy(
+                registers = prev.registers.updateRegister(
+                    register.copy(
+                        currentTransaction = Transaction(),
+                        transactionActive = false,
+                    )
+                ),
+                currentDayMetrics = acc.copy(
+                    lostRevenue = acc.lostRevenue + lostRevenue,
+                    itemsLostToOutOfStock = acc.itemsLostToOutOfStock + lostCount,
+                    outOfStockEvents = acc.outOfStockEvents + oosEvents,
+                ),
+            )
+        }
+
         val historyEntry = buildTransaction(
             id = register.currentTransaction.id,
             transactionLines = lines,

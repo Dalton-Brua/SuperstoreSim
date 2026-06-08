@@ -47,6 +47,7 @@ import androidx.compose.ui.window.Dialog
 import com.example.superstoresimulator.ui.state.StaffScheduleEntryUI
 import com.example.superstoresimulator.ui.theme.Amber
 import com.example.superstoresimulator.ui.theme.CardWhite
+import com.example.superstoresimulator.ui.theme.ChipTextDark
 import com.example.superstoresimulator.ui.theme.Destructive
 import com.example.superstoresimulator.ui.theme.Emerald
 import com.example.superstoresimulator.ui.theme.LightBackground
@@ -147,6 +148,7 @@ fun ScheduleScreen(
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Primary,
                             selectedLabelColor = TextWhite,
+                            labelColor = ChipTextDark,
                         ),
                     )
                 }

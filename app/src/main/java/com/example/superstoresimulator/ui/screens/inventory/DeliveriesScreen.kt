@@ -42,6 +42,7 @@ import com.example.superstoresimulator.ui.state.TruckUIState
 import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.CautionDark
 import com.example.superstoresimulator.ui.theme.ChipTextDark
+import com.example.superstoresimulator.ui.theme.DestructiveDark
 import com.example.superstoresimulator.ui.theme.LightBackground
 import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
@@ -330,14 +331,14 @@ private fun OrderLineRow(
                 FilterChip(
                     selected = false,
                     onClick = { onDecrementOrderLine(line.itemId, truckId) },
-                    label = { Text("Cancel 1", fontSize = 11.sp) },
+                    label = { Text("Cancel 1", fontSize = 11.sp, color = DestructiveDark) },
                 )
             }
             Spacer(Modifier.width(8.dp))
             FilterChip(
                 selected = false,
                 onClick = { onCancel(line.itemId, truckId) },
-                label = { Text("Cancel all", fontSize = 11.sp) },
+                label = { Text("Cancel all", fontSize = 11.sp, color = DestructiveDark) },
             )
         }
     }

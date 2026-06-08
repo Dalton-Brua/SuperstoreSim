@@ -530,9 +530,9 @@ fun PendingDeliveriesCard(
                     Text("${line.casePacks} cases · ${line.quantity} units", fontSize = 13.sp, color = ChipTextDark)
                     if (line.canCancel) {
                         if (line.casePacks > 1) {
-                            FilterChip(selected = false, onClick = { onDecrementOrderLine(itemId, line.truckId) }, label = { Text("Cancel 1", fontSize = 11.sp) })
+                            FilterChip(selected = false, onClick = { onDecrementOrderLine(itemId, line.truckId) }, label = { Text("Cancel 1", fontSize = 11.sp, color = DestructiveDark) })
                         }
-                        FilterChip(selected = false, onClick = { onCancelOrderLine(itemId, line.truckId) }, label = { Text("Cancel", fontSize = 11.sp) })
+                        FilterChip(selected = false, onClick = { onCancelOrderLine(itemId, line.truckId) }, label = { Text("Cancel", fontSize = 11.sp, color = DestructiveDark) })
                     }
                 }
             }

@@ -104,7 +104,7 @@ fun UnlocksScreen(
                             "Revenue gate met — ready to unlock ${progression.availableTier.displayName}!"
                         else
                             "Progress to ${progression.nextTier.displayName}"
-                        Text(text = gateLabel, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        Text(text = gateLabel, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = PrimaryDark)
                         LinearProgressIndicator(
                             progress = { progression.tierProgressFraction },
                             modifier = Modifier
@@ -291,7 +291,9 @@ private fun TierCard(
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Success,
-                        disabledContainerColor = TextMuted
+                        contentColor = TextWhite,
+                        disabledContainerColor = TextMuted,
+                        disabledContentColor = TextWhite
                     )
                 ) {
                     Text(

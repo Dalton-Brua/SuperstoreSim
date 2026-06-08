@@ -46,6 +46,7 @@ import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.ui.state.AppUIState
 import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.CautionDark
+import com.example.superstoresimulator.ui.theme.ChipTextDark
 import com.example.superstoresimulator.ui.theme.ClosedRed
 import com.example.superstoresimulator.ui.theme.PrimaryDark
 import com.example.superstoresimulator.ui.theme.PrimaryLight
@@ -182,7 +183,7 @@ fun SettingsPanel(
                                     onTruckConfigChanged(newDays, regularCap.toInt(), freshCap.toInt())
                                 }
                             },
-                            label = { Text(label, fontSize = 11.sp) },
+                            label = { Text(label, fontSize = 11.sp, color = if (isSelected) TextWhite else ChipTextDark) },
                             enabled = !isLastSelected && !disabledByLimit,
                         )
                     }
