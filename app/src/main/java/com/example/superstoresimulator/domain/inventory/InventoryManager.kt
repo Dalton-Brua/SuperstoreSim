@@ -5,6 +5,7 @@ import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.GameStateChange
 import com.example.superstoresimulator.domain.IncompleteOrderRequest
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.NormalAutoOrderConfig
 import com.example.superstoresimulator.domain.PendingOrderLine
 import com.example.superstoresimulator.domain.delivery.TruckManager
 import com.example.superstoresimulator.domain.items.ItemCategory
@@ -573,6 +574,194 @@ class InventoryManager(
         }
         s = s.copy(
             incompleteFreshOrders = s.incompleteFreshOrders.filter { it.itemId != itemId }
+        )
+        changes.add(GameStateChange.MoneyChanged(s.money))
+        return OrderResult(s, changes)
+    }
+
+    // ── Normal item auto-ordering operations (Stocking Manager) ────────────
+
+    fun shouldAutoOrderNormalItem(
+        state: GameState,
+        itemId: Int,
+        config: NormalAutoOrderConfig
+    ): Boolean {
+        if (!config.enabled) return false
+        if (isFreshItem(itemId)) return false
+        val meta = cache.get(itemId) ?: return false
+        if (meta.tier.unlockAmount > state.currentTier.unlockAmount) return false
+        val inv = state.inventory[itemId] ?: return false
+        val totalStock = inv.shelfStock + inv.backroomStock
+        return totalStock < config.minStockThreshold
+    }
+
+    data class AutoOrderResult(val state: GameState, val itemsOrdered: Int)
+
+    fun attemptStockingManagerAutoOrder(state: GameState, maxActions: Int): AutoOrderResult {
+        val tm = truckManager ?: return AutoOrderResult(state, 0)
+        if (!state.normalAutoOrderConfig.enabled) return AutoOrderResult(state, 0)
+
+        val alreadyHandled = (state.currentDayMetrics.autoOrderedNormalItems.map { it.itemId } +
+            state.currentDayMetrics.incompleteOrderedNormalItems.map { it.itemId }).toSet()
+
+        val pendingCasePacksByItem = mutableMapOf<Int, Int>()
+        for (truck in state.scheduledTrucks) {
+            for (line in truck.orders) {
+                pendingCasePacksByItem[line.itemId] =
+                    (pendingCasePacksByItem[line.itemId] ?: 0) + line.casePacksCount
+            }
+        }
+
+        var s = state
+        var actionsUsed = 0
+        for ((itemId, _) in s.inventory) {
+            if (actionsUsed >= maxActions) break
+            if (itemId in alreadyHandled) continue
+            if (!shouldAutoOrderNormalItem(s, itemId, s.normalAutoOrderConfig)) continue
+
+            val item = cache.getItem(itemId) ?: continue
+            val casePacks = s.normalAutoOrderConfig.casePacksPerItem
+            val totalCost = item.getCasePackCostAsMoney() * casePacks
+
+            if (s.money >= totalCost) {
+                val result = buyItemCasePacks(s, itemId, casePacks, pendingCasePacksByItem)
+                s = result.state
+                if (result.orderLines.isNotEmpty()) {
+                    val currentDay = s.currentTime.dayNumber
+                    s = tm.scheduleRegularOrderLines(s, result.orderLines, currentDay)
+                }
+                s = s.copy(
+                    currentDayMetrics = s.currentDayMetrics.copy(
+                        autoOrderedNormalItems = s.currentDayMetrics.autoOrderedNormalItems +
+                            FreshOrderLineItem(
+                                itemId = itemId,
+                                itemName = item.name,
+                                casePacksOrdered = casePacks,
+                                costPerCasePack = item.getCasePackCostAsMoney(),
+                                totalCost = totalCost,
+                            )
+                    )
+                )
+            } else {
+                s = s.copy(
+                    currentDayMetrics = s.currentDayMetrics.copy(
+                        incompleteOrderedNormalItems = s.currentDayMetrics.incompleteOrderedNormalItems +
+                            IncompleteOrderLineItem(
+                                itemId = itemId,
+                                itemName = item.name,
+                                casePacksRequested = casePacks,
+                                costPerCasePack = item.getCasePackCostAsMoney(),
+                                totalCost = totalCost,
+                                reason = "Insufficient funds",
+                            )
+                    ),
+                    incompleteNormalOrders = s.incompleteNormalOrders.filter { it.itemId != itemId } +
+                        IncompleteOrderRequest(
+                            itemId = itemId,
+                            casePacksRequested = casePacks,
+                            requestedOnDay = s.currentTime.dayNumber,
+                            reason = "Insufficient funds",
+                        )
+                )
+            }
+            actionsUsed++
+        }
+        return AutoOrderResult(s, actionsUsed)
+    }
+
+    fun attemptDayRolloverAutoOrder(state: GameState): GameState {
+        val tm = truckManager ?: return state
+        if (!state.normalAutoOrderConfig.enabled) return state
+
+        val alreadyHandled = (state.currentDayMetrics.autoOrderedNormalItems.map { it.itemId } +
+            state.currentDayMetrics.incompleteOrderedNormalItems.map { it.itemId }).toSet()
+
+        val pendingCasePacksByItem = mutableMapOf<Int, Int>()
+        for (truck in state.scheduledTrucks) {
+            for (line in truck.orders) {
+                pendingCasePacksByItem[line.itemId] =
+                    (pendingCasePacksByItem[line.itemId] ?: 0) + line.casePacksCount
+            }
+        }
+
+        var s = state
+        for ((itemId, inv) in s.inventory) {
+            if (itemId in alreadyHandled) continue
+            if (isFreshItem(itemId)) continue
+            val meta = cache.get(itemId) ?: continue
+            if (meta.tier.unlockAmount > s.currentTier.unlockAmount) continue
+            val totalStock = inv.shelfStock + inv.backroomStock
+            if (totalStock > 0) continue
+            if ((pendingCasePacksByItem[itemId] ?: 0) > 0) continue
+
+            val item = cache.getItem(itemId) ?: continue
+            val casePacks = 1
+            val totalCost = item.getCasePackCostAsMoney() * casePacks
+
+            if (s.money >= totalCost) {
+                val result = buyItemCasePacks(s, itemId, casePacks, pendingCasePacksByItem)
+                s = result.state
+                if (result.orderLines.isNotEmpty()) {
+                    s = tm.scheduleRegularOrderLines(s, result.orderLines, s.currentTime.dayNumber)
+                }
+                s = s.copy(
+                    currentDayMetrics = s.currentDayMetrics.copy(
+                        autoOrderedNormalItems = s.currentDayMetrics.autoOrderedNormalItems +
+                            FreshOrderLineItem(
+                                itemId = itemId,
+                                itemName = item.name,
+                                casePacksOrdered = casePacks,
+                                costPerCasePack = item.getCasePackCostAsMoney(),
+                                totalCost = totalCost,
+                            )
+                    )
+                )
+            } else {
+                s = s.copy(
+                    currentDayMetrics = s.currentDayMetrics.copy(
+                        incompleteOrderedNormalItems = s.currentDayMetrics.incompleteOrderedNormalItems +
+                            IncompleteOrderLineItem(
+                                itemId = itemId,
+                                itemName = item.name,
+                                casePacksRequested = casePacks,
+                                costPerCasePack = item.getCasePackCostAsMoney(),
+                                totalCost = totalCost,
+                                reason = "Insufficient funds",
+                            )
+                    ),
+                    incompleteNormalOrders = s.incompleteNormalOrders.filter { it.itemId != itemId } +
+                        IncompleteOrderRequest(
+                            itemId = itemId,
+                            casePacksRequested = casePacks,
+                            requestedOnDay = s.currentTime.dayNumber,
+                            reason = "Insufficient funds",
+                        )
+                )
+            }
+        }
+        return s
+    }
+
+    fun orderIncompleteNormalItem(state: GameState, itemId: Int, casePacksRequested: Int): OrderResult {
+        val tm = truckManager ?: return OrderResult(state, emptyList())
+        val item = cache.getItem(itemId) ?: return OrderResult(state, emptyList())
+        val totalCost = item.getCasePackCostAsMoney() * casePacksRequested
+
+        if (state.money < totalCost) return OrderResult(state, emptyList())
+
+        val result = buyItemCasePacks(state, itemId, casePacksRequested)
+        var s = result.state
+        val changes = mutableListOf<GameStateChange>()
+        if (result.orderLines.isNotEmpty()) {
+            val currentDay = s.currentTime.dayNumber
+            s = tm.scheduleRegularOrderLines(s, result.orderLines, currentDay)
+            val arrivalDay = s.scheduledTrucks
+                .filter { t -> result.orderLines.any { l -> t.orders.any { o -> o.itemId == l.itemId } } }
+                .minOfOrNull { it.scheduledArrivalDay } ?: (currentDay + 1)
+            changes.add(GameStateChange.OrderScheduled(arrivalDay))
+        }
+        s = s.copy(
+            incompleteNormalOrders = s.incompleteNormalOrders.filter { it.itemId != itemId }
         )
         changes.add(GameStateChange.MoneyChanged(s.money))
         return OrderResult(s, changes)

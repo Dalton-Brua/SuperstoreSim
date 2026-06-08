@@ -1,18 +1,9 @@
 package com.example.superstoresimulator.domain.store
 
 import com.example.superstoresimulator.domain.Money
+import kotlinx.serialization.Serializable
 
-/**
- * Store size determines daily rent, shelf capacity, backroom storage limits, and customer traffic.
- * Player starts at MOM_AND_POP and can upgrade to larger sizes.
- *
- * Each size has:
- * - [dailyRent]: deducted at end-of-day
- * - [shelfCapacity]: total items that can sit on shelves
- * - [backroomCapPerItem]: max CASE PACKS of a single item in backroom (e.g., 2, 5, 10)
- *   This represents how many full case packs can be stored, not individual units.
- * - [trafficMultiplier]: multiplier applied to base customer traffic rate (3x per tier)
- */
+@Serializable
 enum class StoreSize(
     val displayName: String,
     val dailyRent: Money,

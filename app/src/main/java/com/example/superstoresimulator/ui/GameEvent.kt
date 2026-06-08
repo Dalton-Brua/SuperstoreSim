@@ -63,8 +63,21 @@ sealed interface GameEvent {
         val casePacksPerItem: Int,
     ) : GameEvent
 
+    // Normal Auto-Order Config: update the auto-ordering settings for stocking manager
+    data class UpdateNormalAutoOrderConfig(
+        val enabled: Boolean,
+        val minStockThreshold: Int,
+        val casePacksPerItem: Int,
+    ) : GameEvent
+
     // Fresh Auto-Order: manually order an incomplete fresh item from the dialog
     data class OrderIncompleteItem(
+        val itemId: Int,
+        val casePacksRequested: Int,
+    ) : GameEvent
+
+    // Normal Auto-Order: manually order an incomplete normal item from the dialog
+    data class OrderIncompleteNormalItem(
         val itemId: Int,
         val casePacksRequested: Int,
     ) : GameEvent

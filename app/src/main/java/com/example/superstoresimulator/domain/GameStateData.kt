@@ -12,17 +12,14 @@ import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.pricing.PricingState
 import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreState
+import kotlinx.serialization.Serializable
 import java.util.Locale
+
+const val SAVE_VERSION = 1
 
 // ── Register System ────────────────────────────────────────────────────────────
 
-/**
- * Holds the per-register transaction state.
- *
- * [assignedCashierId] links a hired cashier (by their entity id) to this register.
- * A null value means no cashier is explicitly assigned; the register can still be
- * staffed by the player if [GameState.playerAssignedRegisterId] points here.
- */
+@Serializable
 data class RegisterState(
     val registerId: Int,
     val assignedCashierId: Int? = null,
@@ -42,12 +39,7 @@ fun List<RegisterState>.updateRegister(updated: RegisterState): List<RegisterSta
 
 // ── Staff Scheduling ─────────────────────────────────────────────────────────
 
-/**
- * Represents a single employee's work shift.
- *
- * [startHour] must be in 6..13 (inclusive), giving an 8-hour window of 6-14 to 13-21.
- * Constructing with an out-of-range [startHour] throws [IllegalArgumentException].
- */
+@Serializable
 data class StaffShift(
     val entityId: Int,
     val startHour: Int,
@@ -72,9 +64,7 @@ data class StaffShift(
 
 // ── Truck Delivery System ─────────────────────────────────────────────────────
 
-/**
- * Single item line awaiting delivery. Capacity is measured in case packs.
- */
+@Serializable
 data class PendingOrderLine(
     val itemId: Int,
     val quantity: Int,         // total units in this line
@@ -84,9 +74,7 @@ data class PendingOrderLine(
     val isFresh: Boolean,
 )
 
-/**
- * A truck with a locked arrival day, carrying [orders].
- */
+@Serializable
 data class ScheduledTruck(
     val truckId: Int,
     val scheduledArrivalDay: Int,
@@ -99,13 +87,7 @@ data class ScheduledTruck(
     val remainingCapacityCasePacks: Int get() = capacityCasePacks - usedCapacityCasePacks
 }
 
-/**
- * Player-configurable truck delivery schedule and capacities.
- *
- * Base free delivery days per week = 2 + storeSize.ordinal.
- * Players can purchase extra delivery-day slots beyond the free limit for $100 each.
- * [extraTruckSlotsUnlocked] tracks how many extra slots have been purchased (one-time cost).
- */
+@Serializable
 data class TruckConfig(
     /** Day-of-week indices for regular trucks (0 = Monday … 6 = Sunday). */
     val deliveryDays: Set<Int> = setOf(0, 3),  // Monday and Thursday by default
@@ -124,19 +106,22 @@ data class TruckConfig(
     }
 }
 
-/**
- * Configuration for fresh item auto-ordering behavior.
- */
+@Serializable
 data class FreshAutoOrderConfig(
     val enabled: Boolean = true,
-    val minStockThreshold: Int = 5,      // Player sets minimum total stock (shelf + backroom)
-    val casePacksPerItem: Int = 1,       // How many case packs to order per item when triggered
+    val minStockThreshold: Int = 5,
+    val casePacksPerItem: Int = 1,
+)
+
+@Serializable
+data class NormalAutoOrderConfig(
+    val enabled: Boolean = true,
+    val minStockThreshold: Int = 5,
+    val casePacksPerItem: Int = 1,
 )
 
 
-/**
- * Represents a fresh item order that failed to complete (e.g., insufficient funds).
- */
+@Serializable
 data class IncompleteOrderRequest(
     val itemId: Int,
     val casePacksRequested: Int,
@@ -144,6 +129,7 @@ data class IncompleteOrderRequest(
     val reason: String,
 )
 
+@Serializable
 data class DailyStaffMetrics(
     val peakPendingCustomers: Int = 0,
     val avgHourlyPendingCustomers: Float = 0f,
@@ -155,7 +141,10 @@ data class DailyStaffMetrics(
     val freshOrdersAttempted: Int = 0,
 )
 
+@Serializable
 data class GameState(
+
+    val saveVersion: Int = SAVE_VERSION,
 
     val storeName: String = "Grocery Store",
 
@@ -207,6 +196,10 @@ data class GameState(
     val freshAutoOrderConfig: FreshAutoOrderConfig = FreshAutoOrderConfig(),
     val incompleteFreshOrders: List<IncompleteOrderRequest> = emptyList(),
 
+    // Normal item auto-ordering (Stocking Manager)
+    val normalAutoOrderConfig: NormalAutoOrderConfig = NormalAutoOrderConfig(),
+    val incompleteNormalOrders: List<IncompleteOrderRequest> = emptyList(),
+
     // Truck delivery system
     val scheduledTrucks: List<ScheduledTruck> = emptyList(),
     val truckConfig: TruckConfig = TruckConfig(),
@@ -247,6 +240,7 @@ data class GameState(
 }
 
 
+@Serializable
 @JvmInline
 value class Money(val cents: Long) {
 

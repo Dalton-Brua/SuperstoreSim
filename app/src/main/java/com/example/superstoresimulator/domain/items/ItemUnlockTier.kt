@@ -1,16 +1,9 @@
 package com.example.superstoresimulator.domain.items
 
 import com.example.superstoresimulator.domain.Money
+import kotlinx.serialization.Serializable
 
-/**
- * Tiers that unlock progressively more of the store. Each tier has a monetary
- * threshold (unlockAmount) and a set of store sections it makes available.
- *
- * [unlockCost] is the one-time purchase price the player pays from their cash
- * balance to activate the tier once its [unlockAmount] revenue gate is met.
- * It is set to 1/5 of the revenue threshold (rounded) so the player needs to
- * have earned the threshold AND have cash on hand to make the investment.
- */
+@Serializable
 enum class ItemUnlockTier(
     val unlockAmount: Long,
     val unlockedSections: Set<ItemCategory>,

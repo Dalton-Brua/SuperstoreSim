@@ -1,8 +1,10 @@
 package com.example.superstoresimulator.domain.pricing
 
 import com.example.superstoresimulator.domain.items.ItemCategory
+import kotlinx.serialization.Serializable
 import kotlin.math.pow
 
+@Serializable
 data class PricingState(
     val categoryMarkups: Map<ItemCategory, Int> = emptyMap(),
     val itemOverrides: Map<Int, Int> = emptyMap(),
@@ -21,17 +23,20 @@ data class PricingState(
         else (1.0 / smoothedPriceIndex).pow(PricingConfig.DEFAULT.basketElasticity.toDouble()).toFloat()
 }
 
+@Serializable
 data class Markdown(
     val percentOff: Int,
     val reason: MarkdownReason,
     val appliedOnDay: Int,
 )
 
+@Serializable
 enum class MarkdownReason {
     EXPIRING_SOON,
     PLAYER_SALE,
 }
 
+@Serializable
 data class PriceChangeEvent(
     val dayNumber: Int,
     val itemId: Int?,

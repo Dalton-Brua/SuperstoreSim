@@ -1,12 +1,15 @@
 package com.example.superstoresimulator.domain
 
-// Represents a pending refund that must be processed manually
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class RefundLine(
     val itemId: Int,
     val quantity: Int, // positive number of items to refund
     val unitPrice: Money
 )
 
+@Serializable
 data class RefundRequest(
     val id: Int,
     val timestamp: Long,

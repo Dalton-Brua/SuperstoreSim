@@ -65,10 +65,6 @@ fun SettingsPanel(
     onClose: () -> Unit,
     onSave: () -> Unit = {},
     onReset: () -> Unit = {},
-    freshAutoOrderEnabled: Boolean = true,
-    freshMinStockThreshold: Int = 5,
-    freshCasePacksPerItem: Int = 1,
-    onFreshAutoOrderConfigChanged: (enabled: Boolean, threshold: Int, packs: Int) -> Unit = { _, _, _ -> },
     truckConfig: TruckConfig = TruckConfig(),
     currentStoreSize: StoreSize = StoreSize.MOM_AND_POP,
     onTruckConfigChanged: (deliveryDays: Set<Int>, regularCap: Int, freshCap: Int) -> Unit = { _, _, _ -> },
@@ -85,11 +81,6 @@ fun SettingsPanel(
     ) {
         var draftName by remember { mutableStateOf(app.storeName) }
         var showResetConfirmation by remember { mutableStateOf(false) }
-
-        // Fresh auto-order settings
-        var freshEnabled by remember { mutableStateOf(freshAutoOrderEnabled) }
-        var freshMinStock by remember { mutableStateOf(freshMinStockThreshold.toFloat()) }
-        var freshPacks by remember { mutableStateOf(freshCasePacksPerItem.toFloat()) }
 
         // Truck config settings
         var selectedDays by remember { mutableStateOf(truckConfig.deliveryDays) }
@@ -151,62 +142,6 @@ fun SettingsPanel(
                 }
 
                 HorizontalDivider()
-
-                // ── Fresh Auto-Order Settings ──────────────────────────────
-                Text(
-                    "Fresh Item Auto-Ordering",
-                    fontWeight = FontWeight.Medium,
-                    color = PrimaryDark,
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Enable Auto-Ordering", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                        Text("Fresh handlers auto-order when idle", fontSize = 10.sp, color = TextSecondary)
-                    }
-                    Switch(
-                        checked = freshEnabled,
-                        onCheckedChange = { v ->
-                            freshEnabled = v
-                            onFreshAutoOrderConfigChanged(v, freshMinStock.toInt(), freshPacks.toInt())
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = PrimaryDark,
-                            checkedTrackColor = PrimaryLight,
-                        )
-                    )
-                }
-                Text("Min Stock: ${freshMinStock.toInt()} items", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                Slider(
-                    value = freshMinStock,
-                    onValueChange = { v ->
-                        freshMinStock = v
-                        onFreshAutoOrderConfigChanged(freshEnabled, v.toInt(), freshPacks.toInt())
-                    },
-                    valueRange = 1f..30f, steps = 28,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = SliderDefaults.colors(thumbColor = PrimaryDark, activeTrackColor = PrimaryDark),
-                    enabled = freshEnabled
-                )
-                Text("Packs Per Order: ${freshPacks.toInt()}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(top = 12.dp))
-                Slider(
-                    value = freshPacks,
-                    onValueChange = { v ->
-                        freshPacks = v
-                        onFreshAutoOrderConfigChanged(freshEnabled, freshMinStock.toInt(), v.toInt())
-                    },
-                    valueRange = 1f..10f, steps = 8,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = SliderDefaults.colors(thumbColor = PrimaryDark, activeTrackColor = PrimaryDark),
-                    enabled = freshEnabled
-                )
-
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 // ── Delivery Schedule ──────────────────────────────────────
                 // Compute slot limits from params (not remembered — reactive to param changes)

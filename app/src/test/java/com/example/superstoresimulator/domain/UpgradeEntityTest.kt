@@ -300,20 +300,26 @@ class UpgradeEntityTest {
 
     @Test
     fun testFullStockerUpgradeSequence() {
-        setMoney(100_000L)
+        setMoney(200_000L)
         val id = hire(EntityDef.STOCKER)
+        // Hire 5 more stockers to satisfy the 5:1 ratio for stocking manager promotion
+        repeat(5) { hire(EntityDef.STOCKER) }
+        // 6 stockers hired = 6 × $15 = $90 → 200_000 - 9_000 = 191_000
         assertEquals(Tier.BASE, tierOf(id))
 
         gameEngine.promoteEntity(id)
         assertEquals(Tier.FAST, tierOf(id))
-        assertEquals(Money(88_500), gameEngine.currentState().money)
+        // 191_000 - 10_000 = 181_000
+        assertEquals(Money(181_000), gameEngine.currentState().money)
 
         gameEngine.promoteEntity(id)
         assertEquals(Tier.MANAGER, tierOf(id))
-        assertEquals(Money(38_500), gameEngine.currentState().money)
+        // 181_000 - 50_000 = 131_000
+        assertEquals(Money(131_000), gameEngine.currentState().money)
 
+        // no-op at max
         gameEngine.promoteEntity(id)
         assertEquals(Tier.MANAGER, tierOf(id))
-        assertEquals(Money(38_500), gameEngine.currentState().money)
+        assertEquals(Money(131_000), gameEngine.currentState().money)
     }
 }

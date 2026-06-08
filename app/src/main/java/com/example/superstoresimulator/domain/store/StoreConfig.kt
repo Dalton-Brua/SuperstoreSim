@@ -1,10 +1,9 @@
 package com.example.superstoresimulator.domain.store
 
 import com.example.superstoresimulator.domain.time.GameTime
+import kotlinx.serialization.Serializable
 
-/**
- * Store configuration including opening/closing times
- */
+@Serializable
 data class StoreConfig(
     val openTimeMinutes: Int = 360,         // 6:00 AM
     val closeTimeMinutes: Int = 1260,       // 9:00 PM (21:00)
@@ -37,9 +36,7 @@ data class StoreConfig(
     }
 }
 
-/**
- * Represents the current state of the store
- */
+@Serializable
 enum class StoreState {
     CLOSED,              // Before opening time or after closing procedures
     OPENING,             // Opening procedures (not implemented in Phase 1)

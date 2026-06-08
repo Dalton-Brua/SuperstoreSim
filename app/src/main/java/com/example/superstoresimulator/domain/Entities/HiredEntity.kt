@@ -1,7 +1,46 @@
 package com.example.superstoresimulator.domain.Entities
 
 import com.example.superstoresimulator.domain.Money
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 
+@Serializable
+private data class HiredEntitySurrogate(
+    val id: Int,
+    val name: String,
+    val entityDefKey: String,
+    val trait: EntityTrait,
+    val tier: Tier,
+    val xp: Int,
+    val level: Int,
+)
+
+object HiredEntitySerializer : KSerializer<HiredEntity> {
+    override val descriptor = HiredEntitySurrogate.serializer().descriptor
+
+    override fun serialize(encoder: Encoder, value: HiredEntity) {
+        encoder.encodeSerializableValue(
+            HiredEntitySurrogate.serializer(),
+            HiredEntitySurrogate(
+                id = value.id, name = value.name,
+                entityDefKey = value.entityDefinition.key,
+                trait = value.trait, tier = value.tier,
+                xp = value.xp, level = value.level,
+            )
+        )
+    }
+
+    override fun deserialize(decoder: Decoder): HiredEntity {
+        val s = decoder.decodeSerializableValue(HiredEntitySurrogate.serializer())
+        val def = EntityDef.allEntities.find { it.key == s.entityDefKey }
+            ?: error("Unknown EntityDef key: ${s.entityDefKey}")
+        return HiredEntity(s.id, s.name, def, s.trait, s.tier, s.xp, s.level)
+    }
+}
+
+@Serializable(with = HiredEntitySerializer::class)
 data class HiredEntity(
     val id: Int,
     val name: String,

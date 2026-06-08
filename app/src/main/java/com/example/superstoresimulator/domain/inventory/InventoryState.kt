@@ -1,11 +1,8 @@
 package com.example.superstoresimulator.domain.inventory
 
-/**
- * Batch-based inventory tracking for FIFO expiration support.
- * Each delivery creates a new ItemBatch with receivedDay and expirationDay.
- * Oldest batches are consumed first (FIFO). Batches with the same expirationDay
- * are automatically merged to reduce memory overhead.
- */
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class InventoryState(
     val shelfBatches: List<ItemBatch> = emptyList(),
     val backroomBatches: List<ItemBatch> = emptyList(),
@@ -35,10 +32,7 @@ data class InventoryState(
     }
 }
 
-/**
- * Represents a single batch of items received on a specific day.
- * Batches with the same expirationDay are automatically merged.
- */
+@Serializable
 data class ItemBatch(
     val receivedDay: Int,       // Day number when ordered
     val quantity: Int,

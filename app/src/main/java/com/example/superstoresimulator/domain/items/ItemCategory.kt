@@ -1,5 +1,8 @@
 package com.example.superstoresimulator.domain.items
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class ItemCategory(val displayName: String) {
     GROCERY("Grocery"),
     DAIRY("Dairy"),

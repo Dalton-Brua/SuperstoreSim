@@ -325,7 +325,7 @@ class GameEngine @Inject constructor(
         }
     }
 
-    // ── Fresh Auto-Order Config ───────────────────────────────────────────────
+    // ── Auto-Order Config ──────────────────────────────────────────────────────
 
     fun updateFreshAutoOrderConfig(enabled: Boolean, threshold: Int, casePacks: Int) {
         state = state.copy(
@@ -335,6 +335,22 @@ class GameEngine @Inject constructor(
                 casePacksPerItem = casePacks,
             )
         )
+    }
+
+    fun updateNormalAutoOrderConfig(enabled: Boolean, threshold: Int, casePacks: Int) {
+        state = state.copy(
+            normalAutoOrderConfig = NormalAutoOrderConfig(
+                enabled = enabled,
+                minStockThreshold = threshold,
+                casePacksPerItem = casePacks,
+            )
+        )
+    }
+
+    fun orderIncompleteNormalItem(itemId: Int, casePacksRequested: Int) {
+        val result = inventoryManager.orderIncompleteNormalItem(state, itemId, casePacksRequested)
+        state = result.state
+        result.changes.lastOrNull()?.let { _changes.value = it }
     }
 
     // ── Truck Delivery ────────────────────────────────────────────────────────

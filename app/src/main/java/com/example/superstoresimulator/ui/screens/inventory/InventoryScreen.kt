@@ -24,6 +24,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -64,8 +65,10 @@ import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.ChipSurface
 import com.example.superstoresimulator.ui.theme.ChipTextDark
 import com.example.superstoresimulator.ui.theme.LightBackground
+import com.example.superstoresimulator.ui.theme.DestructiveDark
 import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
+import com.example.superstoresimulator.ui.theme.ProgressBarTrack
 import com.example.superstoresimulator.ui.theme.TextMuted
 import com.example.superstoresimulator.ui.theme.TextSecondary
 import com.example.superstoresimulator.ui.theme.TextWhite
@@ -79,10 +82,16 @@ fun InventoryScreen(
     itemMetadataCache: ItemMetadataCache,
     currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
     metricsData: List<DailyMetrics> = emptyList(),
-    resetTrigger: Int = 0,  // Increment this to trigger a reset
+    resetTrigger: Int = 0,
+    hasFastStocker: Boolean = false,
+    hasStockingManager: Boolean = false,
+    incompleteNormalOrdersCount: Int = 0,
+    normalAutoOrderConfig: com.example.superstoresimulator.domain.NormalAutoOrderConfig = com.example.superstoresimulator.domain.NormalAutoOrderConfig(),
     onBuyItem: (Int) -> Unit,
     onSelectCategory: (ItemCategory?) -> Unit,
     onBulkOrder: (maxTotalQuantity: Int, casePacksPerItem: Int, categoryFilter: ItemCategory?) -> Unit = { _, _, _ -> },
+    onUpdateNormalAutoOrderConfig: (enabled: Boolean, threshold: Int, casePacks: Int) -> Unit = { _, _, _ -> },
+    onViewIncompleteNormalOrders: () -> Unit = {},
     onItemClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -97,6 +106,7 @@ fun InventoryScreen(
     
     // Dialog state
     var showBulkOrderDialog by remember { mutableStateOf(false) }
+    var showAutoOrderConfigDialog by remember { mutableStateOf(false) }
     
     // Debounce search query with 200ms delay
     LaunchedEffect(searchQuery.value) {
@@ -175,6 +185,26 @@ fun InventoryScreen(
         )
     }
 
+    if (showAutoOrderConfigDialog) {
+        if (hasStockingManager) {
+            com.example.superstoresimulator.ui.dialogs.AutoOrderConfigDialog(
+                title = "Auto-Order Settings",
+                subtitle = "Stocking Manager proactively orders items below threshold each tick",
+                enabled = normalAutoOrderConfig.enabled,
+                minStockThreshold = normalAutoOrderConfig.minStockThreshold,
+                casePacksPerItem = normalAutoOrderConfig.casePacksPerItem,
+                onConfigChanged = onUpdateNormalAutoOrderConfig,
+                onDismiss = { showAutoOrderConfigDialog = false }
+            )
+        } else {
+            com.example.superstoresimulator.ui.dialogs.BasicAutoOrderInfoDialog(
+                enabled = normalAutoOrderConfig.enabled,
+                onToggle = { enabled -> onUpdateNormalAutoOrderConfig(enabled, normalAutoOrderConfig.minStockThreshold, normalAutoOrderConfig.casePacksPerItem) },
+                onDismiss = { showAutoOrderConfigDialog = false }
+            )
+        }
+    }
+
     // Always show list view (detail screen is handled at MainActivity level as overlay)
     InventoryListScreen(
         state = state,
@@ -185,10 +215,15 @@ fun InventoryScreen(
         itemNames = itemNames,
         filteredItems = filteredItems,
         listState = listState,
+        hasFastStocker = hasFastStocker,
+        hasStockingManager = hasStockingManager,
+        incompleteNormalOrdersCount = incompleteNormalOrdersCount,
         onBuyItem = onBuyItem,
         onSelectCategory = onSelectCategory,
         onItemClick = onItemClick,
         onShowBulkOrderDialog = { showBulkOrderDialog = true },
+        onShowAutoOrderConfig = { showAutoOrderConfigDialog = true },
+        onViewIncompleteNormalOrders = onViewIncompleteNormalOrders,
         modifier = modifier
     )
 }
@@ -203,10 +238,15 @@ private fun InventoryListScreen(
     itemNames: MutableState<Map<Int, String>>,
     filteredItems: List<InventoryItemUI>,
     listState: androidx.compose.foundation.lazy.LazyListState,
+    hasFastStocker: Boolean = false,
+    hasStockingManager: Boolean = false,
+    incompleteNormalOrdersCount: Int = 0,
     onBuyItem: (Int) -> Unit,
     onSelectCategory: (ItemCategory?) -> Unit,
     onItemClick: (Int) -> Unit,
     onShowBulkOrderDialog: () -> Unit,
+    onShowAutoOrderConfig: () -> Unit = {},
+    onViewIncompleteNormalOrders: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
 
@@ -230,26 +270,75 @@ private fun InventoryListScreen(
 
             // Only show Bulk Order button if TIER_2 or above is unlocked
             if (currentTier.unlockAmount >= ItemUnlockTier.TIER_2.unlockAmount) {
-                Button(
-                    onClick = onShowBulkOrderDialog,
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryDark),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Icon(
-                        Icons.Default.LocalShipping,
-                        contentDescription = "Bulk Order",
-                        modifier = Modifier.size(16.dp),
-                        tint = TextWhite
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "Bulk Order",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextWhite
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = onShowBulkOrderDialog,
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryDark),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.LocalShipping,
+                            contentDescription = "Bulk Order",
+                            modifier = Modifier.size(16.dp),
+                            tint = TextWhite
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Bulk Order",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextWhite
+                        )
+                    }
+
+                    Button(
+                        onClick = onShowAutoOrderConfig,
+                        enabled = hasFastStocker,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (hasStockingManager) Primary else PrimaryDark.copy(alpha = 0.7f),
+                            disabledContainerColor = ProgressBarTrack,
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(
+                            if (hasStockingManager) Icons.Default.Settings else Icons.Default.LocalShipping,
+                            contentDescription = "Auto-Order",
+                            modifier = Modifier.size(16.dp),
+                            tint = if (hasFastStocker) TextWhite else TextMuted
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            when {
+                                hasStockingManager -> "Auto-Order"
+                                hasFastStocker -> "Auto-Order"
+                                else -> "Auto-Order (T2)"
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (hasFastStocker) TextWhite else TextMuted
+                        )
+                    }
                 }
+            }
+        }
+
+        // Incomplete normal orders banner
+        if (incompleteNormalOrdersCount > 0) {
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = onViewIncompleteNormalOrders,
+                modifier = Modifier.fillMaxWidth().height(36.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = DestructiveDark),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    "Incomplete Auto-Orders ($incompleteNormalOrdersCount)",
+                    fontSize = 12.sp,
+                    color = TextWhite
+                )
             }
         }
 
@@ -516,6 +605,12 @@ fun InventoryAndFreshScreen(
     resetTrigger: Int = 0,
     initialTab: Int = 0,
     incompleteFreshOrdersCount: Int = 0,
+    incompleteNormalOrdersCount: Int = 0,
+    hasFastStocker: Boolean = false,
+    hasStockingManager: Boolean = false,
+    hasFreshHandler: Boolean = false,
+    freshAutoOrderConfig: com.example.superstoresimulator.domain.FreshAutoOrderConfig = com.example.superstoresimulator.domain.FreshAutoOrderConfig(),
+    normalAutoOrderConfig: com.example.superstoresimulator.domain.NormalAutoOrderConfig = com.example.superstoresimulator.domain.NormalAutoOrderConfig(),
     deliveries: com.example.superstoresimulator.ui.state.DeliveryUIState = com.example.superstoresimulator.ui.state.DeliveryUIState(),
     onTabChanged: (Int) -> Unit = {},
     onBuyItem: (Int) -> Unit,
@@ -523,6 +618,9 @@ fun InventoryAndFreshScreen(
     onBulkOrder: (maxTotalQuantity: Int, casePacksPerItem: Int, categoryFilter: ItemCategory?) -> Unit = { _, _, _ -> },
     onFreshBulkOrder: () -> Unit = {},
     onViewIncompleteOrders: () -> Unit = {},
+    onViewIncompleteNormalOrders: () -> Unit = {},
+    onUpdateFreshAutoOrderConfig: (enabled: Boolean, threshold: Int, casePacks: Int) -> Unit = { _, _, _ -> },
+    onUpdateNormalAutoOrderConfig: (enabled: Boolean, threshold: Int, casePacks: Int) -> Unit = { _, _, _ -> },
     onCancelOrderLine: (itemId: Int, truckId: Int) -> Unit = { _, _ -> },
     onDecrementOrderLine: (itemId: Int, truckId: Int) -> Unit = { _, _ -> },
     onRequestEarlyTruck: () -> Unit = {},
@@ -614,9 +712,15 @@ fun InventoryAndFreshScreen(
                     currentTier = currentTier,
                     metricsData = metricsData,
                     resetTrigger = resetTrigger,
+                    hasFastStocker = hasFastStocker,
+                    hasStockingManager = hasStockingManager,
+                    incompleteNormalOrdersCount = incompleteNormalOrdersCount,
+                    normalAutoOrderConfig = normalAutoOrderConfig,
                     onBuyItem = onBuyItem,
                     onSelectCategory = onSelectCategory,
                     onBulkOrder = onBulkOrder,
+                    onUpdateNormalAutoOrderConfig = onUpdateNormalAutoOrderConfig,
+                    onViewIncompleteNormalOrders = onViewIncompleteNormalOrders,
                     onItemClick = onItemClick
                 )
                 showFreshTab && page == 1 -> FreshScreen(
@@ -624,9 +728,12 @@ fun InventoryAndFreshScreen(
                     money = money,
                     currentDay = currentDay,
                     incompleteFreshOrdersCount = incompleteFreshOrdersCount,
+                    hasFreshHandler = hasFreshHandler,
+                    freshAutoOrderConfig = freshAutoOrderConfig,
                     onItemClick = onItemClick,
                     onFreshBulkOrder = onFreshBulkOrder,
-                    onViewIncompleteOrders = onViewIncompleteOrders
+                    onViewIncompleteOrders = onViewIncompleteOrders,
+                    onUpdateFreshAutoOrderConfig = onUpdateFreshAutoOrderConfig,
                 )
                 else -> DeliveriesScreen(
                     deliveries = deliveries,

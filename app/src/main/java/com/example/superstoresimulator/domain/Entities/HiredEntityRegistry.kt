@@ -1,5 +1,8 @@
 package com.example.superstoresimulator.domain.Entities
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class HiredEntityRegistry(
     private val entities: List<HiredEntity> = emptyList(),
     private var nextEntityId: Int = 1

@@ -1,20 +1,38 @@
 package com.example.superstoresimulator.domain.Transactions
 
 import com.example.superstoresimulator.domain.Money
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import java.time.Instant
 
+object InstantEpochMillisSerializer : KSerializer<Instant> {
+    override val descriptor = PrimitiveSerialDescriptor("Instant", PrimitiveKind.LONG)
+    override fun serialize(encoder: Encoder, value: Instant) =
+        encoder.encodeLong(value.toEpochMilli())
+    override fun deserialize(decoder: Decoder): Instant =
+        Instant.ofEpochMilli(decoder.decodeLong())
+}
+
+@Serializable
 data class Transaction(
     val id: Int,
     val lines: List<TransactionLine>,
     val subtotal: Money,
     val tax: Money,
     val totalEarned: Money,
+    @Serializable(with = InstantEpochMillisSerializer::class)
     val completedAt: Instant? = null,
     val registerId: Int = 0,
     val gameDayNumber: Int = 0,
 ) {
     constructor(): this(0, emptyList(), Money(0), Money(0), Money(0))
 }
+
+@Serializable
 data class TransactionLine(
     val itemId: Int,
     val quantity: Int,

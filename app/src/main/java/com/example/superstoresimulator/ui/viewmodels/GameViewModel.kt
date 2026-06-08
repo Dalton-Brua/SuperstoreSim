@@ -270,8 +270,23 @@ class GameViewModel @Inject constructor(
                 )
             }
 
+            is GameEvent.UpdateNormalAutoOrderConfig -> {
+                gameEngine.updateNormalAutoOrderConfig(
+                    event.enabled,
+                    event.minStockThreshold,
+                    event.casePacksPerItem,
+                )
+            }
+
             is GameEvent.OrderIncompleteItem -> {
                 gameEngine.orderIncompleteItem(
+                    event.itemId,
+                    event.casePacksRequested,
+                )
+            }
+
+            is GameEvent.OrderIncompleteNormalItem -> {
+                gameEngine.orderIncompleteNormalItem(
                     event.itemId,
                     event.casePacksRequested,
                 )

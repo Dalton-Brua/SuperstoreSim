@@ -1,9 +1,8 @@
 package com.example.superstoresimulator.domain.time
 
-/**
- * Represents a point in time within the game.
- * Tracks time as total minutes elapsed since game start.
- */
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class GameTime(
     val totalMinutesElapsed: Long = 0  // Total game minutes since start
 ) {

@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Entities.HiredEntity
+import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
+import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.store.StoreSize
@@ -218,8 +220,46 @@ fun EntityTypeDetailScreen(
             Text(def.displayName, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = PrimaryDark)
         }
 
+        if (def.tierPerks.isNotEmpty()) {
+            val highestTier = state.registry.getByDef(def)
+                .maxOfOrNull { it.tier } ?: Tier.BASE
+            Spacer(Modifier.height(8.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                for ((tier, perk) in def.tierPerks) {
+                    val isActive = highestTier.ordinal >= tier.ordinal
+                    androidx.compose.material3.Surface(
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                        color = if (isActive) SuccessChipSurface else InfoChipSurface,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            val tierLabel = when (tier) {
+                                Tier.BASE -> "T1"
+                                Tier.FAST -> "T2"
+                                Tier.MANAGER -> "T3"
+                            }
+                            Text(
+                                text = tierLabel,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isActive) SuccessTextDark else PrimaryDark,
+                            )
+                            Text(
+                                text = perk,
+                                fontSize = 11.sp,
+                                color = if (isActive) SuccessTextDark else PrimaryDark,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(12.dp))
-        
+
         // Show tier requirement message for Fresh Handlers
         if (isFreshHandlers && !canHireFreshHandlers) {
             Card(

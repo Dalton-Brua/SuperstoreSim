@@ -1,10 +1,9 @@
 package com.example.superstoresimulator.domain.metrics
 
 import com.example.superstoresimulator.domain.Money
+import kotlinx.serialization.Serializable
 
-/**
- * One item line received from a truck delivery.
- */
+@Serializable
 data class DeliveredItemLine(
     val itemId: Int,
     val itemName: String,
@@ -12,9 +11,7 @@ data class DeliveredItemLine(
     val quantity: Int,
 )
 
-/**
- * Record of a single truck that arrived on this day.
- */
+@Serializable
 data class DeliveredTruckRecord(
     val truckId: Int,
     val arrivalDay: Int,
@@ -24,9 +21,7 @@ data class DeliveredTruckRecord(
     val lines: List<DeliveredItemLine>,
 )
 
-/**
- * One auto-ordered fresh item that was successfully completed at end-of-day.
- */
+@Serializable
 data class FreshOrderLineItem(
     val itemId: Int,
     val itemName: String,
@@ -35,9 +30,7 @@ data class FreshOrderLineItem(
     val totalCost: Money,
 )
 
-/**
- * One auto-ordered fresh item that failed to complete (e.g., insufficient funds).
- */
+@Serializable
 data class IncompleteOrderLineItem(
     val itemId: Int,
     val itemName: String,
@@ -47,10 +40,7 @@ data class IncompleteOrderLineItem(
     val reason: String,
 )
 
-/**
- * One item that expired and was removed from inventory on this day.
- * Aggregated per-day to drive the "Expired Items Report" (Shrinkage) on the Metrics screen.
- */
+@Serializable
 data class ExpiredItemEvent(
     val itemId: Int,
     val itemName: String,
@@ -60,10 +50,7 @@ data class ExpiredItemEvent(
     val valueLost: Money,
 )
 
-/**
- * One item that a customer wanted but could not be rung up due to zero shelf stock.
- * Aggregated per-day to drive the "Out-of-Stock Report" on the Metrics screen.
- */
+@Serializable
 data class OutOfStockEvent(
     val itemId: Int,
     val itemName: String,
@@ -73,11 +60,10 @@ data class OutOfStockEvent(
     val revenueLost: Money,
 )
 
-/**
- * Record of an auto-hire decision made at midnight.
- */
+@Serializable
 enum class AutoHireAction { HIRED, SKIPPED, REBALANCED, PURCHASED }
 
+@Serializable
 data class AutoHireEvent(
     val entityDefName: String,
     val reason: String,
@@ -87,10 +73,7 @@ data class AutoHireEvent(
     val action: AutoHireAction = if (blocked) AutoHireAction.SKIPPED else AutoHireAction.HIRED,
 )
 
-/**
- * One line-item that was successfully sold during the day.
- * Aggregated per-day to drive the "Items Sold Report" on the Metrics screen.
- */
+@Serializable
 data class SoldItemEvent(
     val itemId: Int,
     val itemName: String,
@@ -102,10 +85,7 @@ data class SoldItemEvent(
     val basePrice: Money = Money.ZERO,
 )
 
-/**
- * Immutable snapshot of all tracked metrics for a single game day.
- * Created at midnight when the day rolls over (or at game end).
- */
+@Serializable
 data class DailyMetrics(
     val dayNumber: Int,
     val dayOfWeek: Int,                  // 0 = Monday … 6 = Sunday
@@ -149,6 +129,10 @@ data class DailyMetrics(
     val autoOrderedFreshItems: List<FreshOrderLineItem> = emptyList(),
     val incompleteOrderedFreshItems: List<IncompleteOrderLineItem> = emptyList(),
 
+    // ── Normal Item Auto-Ordering (Stocking Manager) ─────────────────────
+    val autoOrderedNormalItems: List<FreshOrderLineItem> = emptyList(),
+    val incompleteOrderedNormalItems: List<IncompleteOrderLineItem> = emptyList(),
+
     // ── Truck Deliveries ──────────────────────────────────────────────────
     val deliveredTrucks: List<DeliveredTruckRecord> = emptyList(),
 
@@ -184,11 +168,7 @@ data class DailyMetrics(
         }
 }
 
-/**
- * In-progress accumulator for the current game day.
- * Stored in GameState as an immutable data class — updated via `.copy()`.
- * Converted to [DailyMetrics] at midnight via [toSnapshot].
- */
+@Serializable
 data class DailyMetricsAccumulator(
     val dayNumber: Int = 0,
 
@@ -226,6 +206,10 @@ data class DailyMetricsAccumulator(
     val autoOrderedFreshItems: List<FreshOrderLineItem> = emptyList(),
     val incompleteOrderedFreshItems: List<IncompleteOrderLineItem> = emptyList(),
 
+    // ── Normal Item Auto-Ordering (Stocking Manager) ─────────────────────
+    val autoOrderedNormalItems: List<FreshOrderLineItem> = emptyList(),
+    val incompleteOrderedNormalItems: List<IncompleteOrderLineItem> = emptyList(),
+
     // ── Truck Deliveries ──────────────────────────────────────────────────
     val deliveredTrucks: List<DeliveredTruckRecord> = emptyList(),
 
@@ -262,6 +246,8 @@ data class DailyMetricsAccumulator(
         expiredItemEvents = expiredItemEvents,
         autoOrderedFreshItems = autoOrderedFreshItems,
         incompleteOrderedFreshItems = incompleteOrderedFreshItems,
+        autoOrderedNormalItems = autoOrderedNormalItems,
+        incompleteOrderedNormalItems = incompleteOrderedNormalItems,
         deliveredTrucks = deliveredTrucks,
         autoHireEvents = autoHireEvents,
         markdownsSaved = markdownsSaved,

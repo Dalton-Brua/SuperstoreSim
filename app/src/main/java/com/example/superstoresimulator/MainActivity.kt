@@ -98,6 +98,7 @@ class MainActivity : ComponentActivity() {
                 // Fresh auto-order dialog states
                 var showFreshBulkOrderDialog by remember { mutableStateOf(false) }
                 var showIncompleteOrdersDialog by remember { mutableStateOf(false) }
+                var showIncompleteNormalOrdersDialog by remember { mutableStateOf(false) }
 
                 // Snackbar for truck order confirmations
                 val snackbarHostState = remember { SnackbarHostState() }
@@ -244,12 +245,6 @@ class MainActivity : ComponentActivity() {
                                  },
                                 onSave = { viewModel.onEvent(GameEvent.SaveGame) },
                                 onReset = { viewModel.onEvent(GameEvent.ResetGame) },
-                                freshAutoOrderEnabled = viewModel.currentState().freshAutoOrderConfig.enabled,
-                                freshMinStockThreshold = viewModel.currentState().freshAutoOrderConfig.minStockThreshold,
-                                freshCasePacksPerItem = viewModel.currentState().freshAutoOrderConfig.casePacksPerItem,
-                                onFreshAutoOrderConfigChanged = { enabled, threshold, packs ->
-                                     viewModel.onEvent(GameEvent.UpdateFreshAutoOrderConfig(enabled, threshold, packs))
-                                },
                                 truckConfig = viewModel.currentState().truckConfig,
                                 currentStoreSize = viewModel.currentState().currentStoreSize,
                                 onTruckConfigChanged = { days, regularCap, freshCap ->
@@ -284,6 +279,18 @@ class MainActivity : ComponentActivity() {
                                 metricsData = state.metrics.completedDays,
                                 resetTrigger = inventoryResetTrigger,
                                 incompleteFreshOrdersCount = viewModel.currentState().incompleteFreshOrders.size,
+                                incompleteNormalOrdersCount = viewModel.currentState().incompleteNormalOrders.size,
+                                hasFastStocker = viewModel.currentState().hiredEntityRegistry.getByDef(
+                                    com.example.superstoresimulator.domain.Entities.EntityDef.STOCKER
+                                ).any { it.tier.ordinal >= com.example.superstoresimulator.domain.Entities.Tier.FAST.ordinal },
+                                hasStockingManager = viewModel.currentState().hiredEntityRegistry.getByDef(
+                                    com.example.superstoresimulator.domain.Entities.EntityDef.STOCKER
+                                ).any { it.isDeptManager },
+                                hasFreshHandler = viewModel.currentState().hiredEntityRegistry.countByDef(
+                                    com.example.superstoresimulator.domain.Entities.EntityDef.FRESH_HANDLER
+                                ) > 0,
+                                freshAutoOrderConfig = viewModel.currentState().freshAutoOrderConfig,
+                                normalAutoOrderConfig = viewModel.currentState().normalAutoOrderConfig,
                                 deliveries = state.delivery,
                                 onBuyItem = { itemId -> viewModel.onEvent(GameEvent.BuyItem(itemId)) },
                                 onSelectCategory = { category -> viewModel.onEvent(GameEvent.SelectItemCategory(category)) },
@@ -292,6 +299,13 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onFreshBulkOrder = { showFreshBulkOrderDialog = true },
                                 onViewIncompleteOrders = { showIncompleteOrdersDialog = true },
+                                onViewIncompleteNormalOrders = { showIncompleteNormalOrdersDialog = true },
+                                onUpdateFreshAutoOrderConfig = { enabled, threshold, packs ->
+                                    viewModel.onEvent(GameEvent.UpdateFreshAutoOrderConfig(enabled, threshold, packs))
+                                },
+                                onUpdateNormalAutoOrderConfig = { enabled, threshold, packs ->
+                                    viewModel.onEvent(GameEvent.UpdateNormalAutoOrderConfig(enabled, threshold, packs))
+                                },
                                 onCancelOrderLine = { itemId, truckId ->
                                     viewModel.onEvent(GameEvent.CancelPendingOrderLine(itemId, truckId))
                                 },
@@ -475,6 +489,40 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onDismiss = { showIncompleteOrdersDialog = false }
+                        )
+                    }
+
+                    // Incomplete Normal Orders Dialog
+                    if (showIncompleteNormalOrdersDialog) {
+                        val gameState = viewModel.currentState()
+                        val itemNames = gameState.incompleteNormalOrders.associate { order ->
+                            val item = viewModel.itemMetadataCache.getItem(order.itemId)
+                            order.itemId to (item?.name ?: "Item ${order.itemId}")
+                        }
+                        val itemCosts = gameState.incompleteNormalOrders.associate { order ->
+                            val item = viewModel.itemMetadataCache.getItem(order.itemId)
+                            order.itemId to (item?.getCasePackCostAsMoney() ?: Money.ZERO)
+                        }
+
+                        IncompleteOrdersDialog(
+                            incompleteOrders = gameState.incompleteNormalOrders,
+                            itemNames = itemNames,
+                            itemCosts = itemCosts,
+                            money = state.app.money,
+                            onOrderItem = { itemId: Int, packs: Int ->
+                                viewModel.onEvent(GameEvent.OrderIncompleteNormalItem(itemId, packs))
+                            },
+                            onOrderAll = {
+                                val currentState = viewModel.currentState()
+                                currentState.incompleteNormalOrders.forEach { order ->
+                                    val item = viewModel.itemMetadataCache.getItem(order.itemId)
+                                    val totalCost = (item?.getCasePackCostAsMoney() ?: Money.ZERO) * order.casePacksRequested
+                                    if (currentState.money >= totalCost) {
+                                        viewModel.onEvent(GameEvent.OrderIncompleteNormalItem(order.itemId, order.casePacksRequested))
+                                    }
+                                }
+                            },
+                            onDismiss = { showIncompleteNormalOrdersDialog = false }
                         )
                     }
 

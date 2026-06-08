@@ -2,7 +2,17 @@ package com.example.superstoresimulator.ui.screens.inventory
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,9 +52,12 @@ fun FreshScreen(
     money: Money,
     currentDay: Int,
     incompleteFreshOrdersCount: Int = 0,
+    hasFreshHandler: Boolean = false,
+    freshAutoOrderConfig: com.example.superstoresimulator.domain.FreshAutoOrderConfig = com.example.superstoresimulator.domain.FreshAutoOrderConfig(),
     onItemClick: (Int) -> Unit = {},
     onFreshBulkOrder: () -> Unit = {},
     onViewIncompleteOrders: () -> Unit = {},
+    onUpdateFreshAutoOrderConfig: (enabled: Boolean, threshold: Int, casePacks: Int) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     // Filter to only perishable items
@@ -59,6 +72,19 @@ fun FreshScreen(
     
     // Track selected category
     var selectedCategory by remember { mutableStateOf<ItemCategory?>(null) }
+    var showAutoOrderConfigDialog by remember { mutableStateOf(false) }
+
+    if (showAutoOrderConfigDialog) {
+        com.example.superstoresimulator.ui.dialogs.AutoOrderConfigDialog(
+            title = "Fresh Auto-Order Settings",
+            subtitle = "Fresh handlers auto-order when idle and stock is low",
+            enabled = freshAutoOrderConfig.enabled,
+            minStockThreshold = freshAutoOrderConfig.minStockThreshold,
+            casePacksPerItem = freshAutoOrderConfig.casePacksPerItem,
+            onConfigChanged = onUpdateFreshAutoOrderConfig,
+            onDismiss = { showAutoOrderConfigDialog = false }
+        )
+    }
     
     Column(
         modifier = modifier
@@ -111,19 +137,45 @@ fun FreshScreen(
                     Text("Fresh Bulk Order", fontSize = 12.sp, color = TextWhite)
                 }
 
-                if (incompleteFreshOrdersCount > 0) {
+                Button(
+                    onClick = { showAutoOrderConfigDialog = true },
+                    enabled = hasFreshHandler,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Primary,
+                        disabledContainerColor = ProgressBarTrack,
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        if (hasFreshHandler) "Auto-Order" else "Auto-Order",
+                        fontSize = 12.sp,
+                        color = if (hasFreshHandler) TextWhite else TextMuted
+                    )
+                }
+            }
+
+            if (incompleteFreshOrdersCount > 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                ) {
                     Button(
                         onClick = onViewIncompleteOrders,
                         modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp),
+                            .fillMaxWidth()
+                            .height(36.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = DestructiveDark
                         ),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            "Incomplete ($incompleteFreshOrdersCount)",
+                            "Incomplete Fresh Orders ($incompleteFreshOrdersCount)",
                             fontSize = 12.sp,
                             color = TextWhite
                         )

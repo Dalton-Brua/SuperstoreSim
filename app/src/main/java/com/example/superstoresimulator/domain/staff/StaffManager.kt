@@ -19,12 +19,14 @@ class StaffManager {
 
     private val cashierProgressByRegister: MutableMap<Int, Float> = mutableMapOf()
     private var stockerProgress: Float = 0f
+    private var stockingManagerProgress: Float = 0f
     private var freshHandlerProgress: Float = 0f
 
     // Assignment queues: when an action fires, pop an entity ID to credit with XP.
     // Queues are refilled proportional to each employee's speed weight so fast
     // employees are credited more often.
     private val stockerAssignmentQueue = ArrayDeque<Int>()
+    private val stockingManagerAssignmentQueue = ArrayDeque<Int>()
     private val freshAssignmentQueue = ArrayDeque<Int>()
 
     // ── Zoning state (Phase 5B) ──────────────────────────────────────────────
@@ -93,6 +95,24 @@ class StaffManager {
         val whole = advanceStockerProgress(result.weight, delta, multiplier)
         if (whole <= 0) return emptyList()
         return assignActions(whole, result, stockerAssignmentQueue)
+    }
+
+    fun advanceStockingManagerProgress(managerWeight: Float, delta: Double, multiplier: Float): Int {
+        if (managerWeight <= 0f) return 0
+        stockingManagerProgress += STOCKER_ACTIONS_PER_SECOND * managerWeight * delta.toFloat() * multiplier
+        val whole = stockingManagerProgress.toInt()
+        stockingManagerProgress -= whole
+        return whole
+    }
+
+    fun advanceStockingManagerProgressWithAssignment(
+        result: ActiveWeightResult,
+        delta: Double,
+        multiplier: Float,
+    ): List<Int> {
+        val whole = advanceStockingManagerProgress(result.weight, delta, multiplier)
+        if (whole <= 0) return emptyList()
+        return assignActions(whole, result, stockingManagerAssignmentQueue)
     }
 
     fun advanceFreshHandlerProgress(freshHandlerCount: Float, delta: Double, multiplier: Float): Int {
@@ -602,6 +622,13 @@ class StaffManager {
             val hasStoreManager = state.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.isStoreManager }
             if (hasStoreManager) return state
         }
+        // Stocking Manager cap: 1 per 5 non-manager stockers
+        if (entity.entityDefinition == EntityDef.STOCKER && entity.tier == Tier.FAST) {
+            val stockers = state.hiredEntityRegistry.getByDef(EntityDef.STOCKER)
+            val currentManagers = stockers.count { it.isDeptManager }
+            val nonManagerCount = stockers.count { it.tier != Tier.MANAGER }
+            if (currentManagers >= nonManagerCount / STOCKERS_PER_STOCKING_MANAGER) return state
+        }
         val cost = entity.upgradeCost
         if (state.money < cost) return state
         return state.copy(
@@ -666,11 +693,18 @@ class StaffManager {
         const val SHIFT_MID     = 10
         const val SHIFT_CLOSING = 13
 
+        // XP constants
+        const val XP_PER_STOCK_ACTION = 1
+        const val MANAGER_XP_PER_SUPERVISED_ACTION = 1
+
         // Zoning constants
         const val ZONE_DECAY_PER_SALE = 0.08f
         const val ZONE_ACTIONS_PER_SECOND = 0.1f
         const val ZONE_PER_ACTION = 0.35f
         const val ZONE_FLOOR = 0.4f
+
+        // Stocking Manager: 1 allowed per this many non-manager stockers
+        const val STOCKERS_PER_STOCKING_MANAGER = 5
 
         private const val TAG = "StaffManager"
 

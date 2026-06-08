@@ -1,5 +1,8 @@
 package com.example.superstoresimulator.domain.Entities
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class EntityTrait(val description: String) {
     EFFICIENT("-10% wage cost"),
     FRIENDLY("+5% customer patience"),
