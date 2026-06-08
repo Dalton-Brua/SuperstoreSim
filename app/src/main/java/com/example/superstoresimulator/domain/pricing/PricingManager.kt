@@ -41,13 +41,6 @@ class PricingManager(
         return ResolvedPrice(effectivePrice, meta.price, modifierPercent)
     }
 
-    fun purchaseProbabilityMultiplier(itemId: Int, state: GameState): Float {
-        val resolved = resolvePrice(itemId, state)
-        if (resolved.basePrice.cents <= 0 || resolved.effectivePrice.cents <= 0) return 1.0f
-        val ratio = resolved.basePrice.cents.toDouble() / resolved.effectivePrice.cents.toDouble()
-        return ratio.pow(config.priceElasticity.toDouble()).toFloat()
-    }
-
     fun computePriceIndex(state: GameState): Float {
         var weightedSum = 0.0
         var totalWeight = 0.0

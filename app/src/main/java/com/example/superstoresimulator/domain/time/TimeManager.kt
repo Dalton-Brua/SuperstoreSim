@@ -49,32 +49,6 @@ class TimeManager(
     }
     
     /**
-     * Jump to specific time on current day (or next day if time has passed)
-     */
-    fun jumpToTime(hour: Int, minute: Int = 0): GameTime {
-        val currentDayMin = currentTime.getTotalMinutesOfDay()
-        val targetDayMin = hour * 60 + minute
-        
-        val newTime = if (targetDayMin <= currentDayMin) {
-            // Jump to next day at target time
-            currentTime.copy(
-                totalMinutesElapsed = currentTime.totalMinutesElapsed + 
-                    ((24 - currentTime.hour) * 60 - currentTime.minute) +
-                    targetDayMin
-            )
-        } else {
-            // Jump to later today
-            currentTime.copy(
-                totalMinutesElapsed = currentTime.totalMinutesElapsed +
-                    (targetDayMin - currentDayMin)
-            )
-        }
-        
-        currentTime = newTime
-        return currentTime
-    }
-    
-    /**
      * Get current store state based on time
      */
     fun getStoreState(): StoreState {

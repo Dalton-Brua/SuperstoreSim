@@ -27,7 +27,7 @@ import org.junit.Test
  *     takes a [GameState] and returns a new [GameState]. Tests construct [GameState]
  *     directly with a pre-populated [HiredEntityRegistry]; no FakeItemDao needed.
  *
- *  2. Fractional-accumulator helpers ([advanceCashierProgress], [advanceStockerProgress])
+ *  2. Fractional-accumulator helpers ([advanceCashierProgressForRegister], [advanceStockerProgress])
  *     — each mutates an internal float and returns the whole-action count for the tick.
  *     A fresh [StaffManager] instance is used per test via [@Before] so accumulator
  *     state does not leak between tests.
@@ -58,8 +58,8 @@ import org.junit.Test
  *   - Fired entity is no longer present in the registry
  *   - Money is not affected by firing
  *
- *  [advanceCashierProgress]
- *   - Returns 0 when cashierCount is 0 (no accumulation)
+ *  [advanceCashierProgressForRegister]
+ *   - Returns 0 when cashierWeight is 0 (no accumulation)
  *   - Returns 0 on the first tick when delta is too small to reach 1.0
  *   - Returns 1 when accumulated rate crosses 1.0 across two ticks
  *   - Fractional remainder is retained between ticks
@@ -196,62 +196,54 @@ class StaffManagerTest {
         assertEquals(EntityDef.STOCKER, result.hiredEntityRegistry.getById(2).entityDefinition)
     }
 
-    // ── advanceCashierProgress ────────────────────────────────────────────────
+    // ── advanceCashierProgressForRegister ────────────────────────────────────
 
     @Test
-    fun `advanceCashierProgress returns 0 when cashierCount is 0`() {
-        val result = staffManager.advanceCashierProgress(
-            cashierCount = 0f, delta = 10.0, multiplier = 1.0f,
+    fun `advanceCashierProgressForRegister returns 0 when cashierWeight is 0`() {
+        val result = staffManager.advanceCashierProgressForRegister(
+            registerId = 1, cashierWeight = 0f, delta = 10.0, multiplier = 1.0f,
         )
         assertEquals(0, result)
     }
 
     @Test
-    fun `advanceCashierProgress returns 0 on first small tick with 1 cashier`() {
-        // 2.0 items/s × 1 cashier × 0.1 s × 1× speed = 0.2 — below 1.0
-        val result = staffManager.advanceCashierProgress(
-            cashierCount = 1f, delta = 0.1, multiplier = 1.0f,
+    fun `advanceCashierProgressForRegister returns 0 on first small tick with 1 cashier`() {
+        val result = staffManager.advanceCashierProgressForRegister(
+            registerId = 1, cashierWeight = 1f, delta = 0.1, multiplier = 1.0f,
         )
         assertEquals(0, result)
     }
 
     @Test
-    fun `advanceCashierProgress returns 1 after accumulating past 1 item`() {
-        // 1.0 items/s × 1 cashier × 0.6 s = 0.6 → 0 whole
-        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 0.6, multiplier = 1.0f)
-        // 0.6 + 0.6 = 1.2 → 1 whole, 0.2 remainder
-        val result = staffManager.advanceCashierProgress(
-            cashierCount = 1f, delta = 0.6, multiplier = 1.0f,
+    fun `advanceCashierProgressForRegister returns 1 after accumulating past 1 item`() {
+        staffManager.advanceCashierProgressForRegister(registerId = 1, cashierWeight = 1f, delta = 0.6, multiplier = 1.0f)
+        val result = staffManager.advanceCashierProgressForRegister(
+            registerId = 1, cashierWeight = 1f, delta = 0.6, multiplier = 1.0f,
         )
         assertEquals(1, result)
     }
 
     @Test
-    fun `advanceCashierProgress retains fractional remainder between ticks`() {
-        // 1.0 × 1 × 0.6 = 0.6 → 0 whole, 0.6 left
-        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 0.6, multiplier = 1.0f)
-        // 0.6 + 0.6 = 1.2 → 1 whole, 0.2 left
-        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 0.6, multiplier = 1.0f)
-        // 0.2 + 0.6 = 0.8 → 0 whole
-        val third = staffManager.advanceCashierProgress(cashierCount = 1f, delta = 0.6, multiplier = 1.0f)
+    fun `advanceCashierProgressForRegister retains fractional remainder between ticks`() {
+        staffManager.advanceCashierProgressForRegister(registerId = 1, cashierWeight = 1f, delta = 0.6, multiplier = 1.0f)
+        staffManager.advanceCashierProgressForRegister(registerId = 1, cashierWeight = 1f, delta = 0.6, multiplier = 1.0f)
+        val third = staffManager.advanceCashierProgressForRegister(registerId = 1, cashierWeight = 1f, delta = 0.6, multiplier = 1.0f)
         assertEquals("Third tick should give 0 whole actions (0.8 < 1.0)", 0, third)
     }
 
     @Test
-    fun `advanceCashierProgress respects game-speed multiplier`() {
-        // 1.0 × 1 × 0.2 × 4 = 0.8 < 1.0 → 0; second tick: 0.8+0.8 = 1.6 → 1
-        staffManager.advanceCashierProgress(cashierCount = 1f, delta = 0.2, multiplier = 4.0f)
-        val result = staffManager.advanceCashierProgress(
-            cashierCount = 1f, delta = 0.2, multiplier = 4.0f,
+    fun `advanceCashierProgressForRegister respects game-speed multiplier`() {
+        staffManager.advanceCashierProgressForRegister(registerId = 1, cashierWeight = 1f, delta = 0.2, multiplier = 4.0f)
+        val result = staffManager.advanceCashierProgressForRegister(
+            registerId = 1, cashierWeight = 1f, delta = 0.2, multiplier = 4.0f,
         )
         assertEquals(1, result)
     }
 
     @Test
-    fun `advanceCashierProgress scales with cashier count`() {
-        // 1.0 items/s × 4 cashiers × 0.26 s × 1× = 1.04 → 1 whole
-        val result = staffManager.advanceCashierProgress(
-            cashierCount = 4f, delta = 0.26, multiplier = 1.0f,
+    fun `advanceCashierProgressForRegister scales with cashier weight`() {
+        val result = staffManager.advanceCashierProgressForRegister(
+            registerId = 1, cashierWeight = 4f, delta = 0.26, multiplier = 1.0f,
         )
         assertEquals(1, result)
     }

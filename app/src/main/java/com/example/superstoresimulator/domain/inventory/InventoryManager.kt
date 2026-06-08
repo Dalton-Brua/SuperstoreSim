@@ -381,7 +381,6 @@ class InventoryManager(
         }
         if (matchingEntries.isEmpty()) return BuyResult(state, emptyList())
 
-        data class OrderInfo(val itemsToAdd: Int, val actualCasePacks: Int)
         val itemsToAddMap = mutableMapOf<Int, OrderInfo>()
         var totalCases = 0
         var baseCost = Money.ZERO
@@ -439,7 +438,7 @@ class InventoryManager(
         return BuyResult(newState, lines)
     }
 
-    private data class PrivateOrderInfo(
+    private data class OrderInfo(
         val itemsToAdd: Int,
         val actualCasePacks: Int,
     )
@@ -455,7 +454,7 @@ class InventoryManager(
         currentTier: com.example.superstoresimulator.domain.items.ItemUnlockTier
     ): BuyResult {
         val currentDay = state.currentTime.dayNumber
-        val itemsToAddMap = mutableMapOf<Int, PrivateOrderInfo>()
+        val itemsToAddMap = mutableMapOf<Int, OrderInfo>()
         var totalCases = 0
         var baseCost = Money(0)
 
@@ -470,7 +469,7 @@ class InventoryManager(
             if (currentTotal >= maxTotalQuantity) continue
 
             val actualCasePacks = casePacksPerItem
-            itemsToAddMap[itemId] = PrivateOrderInfo(
+            itemsToAddMap[itemId] = OrderInfo(
                 itemsToAdd = dbItem.casePack * actualCasePacks,
                 actualCasePacks = actualCasePacks,
             )

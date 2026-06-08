@@ -72,9 +72,6 @@ class StaffManager {
         return whole
     }
 
-    fun advanceCashierProgress(cashierCount: Float, delta: Double, multiplier: Float): Int =
-        advanceCashierProgressForRegister(FALLBACK_CASHIER_KEY, cashierCount, delta, multiplier)
-
     fun advanceStockerProgress(stockerCount: Float, delta: Double, multiplier: Float): Int {
         if (stockerCount <= 0f) return 0
         stockerProgress += STOCKER_ACTIONS_PER_SECOND * stockerCount * delta.toFloat() * multiplier
@@ -664,6 +661,7 @@ class StaffManager {
         cashierProgressByRegister.clear()
         stockerProgress = 0f
         freshHandlerProgress = 0f
+        stockingManagerProgress = 0f
         zoningByStockerId.clear()
         resetDailyMetrics()
     }
@@ -687,7 +685,6 @@ class StaffManager {
         const val CASHIER_ITEMS_PER_SECOND = 1.0f
         const val STOCKER_ACTIONS_PER_SECOND = 0.15f
         const val FRESH_HANDLER_ACTIONS_PER_SECOND = 0.1f
-        const val FALLBACK_CASHIER_KEY = -1
 
         const val SHIFT_MORNING = 6
         const val SHIFT_MID     = 10
@@ -707,35 +704,6 @@ class StaffManager {
         const val STOCKERS_PER_STOCKING_MANAGER = 5
 
         private const val TAG = "StaffManager"
-
-        fun unassignedOnShiftCashierCount(
-            currentHour: Int,
-            schedules: List<StaffShift>,
-            registry: HiredEntityRegistry,
-            registers: List<RegisterState>,
-        ): Int {
-            val assignedIds = registers.mapNotNull { it.assignedCashierId }.toSet()
-            return registry.getByDef(EntityDef.CASHIER).count { entity ->
-                entity.id !in assignedIds &&
-                    (schedules.firstOrNull { it.entityId == entity.id }?.isOnShift(currentHour) == true)
-            }
-        }
-
-        fun unassignedOnShiftCashierWeight(
-            currentHour: Int,
-            schedules: List<StaffShift>,
-            registry: HiredEntityRegistry,
-            registers: List<RegisterState>,
-        ): Float {
-            val assignedIds = registers.mapNotNull { it.assignedCashierId }.toSet()
-            return registry.getByDef(EntityDef.CASHIER).sumOf { entity ->
-                if (entity.id in assignedIds) return@sumOf 0.0
-                val shift = schedules.firstOrNull { it.entityId == entity.id }
-                if (shift?.isOnShift(currentHour) == true)
-                    (entity.throughputWeight * entity.levelMultiplier * entity.trait.throughputMultiplier).toDouble()
-                else 0.0
-            }.toFloat()
-        }
 
         data class ActiveWeightResult(
             val weight: Float,

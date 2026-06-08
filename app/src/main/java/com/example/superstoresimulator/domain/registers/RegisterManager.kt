@@ -107,18 +107,6 @@ class RegisterManager @Inject constructor() {
             return shift?.isOnShift(currentHour) == true
         }
 
-        if (state.playerRole == PlayerRole.MANAGE) {
-            val unassignedCount = StaffManager.unassignedOnShiftCashierCount(
-                currentHour, state.staffSchedules, state.hiredEntityRegistry, state.registers
-            )
-            if (unassignedCount <= 0) return false
-            val unassignedRegisters = state.registers
-                .filter { it.assignedCashierId == null }
-                .sortedBy { it.registerId }
-            val indexInUnassigned = unassignedRegisters.indexOfFirst { it.registerId == registerId }
-            return indexInUnassigned in 0 until unassignedCount
-        }
-
         if (state.registers.size == 1) {
             return StaffManager.activeWeightedCount(
                 EntityDef.CASHIER, currentHour, state.staffSchedules, state.hiredEntityRegistry
@@ -147,23 +135,6 @@ class RegisterManager @Inject constructor() {
             return if (onShift || register.transactionActive)
                 cashier.throughputWeight * cashier.levelMultiplier * cashier.trait.throughputMultiplier
             else 0f
-        }
-
-        if (state.playerRole == PlayerRole.MANAGE) {
-            val unassignedCount = StaffManager.unassignedOnShiftCashierCount(
-                currentHour, state.staffSchedules, state.hiredEntityRegistry, state.registers
-            )
-            if (unassignedCount <= 0) return 0f
-            val unassignedRegisters = state.registers
-                .filter { it.assignedCashierId == null }
-                .sortedBy { it.registerId }
-            val mannedCount = minOf(unassignedCount, unassignedRegisters.size)
-            val indexInUnassigned = unassignedRegisters.indexOfFirst { it.registerId == registerId }
-            if (indexInUnassigned !in 0 until mannedCount) return 0f
-            val totalWeight = StaffManager.unassignedOnShiftCashierWeight(
-                currentHour, state.staffSchedules, state.hiredEntityRegistry, state.registers
-            )
-            return totalWeight / mannedCount
         }
 
         if (state.registers.size == 1) {

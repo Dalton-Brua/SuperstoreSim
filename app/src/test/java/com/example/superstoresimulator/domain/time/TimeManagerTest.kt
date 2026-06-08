@@ -33,40 +33,6 @@ class TimeManagerTest {
     }
 
     @Test
-    fun testJumpToTime() {
-        // Jump to 6 AM (360 minutes)
-        val result = timeManager.jumpToTime(6, 0)
-        assertEquals(360, result.totalMinutesElapsed)
-        assertEquals(6, result.hour)
-        assertEquals(0, result.minute)
-    }
-
-    @Test
-    fun testJumpToTimeWithMinutes() {
-        // Jump to 9:30 AM
-        val result = timeManager.jumpToTime(9, 30)
-        assertEquals(570, result.totalMinutesElapsed) // 9*60 + 30
-        assertEquals(9, result.hour)
-        assertEquals(30, result.minute)
-    }
-
-    @Test
-    fun testJumpToTimePastCurrentTime() {
-        // Start at 6 AM
-        timeManager.jumpToTime(6, 0)
-        assertEquals(360, timeManager.currentTime.totalMinutesElapsed)
-        
-        // Try to jump to 5 AM (earlier) - should jump to next day
-        timeManager.jumpToTime(5, 0)
-        
-        // Should be at 5 AM next day = 360 (today) + (19 hours) = 360 + 1140 - 60 + 300 = 1740
-        // Actually: 24*60 - 60 + 300 = 1440 - 60 + 300 = 1680
-        // Calculation: remaining time in day (24-6)*60 + target = 18*60 + 300 = 1380
-        val expected = 24 * 60 + 5 * 60 // 1740 = next day at 5 AM
-        assertEquals(expected, timeManager.currentTime.totalMinutesElapsed.toInt())
-    }
-
-    @Test
     fun testStoreStateClosed() {
         // At midnight (0:00)
         val time = GameTime(0)

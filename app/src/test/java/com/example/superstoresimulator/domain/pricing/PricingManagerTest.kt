@@ -263,49 +263,7 @@ class PricingManagerTest {
         assertEquals(Money(79996), resolved.effectivePrice)
     }
 
-    // ── 4. Purchase Probability Multiplier ───────────────────────────────────
-
-    @Test
-    fun `no markup gives multiplier near 1`() {
-        val state = baseState()
-        val mult = mgr.purchaseProbabilityMultiplier(1, state)
-        assertTrue("Expected ~1.0, got $mult", abs(mult - 1.0f) < 0.01f)
-    }
-
-    @Test
-    fun `markup reduces probability`() {
-        val state = baseState().copy(
-            pricingState = PricingState(categoryMarkups = mapOf(ItemCategory.GROCERY to 20))
-        )
-        val mult = mgr.purchaseProbabilityMultiplier(1, state)
-        // (5.0/6.0)^1.5 ≈ 0.76
-        assertTrue("Expected <1.0, got $mult", mult < 1.0f)
-        assertTrue("Expected ~0.76, got $mult", abs(mult - 0.76f) < 0.05f)
-    }
-
-    @Test
-    fun `markdown increases probability`() {
-        val state = baseState().copy(
-            pricingState = PricingState(
-                activeMarkdowns = mapOf(1 to Markdown(20, MarkdownReason.PLAYER_SALE, 1)),
-            )
-        )
-        val mult = mgr.purchaseProbabilityMultiplier(1, state)
-        // (5.0/4.0)^1.5 ≈ 1.40
-        assertTrue("Expected >1.0, got $mult", mult > 1.0f)
-    }
-
-    @Test
-    fun `large markup severely penalizes`() {
-        val state = baseState().copy(
-            pricingState = PricingState(categoryMarkups = mapOf(ItemCategory.GROCERY to 100))
-        )
-        val mult = mgr.purchaseProbabilityMultiplier(1, state)
-        // (5.0/10.0)^1.5 ≈ 0.354
-        assertTrue("Expected <0.5, got $mult", mult < 0.5f)
-    }
-
-    // ── 5. Store Price Index ─────────────────────────────────────────────────
+    // ── 4. Store Price Index ───────────────────────────────────────────────
 
     @Test
     fun `all items at base gives index 1`() {
