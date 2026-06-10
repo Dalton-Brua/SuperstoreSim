@@ -140,7 +140,7 @@ class IncrementalUiStateBuilder(private val initialState: GameUiState) {
             }
             
             is GameStateChange.ItemsExpired -> {
-                // Expiration data flows through DailyMetricsAccumulator and appears
+                // Expiration data flows through DailyMetrics and appears
                 // in the end-of-day report's Shrinkage section. No immediate UI update needed.
                 currentState
             }

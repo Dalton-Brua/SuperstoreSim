@@ -351,6 +351,10 @@ class GameViewModel @Inject constructor(
                 gameEngine.clearItemMarkdown(event.itemId)
             }
 
+            is GameEvent.UpdateStoreManagerConfig -> {
+                gameEngine.updateStoreManagerConfig(event.config)
+            }
+
             GameEvent.Tick -> gameEngine.tick(tickDelta)
 
         }
@@ -426,7 +430,9 @@ class GameViewModel @Inject constructor(
                 freshUtilization = if (gameEngineInitialized) gameEngine.freshUtilization() else 0f,
                 hasManagerOnStaff = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).isNotEmpty(),
                 hasSeniorManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.tier != Tier.BASE },
+                hasStoreManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.isStoreManager },
                 autoHireBudget = domain.autoHireBudget,
+                storeManagerConfig = domain.storeManagerConfig,
             ),
             history = HistoryUIState(
                 salesHistory = domain.salesHistory,
@@ -446,7 +452,7 @@ class GameViewModel @Inject constructor(
             ),
             metrics = MetricsUIState(
                 completedDays = domain.completedDayMetrics.sortedByDescending { it.dayNumber },
-                activeDay = domain.currentDayMetrics.toSnapshot(domain.currentTime.dayOfWeek),
+                activeDay = domain.currentDayMetrics.copy(dayOfWeek = domain.currentTime.dayOfWeek),
                 showEndOfDayReport = domain.showEndOfDayReport,
                 lastReport = domain.lastEndOfDayReport,
             ),
@@ -524,7 +530,9 @@ class GameViewModel @Inject constructor(
                 freshUtilization = gameEngine.freshUtilization(),
                 hasManagerOnStaff = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).isNotEmpty(),
                 hasSeniorManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.tier != Tier.BASE },
+                hasStoreManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.isStoreManager },
                 autoHireBudget = domain.autoHireBudget,
+                storeManagerConfig = domain.storeManagerConfig,
             )) ?: StaffUIState(
                 registry = domain.hiredEntityRegistry,
                 selectedDef = null,
@@ -536,7 +544,9 @@ class GameViewModel @Inject constructor(
                 freshUtilization = gameEngine.freshUtilization(),
                 hasManagerOnStaff = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).isNotEmpty(),
                 hasSeniorManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.tier != Tier.BASE },
+                hasStoreManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.isStoreManager },
                 autoHireBudget = domain.autoHireBudget,
+                storeManagerConfig = domain.storeManagerConfig,
             ),
             history = HistoryUIState(
                 salesHistory = domain.salesHistory,
@@ -556,7 +566,7 @@ class GameViewModel @Inject constructor(
             ),
             metrics = MetricsUIState(
                 completedDays = domain.completedDayMetrics.sortedByDescending { it.dayNumber },
-                activeDay = domain.currentDayMetrics.toSnapshot(domain.currentTime.dayOfWeek),
+                activeDay = domain.currentDayMetrics.copy(dayOfWeek = domain.currentTime.dayOfWeek),
                 showEndOfDayReport = domain.showEndOfDayReport,
                 lastReport = domain.lastEndOfDayReport,
             ),
@@ -601,7 +611,8 @@ class GameViewModel @Inject constructor(
                newDomainState.staffSchedules != oldDomainState.staffSchedules ||
                newDomainState.playerAssignedRegisterId != oldDomainState.playerAssignedRegisterId ||
                newDomainState.ownedRegisterCount != oldDomainState.ownedRegisterCount ||
-               newDomainState.autoHireBudget != oldDomainState.autoHireBudget
+               newDomainState.autoHireBudget != oldDomainState.autoHireBudget ||
+               newDomainState.storeManagerConfig != oldDomainState.storeManagerConfig
     }
 
     // ── Register & Schedule UI State Builders ────────────────────────────────────

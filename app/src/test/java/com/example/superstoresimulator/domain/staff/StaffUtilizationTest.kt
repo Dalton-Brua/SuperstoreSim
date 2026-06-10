@@ -114,14 +114,14 @@ class StaffUtilizationTest {
     }
 
     @Test
-    fun `stocker busy when zoning needed`() {
+    fun `stocker not counted as busy when only zoning`() {
         val stocker = entity(1, EntityDef.STOCKER)
         val state = buildState(entities = listOf(stocker))
         repeat(10) {
             staffManager.updateUtilization(state, currentHour = 10,
                 hasActionableBackroom = false, hasUnzonedItems = true, hasFreshWork = false)
         }
-        assertEquals(1.0f, staffManager.currentStockerUtilization(), 0.001f)
+        assertEquals(0.0f, staffManager.currentStockerUtilization(), 0.001f)
     }
 
     @Test

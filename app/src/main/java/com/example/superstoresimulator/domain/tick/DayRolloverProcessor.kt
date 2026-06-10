@@ -5,10 +5,17 @@ import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.Transactions.Transaction
+import com.example.superstoresimulator.domain.Transactions.TransactionDao
+import com.example.superstoresimulator.domain.Transactions.toEntity
+import com.example.superstoresimulator.domain.Transactions.toLineEntity
 import com.example.superstoresimulator.domain.delivery.TruckManager
 import com.example.superstoresimulator.domain.inventory.InventoryManager
 import com.example.superstoresimulator.domain.metrics.DayManager
 import com.example.superstoresimulator.domain.staff.StaffManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,12 +25,18 @@ class DayRolloverProcessor @Inject constructor(
     private val dayManager: DayManager,
     private val truckManager: TruckManager,
     private val inventoryManager: InventoryManager,
+    private val transactionDao: TransactionDao,
 ) {
+    private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     fun process(state: GameState): GameState {
         val newDayNumber = state.currentTime.dayNumber
         if (newDayNumber == dayManager.lastKnownDayNumber) return state
 
+        val transactionsToSync = state.salesHistory
+
         var s = staffManager.evaluateStoreManagerActions(state)
+        s = truckManager.evaluateStoreManagerTruckActions(s, newDayNumber)
         s = staffManager.evaluateAutoHire(s)
         s = dayManager.rollOverDay(s, dayManager.lastKnownDayNumber)
         dayManager.advanceDay(newDayNumber)
@@ -37,6 +50,7 @@ class DayRolloverProcessor @Inject constructor(
                 )
             },
             manuallyUnassignedCashiers = emptySet(),
+            salesHistory = emptyList(),
         )
         staffManager.reset()
         s = truckManager.processArrivals(s, newDayNumber)
@@ -46,6 +60,16 @@ class DayRolloverProcessor @Inject constructor(
         val hasStockingManager = stockers.any { it.tier == Tier.MANAGER }
         if (hasFastStocker && !hasStockingManager) {
             s = inventoryManager.attemptDayRolloverAutoOrder(s)
+        }
+
+        if (transactionsToSync.isNotEmpty()) {
+            syncScope.launch {
+                val entities = transactionsToSync.map { it.toEntity() }
+                val lines = transactionsToSync.flatMap { tx ->
+                    tx.lines.map { line -> line.toLineEntity(tx.id) }
+                }
+                transactionDao.insertTransactionsWithLines(entities, lines)
+            }
         }
 
         return s

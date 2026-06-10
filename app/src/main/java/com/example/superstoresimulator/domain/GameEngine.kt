@@ -347,6 +347,10 @@ class GameEngine @Inject constructor(
         )
     }
 
+    fun updateStoreManagerConfig(config: StoreManagerConfig) {
+        state = state.copy(storeManagerConfig = config)
+    }
+
     fun orderIncompleteNormalItem(itemId: Int, casePacksRequested: Int) {
         val result = inventoryManager.orderIncompleteNormalItem(state, itemId, casePacksRequested)
         state = result.state

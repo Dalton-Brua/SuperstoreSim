@@ -1,6 +1,8 @@
 package com.example.superstoresimulator.ui.components.cards
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -132,26 +134,51 @@ fun StorePricingCard(
                     )
 
                     Spacer(Modifier.height(16.dp))
-                    Text(
-                        "Category Markups",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = PrimaryDark
-                    )
-                    Spacer(Modifier.height(8.dp))
 
-                    val unlockedCategories = currentTier.unlockedSections.sortedBy { it.ordinal }
-                    for (category in unlockedCategories) {
-                        PriceSlider(
-                            label = category.displayName,
-                            currentPercent = pricingState.pricingState.categoryMarkups[category] ?: 0,
-                            range = -50f..100f,
-                            onSet = { percent -> onSetCategoryMarkup(category, percent) },
-                            modifier = Modifier.padding(vertical = 2.dp),
-                            labelColor = PrimaryDark,
-                            secondaryColor = TextSecondary,
-                            sliderModifier = Modifier.fillMaxWidth().height(32.dp)
+                    var categoriesExpanded by rememberSaveable { mutableStateOf(false) }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { categoriesExpanded = !categoriesExpanded },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = if (categoriesExpanded) Icons.Default.ExpandLess
+                                else Icons.Default.ExpandMore,
+                            contentDescription = if (categoriesExpanded) "Collapse" else "Expand",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(20.dp)
                         )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "Category Markups",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = PrimaryDark
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = categoriesExpanded,
+                        enter = expandVertically(),
+                        exit = shrinkVertically(),
+                    ) {
+                        Column {
+                            Spacer(Modifier.height(8.dp))
+                            val unlockedCategories = currentTier.unlockedSections.sortedBy { it.ordinal }
+                            for (category in unlockedCategories) {
+                                PriceSlider(
+                                    label = category.displayName,
+                                    currentPercent = pricingState.pricingState.categoryMarkups[category] ?: 0,
+                                    range = -50f..100f,
+                                    onSet = { percent -> onSetCategoryMarkup(category, percent) },
+                                    modifier = Modifier.padding(vertical = 2.dp),
+                                    labelColor = PrimaryDark,
+                                    secondaryColor = TextSecondary,
+                                    sliderModifier = Modifier.fillMaxWidth().height(32.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -63,10 +63,14 @@ private fun PaginatedHistoryList(
 ) {
     val pageSize = 10
     val sortedSalesHistory = remember(salesHistory) { salesHistory.asReversed() }
-    var itemsToShow by remember { mutableStateOf(pageSize.coerceAtMost(sortedSalesHistory.size)) }
+    var itemsToShow by remember { mutableIntStateOf(pageSize.coerceAtMost(sortedSalesHistory.size)) }
     val listState = rememberLazyListState()
 
-    LaunchedEffect(sortedSalesHistory.size) { itemsToShow = pageSize.coerceAtMost(sortedSalesHistory.size) }
+    LaunchedEffect(sortedSalesHistory.size) {
+        if (sortedSalesHistory.size > itemsToShow) {
+            itemsToShow = (itemsToShow + 1).coerceAtMost(sortedSalesHistory.size)
+        }
+    }
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .collect { lastVisible ->

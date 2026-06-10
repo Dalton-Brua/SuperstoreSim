@@ -47,10 +47,12 @@ import com.example.superstoresimulator.domain.Entities.HiredEntity
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.StoreManagerConfig
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.staff.EmployeeActivity
 import com.example.superstoresimulator.ui.components.common.ScreenHeader
+import com.example.superstoresimulator.ui.dialogs.StoreManagerConfigDialog
 import com.example.superstoresimulator.ui.state.ProgressionUIState
 import com.example.superstoresimulator.ui.state.StaffUIState
 import com.example.superstoresimulator.ui.theme.Amber
@@ -85,8 +87,11 @@ fun StaffScreen(
     money: Money,
     onSelectStaffDef: (EntityDef?) -> Unit,
     onSetAutoHireBudget: (Money) -> Unit = {},
+    onUpdateStoreManagerConfig: (StoreManagerConfig) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var showManagerConfig by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -131,10 +136,30 @@ fun StaffScreen(
                 }
             }
 
+            if (state.hasStoreManager) {
+                item {
+                    OutlinedButton(
+                        onClick = { showManagerConfig = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryDark),
+                    ) {
+                        Text("Store Manager Settings", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+
             item {
                 Spacer(Modifier.height(6.dp))
             }
         }
+    }
+
+    if (showManagerConfig) {
+        StoreManagerConfigDialog(
+            config = state.storeManagerConfig,
+            onConfigChanged = onUpdateStoreManagerConfig,
+            onDismiss = { showManagerConfig = false },
+        )
     }
 }
 
@@ -616,6 +641,7 @@ fun StaffAndUnlocksScreen(
     onUnlockNextTier: () -> Unit,
     onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int) -> Unit = { _, _, _ -> },
     onSetAutoHireBudget: (Money) -> Unit = {},
+    onUpdateStoreManagerConfig: (StoreManagerConfig) -> Unit = {},
 ) {    val tabs = listOf("Staff", "Schedule", "Unlocks")
 
     // Pager state for tab navigation
@@ -691,6 +717,7 @@ fun StaffAndUnlocksScreen(
                     money = money,
                     onSelectStaffDef = onSelectStaffDef,
                     onSetAutoHireBudget = onSetAutoHireBudget,
+                    onUpdateStoreManagerConfig = onUpdateStoreManagerConfig,
                 )
                 1 -> ScheduleScreen(
                     scheduleEntries = staffState.scheduleEntries,

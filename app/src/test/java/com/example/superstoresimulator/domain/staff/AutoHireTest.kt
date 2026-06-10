@@ -11,7 +11,7 @@ import com.example.superstoresimulator.domain.RegisterState
 import com.example.superstoresimulator.domain.StaffShift
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.inventory.ItemBatch
-import com.example.superstoresimulator.domain.metrics.DailyMetricsAccumulator
+import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.domain.metrics.OutOfStockEvent
 import com.example.superstoresimulator.domain.store.StoreSize
 import org.junit.Assert.assertEquals
@@ -55,7 +55,7 @@ class AutoHireTest {
             autoHireBudget = Money(autoHireBudget),
             registers = registers,
             currentStoreSize = storeSize,
-            currentDayMetrics = DailyMetricsAccumulator(outOfStockEvents = oosEvents),
+            currentDayMetrics = DailyMetrics(outOfStockEvents = oosEvents),
             inventory = inventory,
             pendingCustomers = pendingCustomers,
         )

@@ -2,6 +2,7 @@ package com.example.superstoresimulator.ui
 
 import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.StoreManagerConfig
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.player.PlayerRole
 
@@ -147,4 +148,7 @@ sealed interface GameEvent {
     data class SetDefaultMarkup(val percent: Int) : GameEvent
     data class SetItemPriceOverride(val itemId: Int, val percent: Int) : GameEvent
     data class ClearItemMarkdown(val itemId: Int) : GameEvent
+
+    // Store Manager Config
+    data class UpdateStoreManagerConfig(val config: StoreManagerConfig) : GameEvent
 }

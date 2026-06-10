@@ -337,6 +337,9 @@ class MainActivity : ComponentActivity() {
                                  onSetAutoHireBudget = { budget ->
                                      viewModel.onEvent(GameEvent.SetAutoHireBudget(budget))
                                  },
+                                 onUpdateStoreManagerConfig = { config ->
+                                     viewModel.onEvent(GameEvent.UpdateStoreManagerConfig(config))
+                                 },
                                  modifier = Modifier.padding(paddingValues)
                              )
 

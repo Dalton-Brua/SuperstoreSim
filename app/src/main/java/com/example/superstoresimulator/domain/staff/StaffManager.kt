@@ -280,7 +280,6 @@ class StaffManager {
                 stockerBusyTicks++
                 activities[entity.id] = EmployeeActivity.STOCKING
             } else if (hasUnzonedItems) {
-                stockerBusyTicks++
                 activities[entity.id] = EmployeeActivity.ZONING
             } else {
                 activities[entity.id] = EmployeeActivity.IDLE
@@ -343,6 +342,7 @@ class StaffManager {
         val registry = state.hiredEntityRegistry
         val hasManager = registry.getByDef(EntityDef.MANAGER).isNotEmpty()
         if (!hasManager) return state
+        if (!state.storeManagerConfig.autoHireEnabled) return state
         if (state.autoHireBudget <= Money.ZERO) return state
 
         val hasSeniorManager = registry.getByDef(EntityDef.MANAGER).any { it.tier != Tier.BASE }
@@ -373,16 +373,18 @@ class StaffManager {
             }
         }
 
-        if (cashierCount == 0 && result.registers.isNotEmpty()) bootstrapHireIfNeeded(EntityDef.CASHIER, "No cashiers")
-        if (stockerCount == 0) bootstrapHireIfNeeded(EntityDef.STOCKER, "No stockers")
-        if (freshCount == 0 && state.currentTier >= ItemUnlockTier.TIER_3) bootstrapHireIfNeeded(EntityDef.FRESH_HANDLER, "No fresh staff")
+        val config = state.storeManagerConfig
+
+        if (config.autoHireCashiers && cashierCount == 0 && result.registers.isNotEmpty()) bootstrapHireIfNeeded(EntityDef.CASHIER, "No cashiers")
+        if (config.autoHireStockers && stockerCount == 0) bootstrapHireIfNeeded(EntityDef.STOCKER, "No stockers")
+        if (config.autoHireFreshHandlers && freshCount == 0 && state.currentTier >= ItemUnlockTier.TIER_3) bootstrapHireIfNeeded(EntityDef.FRESH_HANDLER, "No fresh staff")
 
         // Cashier auto-hire: avg customers in line vs register count
         val registerCount = result.registers.size
         val avgInLine = metrics.avgHourlyPendingCustomers
         val needMoreCheckout = avgInLine > registerCount
 
-        if (needMoreCheckout || metrics.hasUnstaffedRegisters) {
+        if (config.autoHireCashiers && (needMoreCheckout || metrics.hasUnstaffedRegisters)) {
             val cashierIds = result.hiredEntityRegistry.getByDef(EntityDef.CASHIER).map { it.id }.toSet()
             val cashierShifts = result.staffSchedules.filter { it.entityId in cashierIds }
             val hasUncoveredHours = (6..20).any { hour -> cashierShifts.none { it.isOnShift(hour) } }
@@ -422,27 +424,30 @@ class StaffManager {
         }
 
         // Stocker auto-hire: non-fresh backroom not empty or zone score too low
-        val hasBackroomStock = result.inventory.any { (_, inv) ->
-            inv.backroomBatches.any { it.expirationDay == Int.MAX_VALUE && it.quantity > 0 }
-        }
-        val avgZone = result.avgZoneScore
-        if (hasBackroomStock) {
-            val before = result.hiredEntityRegistry.totalCount()
-            result = tryAutoHire(result, EntityDef.STOCKER)
-            if (result.hiredEntityRegistry.totalCount() > before) {
-                events += AutoHireEvent(EntityDef.STOCKER.displayName, "Backroom full", detail = "Non-perishable cases still in backroom at end of day")
+        if (config.autoHireStockers) {
+            val hasBackroomStock = result.inventory.any { (_, inv) ->
+                inv.backroomBatches.any { it.expirationDay == Int.MAX_VALUE && it.quantity > 0 }
             }
-        } else if (avgZone < 0.8f) {
-            val before = result.hiredEntityRegistry.totalCount()
-            result = tryAutoHire(result, EntityDef.STOCKER)
-            if (result.hiredEntityRegistry.totalCount() > before) {
-                events += AutoHireEvent(EntityDef.STOCKER.displayName, "Low zone score", detail = "Zone score ${(avgZone * 100).toInt()}% — below 80% target")
+            val avgZone = result.avgZoneScore
+            val zoneThreshold = config.zoneScoreHireThreshold / 100f
+            if (config.hireStockerOnBackroomFull && hasBackroomStock) {
+                val before = result.hiredEntityRegistry.totalCount()
+                result = tryAutoHire(result, EntityDef.STOCKER)
+                if (result.hiredEntityRegistry.totalCount() > before) {
+                    events += AutoHireEvent(EntityDef.STOCKER.displayName, "Backroom full", detail = "Non-perishable cases still in backroom at end of day")
+                }
+            } else if (config.hireStockerOnLowZoneScore && avgZone < zoneThreshold) {
+                val before = result.hiredEntityRegistry.totalCount()
+                result = tryAutoHire(result, EntityDef.STOCKER)
+                if (result.hiredEntityRegistry.totalCount() > before) {
+                    events += AutoHireEvent(EntityDef.STOCKER.displayName, "Low zone score", detail = "Zone score ${(avgZone * 100).toInt()}% — below ${config.zoneScoreHireThreshold}% target")
+                }
             }
         }
 
         // Fresh handler auto-hire: only when OOS items have no pending orders
         val unorderedOosIds = freshOosIds - freshOrderedIds
-        if (unorderedOosIds.isNotEmpty()) {
+        if (config.autoHireFreshHandlers && unorderedOosIds.isNotEmpty()) {
             val freshIds = result.hiredEntityRegistry.getByDef(EntityDef.FRESH_HANDLER).map { it.id }.toSet()
             val freshShifts = result.staffSchedules.filter { it.entityId in freshIds }
             val hasUncoveredFreshHours = (6..20).any { hour -> freshShifts.none { it.isOnShift(hour) } }
@@ -482,66 +487,69 @@ class StaffManager {
             .any { it.isStoreManager }
         if (!hasStoreManager) return state
 
+        val config = state.storeManagerConfig
         var result = state
         val events = mutableListOf<AutoHireEvent>()
 
         // 1. Buy register if all registers are manned and more cashiers could use one
-        val maxCashiersPerShift = listOf(SHIFT_MORNING, SHIFT_MID, SHIFT_CLOSING).maxOf { shift ->
-            result.hiredEntityRegistry.getByDef(EntityDef.CASHIER).count { e ->
-                result.staffSchedules.any { s -> s.entityId == e.id && s.startHour == shift }
+        if (config.autoBuyRegistersEnabled) {
+            val maxCashiersPerShift = listOf(SHIFT_MORNING, SHIFT_MID, SHIFT_CLOSING).maxOf { shift ->
+                result.hiredEntityRegistry.getByDef(EntityDef.CASHIER).count { e ->
+                    result.staffSchedules.any { s -> s.entityId == e.id && s.startHour == shift }
+                }
             }
-        }
-        if (maxCashiersPerShift > result.registers.size &&
-            result.ownedRegisterCount < result.currentStoreSize.maxRegisters
-        ) {
-            val cost = com.example.superstoresimulator.domain.store.StoreSize.nextRegisterCost(result.ownedRegisterCount)
-            if (result.money - cost >= result.autoHireBudget) {
-                val newRegisterId = (result.registers.maxOfOrNull { it.registerId } ?: 0) + 1
-                result = result.copy(
-                    money = result.money - cost,
-                    registers = result.registers + RegisterState(registerId = newRegisterId),
-                )
-                events += AutoHireEvent("Register", "New register", detail = "Store Manager purchased register #${result.ownedRegisterCount}",
-                    action = com.example.superstoresimulator.domain.metrics.AutoHireAction.PURCHASED)
+            if (maxCashiersPerShift > result.registers.size &&
+                result.ownedRegisterCount < result.currentStoreSize.maxRegisters
+            ) {
+                val cost = com.example.superstoresimulator.domain.store.StoreSize.nextRegisterCost(result.ownedRegisterCount)
+                if (result.money - cost >= result.autoHireBudget) {
+                    val newRegisterId = (result.registers.maxOfOrNull { it.registerId } ?: 0) + 1
+                    result = result.copy(
+                        money = result.money - cost,
+                        registers = result.registers + RegisterState(registerId = newRegisterId),
+                    )
+                    events += AutoHireEvent("Register", "New register", detail = "Store Manager purchased register #${result.ownedRegisterCount}",
+                        action = com.example.superstoresimulator.domain.metrics.AutoHireAction.PURCHASED)
+                }
             }
         }
 
         // 2. Rebalance shifts only when some hours have zero coverage
-        for (def in listOf(EntityDef.CASHIER, EntityDef.STOCKER, EntityDef.FRESH_HANDLER)) {
-            val entityIds = result.hiredEntityRegistry.getByDef(def).map { it.id }.toSet()
-            val shifts = result.staffSchedules.filter { it.entityId in entityIds }
-            if (shifts.size < 2) continue
+        if (config.autoRebalanceShiftsEnabled) {
+            for (def in listOf(EntityDef.CASHIER, EntityDef.STOCKER, EntityDef.FRESH_HANDLER)) {
+                val entityIds = result.hiredEntityRegistry.getByDef(def).map { it.id }.toSet()
+                val shifts = result.staffSchedules.filter { it.entityId in entityIds }
+                if (shifts.size < 2) continue
 
-            val coverageByHour = coverageByHour(shifts)
-            val hasZeroCoverage = coverageByHour.values.any { it == 0 }
-            if (!hasZeroCoverage) continue
+                val coverageByHour = coverageByHour(shifts)
+                val hasZeroCoverage = coverageByHour.values.any { it == 0 }
+                if (!hasZeroCoverage) continue
 
-            val zeroHours = (6..20).filter { (coverageByHour[it] ?: 0) == 0 }
-            val maxCoverage = coverageByHour.values.max()
-            if (maxCoverage <= 1) continue // can't steal from a shift with only 1 person
+                val zeroHours = (6..20).filter { (coverageByHour[it] ?: 0) == 0 }
+                val maxCoverage = coverageByHour.values.max()
+                if (maxCoverage <= 1) continue
 
-            // Find shift start hour with most staff to steal from (any start hour, not just presets)
-            val shiftsByStart = shifts.groupBy { it.startHour }
-            val worstSource = shiftsByStart.maxByOrNull { it.value.size }?.key ?: continue
-            val sourceCount = shiftsByStart[worstSource]?.size ?: 0
-            if (sourceCount <= 1) continue
+                val shiftsByStart = shifts.groupBy { it.startHour }
+                val worstSource = shiftsByStart.maxByOrNull { it.value.size }?.key ?: continue
+                val sourceCount = shiftsByStart[worstSource]?.size ?: 0
+                if (sourceCount <= 1) continue
 
-            // Target: pick preset shift that covers the most zero-coverage hours
-            val presets = listOf(SHIFT_MORNING, SHIFT_MID, SHIFT_CLOSING)
-            val bestTarget = presets.maxByOrNull { start ->
-                val shiftHours = start until (start + 8)
-                zeroHours.count { it in shiftHours }
-            } ?: continue
-            if (bestTarget == worstSource) continue
+                val presets = listOf(SHIFT_MORNING, SHIFT_MID, SHIFT_CLOSING)
+                val bestTarget = presets.maxByOrNull { start ->
+                    val shiftHours = start until (start + 8)
+                    zeroHours.count { it in shiftHours }
+                } ?: continue
+                if (bestTarget == worstSource) continue
 
-            val entityToMove = shifts.firstOrNull { it.startHour == worstSource }?.entityId ?: continue
-            result = result.copy(
-                staffSchedules = result.staffSchedules.map { s ->
-                    if (s.entityId == entityToMove) s.copy(startHour = bestTarget, durationHours = 8) else s
-                }
-            )
-            events += AutoHireEvent(def.displayName, "Shift rebalanced", detail = "Store Manager moved ${def.displayName} to cover hours with no staff",
-                action = com.example.superstoresimulator.domain.metrics.AutoHireAction.REBALANCED)
+                val entityToMove = shifts.firstOrNull { it.startHour == worstSource }?.entityId ?: continue
+                result = result.copy(
+                    staffSchedules = result.staffSchedules.map { s ->
+                        if (s.entityId == entityToMove) s.copy(startHour = bestTarget, durationHours = 8) else s
+                    }
+                )
+                events += AutoHireEvent(def.displayName, "Shift rebalanced", detail = "Store Manager moved ${def.displayName} to cover hours with no staff",
+                    action = com.example.superstoresimulator.domain.metrics.AutoHireAction.REBALANCED)
+            }
         }
 
         if (events.isNotEmpty()) {

@@ -3,7 +3,7 @@ package com.example.superstoresimulator.domain
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
-import com.example.superstoresimulator.domain.metrics.DailyMetricsAccumulator
+
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.time.GameTime
@@ -100,7 +100,7 @@ data class TruckConfig(
         const val DEFAULT_REGULAR_TRUCK_CAPACITY = 2000
         const val DEFAULT_FRESH_TRUCK_CAPACITY = 500
         /** One-time cost to unlock one additional weekly delivery slot beyond the free limit. */
-        val EXTRA_SLOT_COST = Money(10_000L) // $100
+        val EXTRA_SLOT_COST = Money(100_000L) // $1,000
         /** Base free delivery days at the smallest store size. */
         const val BASE_FREE_SLOTS = 2
     }
@@ -120,6 +120,29 @@ data class NormalAutoOrderConfig(
     val casePacksPerItem: Int = 1,
 )
 
+@Serializable
+data class StoreManagerConfig(
+    // Auto-hire: master toggle
+    val autoHireEnabled: Boolean = true,
+    // Auto-hire: per-department toggles
+    val autoHireCashiers: Boolean = true,
+    val autoHireStockers: Boolean = true,
+    val autoHireFreshHandlers: Boolean = true,
+    // Auto-hire: stocker criteria
+    val hireStockerOnBackroomFull: Boolean = true,
+    val hireStockerOnLowZoneScore: Boolean = true,
+    val zoneScoreHireThreshold: Int = 80,
+    // Truck management
+    val autoFillDeliverySlots: Boolean = true,
+    val autoEarlyTruckEnabled: Boolean = true,
+    val earlyTruckOosPercent: Int = 3,
+    val autoBuyTruckSlotEnabled: Boolean = true,
+    val buySlotOosThreshold: Int = 10,
+    // Registers
+    val autoBuyRegistersEnabled: Boolean = true,
+    // Shifts
+    val autoRebalanceShiftsEnabled: Boolean = true,
+)
 
 @Serializable
 data class IncompleteOrderRequest(
@@ -182,7 +205,7 @@ data class GameState(
     val totalRevenue: Money = Money.ZERO,
     val currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
 
-    val currentDayMetrics: DailyMetricsAccumulator = DailyMetricsAccumulator(),
+    val currentDayMetrics: DailyMetrics = DailyMetrics(),
     val completedDayMetrics: List<DailyMetrics> = emptyList(),
     val showEndOfDayReport: Boolean = false,
     val lastEndOfDayReport: DailyMetrics? = null,
@@ -199,6 +222,9 @@ data class GameState(
     // Normal item auto-ordering (Stocking Manager)
     val normalAutoOrderConfig: NormalAutoOrderConfig = NormalAutoOrderConfig(),
     val incompleteNormalOrders: List<IncompleteOrderRequest> = emptyList(),
+
+    // Store Manager autonomous action config
+    val storeManagerConfig: StoreManagerConfig = StoreManagerConfig(),
 
     // Truck delivery system
     val scheduledTrucks: List<ScheduledTruck> = emptyList(),

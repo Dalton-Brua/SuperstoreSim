@@ -1,5 +1,6 @@
 package com.example.superstoresimulator.domain.delivery
 
+import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.PendingOrderLine
@@ -8,6 +9,8 @@ import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
+import com.example.superstoresimulator.domain.metrics.AutoHireAction
+import com.example.superstoresimulator.domain.metrics.AutoHireEvent
 import com.example.superstoresimulator.domain.metrics.DeliveredItemLine
 import com.example.superstoresimulator.domain.metrics.DeliveredTruckRecord
 
@@ -26,6 +29,11 @@ import com.example.superstoresimulator.domain.metrics.DeliveredTruckRecord
  *  - Book an on-demand early truck for $100
  */
 class TruckManager(private val cache: ItemMetadataCache) {
+
+    companion object {
+        const val OOS_BUY_SLOT_THRESHOLD = 10
+        private val DAY_NAMES = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    }
 
     // ── Scheduling ────────────────────────────────────────────────────────────
 
@@ -402,6 +410,143 @@ class TruckManager(private val cache: ItemMetadataCache) {
             nextTruckId = nextTruckId,
             money = state.money - cost,
         )
+    }
+
+    // ── Store Manager Auto-Actions ───────────────────────────────────────────
+
+    /**
+     * Autonomous truck management decisions made by the Store Manager at day rollover.
+     *
+     * Actions (in order):
+     *  1. **Fill free delivery-day slots** — when the store size grants more slots than are
+     *     currently configured (e.g. after an upgrade), assign days that best fill gaps in
+     *     the existing schedule. Free — no monetary cost.
+     *  2. **Early truck** — if OOS percentage exceeds the configured threshold and the
+     *     next regular truck is more than 2 days away, request an early truck for tomorrow.
+     *  3. **Purchase extra slot + add day** — if ≥ [OOS_BUY_SLOT_THRESHOLD] unique items
+     *     went OOS and all delivery-day slots are already used, buy one more slot and assign
+     *     the best gap-filling day.
+     *
+     * Monetary actions respect [GameState.autoHireBudget] — money will not drop below that floor.
+     */
+    fun evaluateStoreManagerTruckActions(state: GameState, currentDay: Int): GameState {
+        val hasStoreManager = state.hiredEntityRegistry.getByDef(EntityDef.MANAGER)
+            .any { it.isStoreManager }
+        if (!hasStoreManager) return state
+
+        val config = state.storeManagerConfig
+        var result = state
+        val oosCount = state.currentDayMetrics.outOfStockEvents.size
+        val slotsWereMaxedBeforeFill = state.truckConfig.deliveryDays.size >= maxDeliveryDaysAllowed(state)
+        val events = mutableListOf<AutoHireEvent>()
+
+        // 1. Fill any unused delivery-day slots (free — happens after store upgrade)
+        if (config.autoFillDeliverySlots) {
+            val maxDays = maxDeliveryDaysAllowed(result)
+            while (result.truckConfig.deliveryDays.size < maxDays) {
+                val bestDay = findBestGapDay(result.truckConfig.deliveryDays) ?: break
+                val newDays = result.truckConfig.deliveryDays + bestDay
+                result = updateConfig(result, result.truckConfig.copy(deliveryDays = newDays))
+                events += AutoHireEvent(
+                    "Truck", "Delivery day added",
+                    detail = "Store Manager added ${DAY_NAMES[bestDay]} delivery — filling available slot",
+                    action = AutoHireAction.PURCHASED,
+                )
+            }
+        }
+
+        // 2. Request early truck when OOS % exceeds threshold and next truck is far away
+        val totalItems = result.inventory.size.coerceAtLeast(1)
+        val oosPercent = (oosCount * 100) / totalItems
+        if (config.autoEarlyTruckEnabled && oosPercent >= config.earlyTruckOosPercent) {
+            val nextScheduledTruck = result.scheduledTrucks
+                .filter { !it.isFreshTruck && !it.isEarlyTruck && it.scheduledArrivalDay > currentDay }
+                .minByOrNull { it.scheduledArrivalDay }
+            val nextConfiguredDay = findNextDeliveryDay(currentDay, result.truckConfig.deliveryDays)
+            val nextArrivalDay = if (nextScheduledTruck != null)
+                minOf(nextScheduledTruck.scheduledArrivalDay, nextConfiguredDay) else nextConfiguredDay
+            val daysUntilNext = nextArrivalDay - currentDay
+
+            if (daysUntilNext > 2) {
+                val cost = Money(10_000L)
+                val alreadyExists = result.scheduledTrucks.any {
+                    it.isEarlyTruck && it.scheduledArrivalDay == currentDay + 1
+                }
+                if (!alreadyExists && result.money - cost >= result.autoHireBudget) {
+                    val before = result.money
+                    result = requestEarlyTruck(result, currentDay)
+                    if (result.money != before) {
+                        events += AutoHireEvent(
+                            "Truck", "Early truck ordered",
+                            detail = "Store Manager ordered early truck — $oosPercent% items OOS ($oosCount/$totalItems), next truck in $daysUntilNext days",
+                            action = AutoHireAction.PURCHASED,
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3. Purchase an extra truck slot and add a day if slots were already maxed before fill
+        if (config.autoBuyTruckSlotEnabled && oosCount >= config.buySlotOosThreshold && slotsWereMaxedBeforeFill &&
+            result.truckConfig.deliveryDays.size < 7
+        ) {
+            val cost = TruckConfig.EXTRA_SLOT_COST
+            if (result.money - cost >= result.autoHireBudget) {
+                val slotsBefore = result.truckConfig.extraTruckSlotsUnlocked
+                result = purchaseExtraTruckSlot(result)
+                if (result.truckConfig.extraTruckSlotsUnlocked > slotsBefore) {
+                    val bestDay = findBestGapDay(result.truckConfig.deliveryDays)
+                    if (bestDay != null) {
+                        val newDays = result.truckConfig.deliveryDays + bestDay
+                        result = updateConfig(result, result.truckConfig.copy(deliveryDays = newDays))
+                    }
+                    events += AutoHireEvent(
+                        "Truck", "Extra slot purchased",
+                        detail = "Store Manager bought extra truck slot${if (bestDay != null) " and added ${DAY_NAMES[bestDay!!]}" else ""} — $oosCount items OOS",
+                        action = AutoHireAction.PURCHASED,
+                    )
+                }
+            }
+        }
+
+        if (events.isNotEmpty()) {
+            result = result.copy(
+                currentDayMetrics = result.currentDayMetrics.copy(
+                    autoHireEvents = result.currentDayMetrics.autoHireEvents + events,
+                ),
+            )
+        }
+
+        return result
+    }
+
+    /**
+     * Find the day-of-week (0–6) to add as a delivery day.
+     * Prioritizes weekends (Sat=5, Sun=6) when none exist, then falls back
+     * to maximizing the minimum circular distance to existing days.
+     */
+    internal fun findBestGapDay(existingDays: Set<Int>): Int? {
+        val available = (0..6).filter { it !in existingDays }
+        if (available.isEmpty()) return null
+
+        val hasWeekend = existingDays.any { it == 5 || it == 6 }
+        if (!hasWeekend) {
+            val bestWeekend = available.filter { it == 5 || it == 6 }
+                .maxByOrNull { candidate ->
+                    existingDays.minOf { existing ->
+                        val dist = (candidate - existing + 7) % 7
+                        minOf(dist, 7 - dist)
+                    }
+                }
+            if (bestWeekend != null) return bestWeekend
+        }
+
+        return available.maxByOrNull { candidate ->
+            existingDays.minOf { existing ->
+                val dist = (candidate - existing + 7) % 7
+                minOf(dist, 7 - dist)
+            }
+        }
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

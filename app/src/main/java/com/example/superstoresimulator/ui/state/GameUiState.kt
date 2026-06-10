@@ -4,6 +4,7 @@ import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.RefundRequest
+import com.example.superstoresimulator.domain.StoreManagerConfig
 import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
@@ -113,7 +114,9 @@ data class StaffUIState(
     val freshUtilization: Float = 0f,
     val hasManagerOnStaff: Boolean = false,
     val hasSeniorManager: Boolean = false,
+    val hasStoreManager: Boolean = false,
     val autoHireBudget: Money = Money.ZERO,
+    val storeManagerConfig: StoreManagerConfig = StoreManagerConfig(),
 )
 
 data class HistoryUIState(
