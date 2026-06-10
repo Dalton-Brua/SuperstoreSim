@@ -4,17 +4,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * ✅ Performance Optimization #2: Metadata Cache Layer
+ * Metadata Cache Layer
  * 
  * SINGLE SOURCE OF TRUTH for all item data. Loads from database ONCE at startup.
  * - Caches item metadata (name, price, category) for 60 FPS inventory rendering
  * - Also caches full Item objects for GameEngine and other components
  * - Replaces 3+ redundant database calls with a single load
- * 
- * Performance:
- * - Before: 3 separate getAllItems() calls + 3,000 database lookups per second
- * - After: 1 getAllItems() call + ~10-50 lookups per second (only for changes)
- * - Improvement: 99% reduction in database access
  * 
  * Architecture: All components that need item data should call initialize() once,
  * then use get() or getItem() for metadata/full data lookups.

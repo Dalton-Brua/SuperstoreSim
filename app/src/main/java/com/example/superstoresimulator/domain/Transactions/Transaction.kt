@@ -53,3 +53,26 @@ data class TransactionLine(
         rungQty = quantity,
     )
 }
+
+fun Transaction.toEntity() = TransactionEntity(
+    id = id,
+    subtotalCents = subtotal.cents,
+    taxCents = tax.cents,
+    totalEarnedCents = totalEarned.cents,
+    completedAtMillis = completedAt?.toEpochMilli(),
+    registerId = registerId,
+    gameDayNumber = gameDayNumber,
+)
+
+fun TransactionLine.toLineEntity(transactionId: Int) = TransactionLineEntity(
+    transactionId = transactionId,
+    itemId = itemId,
+    quantity = quantity,
+    rungQty = rungQty,
+    unitPriceCents = unitPrice.cents,
+    lineTotalCents = lineTotal.cents,
+    lostToOutOfStock = lostToOutOfStock,
+    basePriceCents = basePrice.cents,
+    priceModifier = priceModifier,
+    weight = weight,
+)

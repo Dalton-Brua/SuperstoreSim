@@ -11,7 +11,7 @@ import com.example.superstoresimulator.domain.RegisterState
 import com.example.superstoresimulator.domain.StaffShift
 import com.example.superstoresimulator.domain.metrics.AutoHireEvent
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
-import com.example.superstoresimulator.domain.metrics.DailyMetricsAccumulator
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -203,7 +203,7 @@ class SerializerSchedulingTest {
         val events = listOf(
             AutoHireEvent("Fresh Handler", "Fresh items out of stock"),
         )
-        val acc = DailyMetricsAccumulator(dayNumber = 3, autoHireEvents = events)
+        val acc = DailyMetrics(dayNumber = 3, autoHireEvents = events)
         val state = GameState(currentDayMetrics = acc)
         val restored = roundTrip(state)
 

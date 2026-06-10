@@ -22,12 +22,12 @@ import com.example.superstoresimulator.domain.RefundLine
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
-import com.example.superstoresimulator.domain.metrics.DailyMetricsAccumulator
+
 import com.example.superstoresimulator.domain.metrics.OutOfStockEvent
 import com.example.superstoresimulator.domain.metrics.SoldItemEvent
 import com.example.superstoresimulator.domain.metrics.ExpiredItemEvent
-import com.example.superstoresimulator.domain.metrics.FreshOrderLineItem
-import com.example.superstoresimulator.domain.metrics.IncompleteOrderLineItem
+import com.example.superstoresimulator.domain.metrics.AutoOrderLineItem
+import com.example.superstoresimulator.domain.metrics.IncompleteAutoOrderLineItem
 import com.example.superstoresimulator.domain.metrics.DeliveredTruckRecord
 import com.example.superstoresimulator.domain.metrics.DeliveredItemLine
 import com.example.superstoresimulator.domain.metrics.AutoHireEvent
@@ -79,9 +79,9 @@ object LegacyGameStateDeserializer {
                 inventory = deserializeInventory(json.getJSONObject("inventory")),
                 hiredEntityRegistry = deserializeHiredEntityRegistry(json.getJSONObject("hiredEntityRegistry")),
                 currentDayMetrics = if (json.has("currentDayMetrics")) {
-                    deserializeDailyMetricsAccumulator(json.getJSONObject("currentDayMetrics"))
+                    deserializeCurrentDayMetrics(json.getJSONObject("currentDayMetrics"))
                 } else {
-                    DailyMetricsAccumulator()
+                    DailyMetrics()
                 },
                 completedDayMetrics = if (json.has("completedDayMetrics")) {
                     deserializeDailyMetricsList(json.getJSONArray("completedDayMetrics"))
@@ -362,8 +362,8 @@ object LegacyGameStateDeserializer {
         val soldItemEvents: List<SoldItemEvent>,
         val itemsExpired: Int, val expiredWasteCost: Money,
         val expiredItemEvents: List<ExpiredItemEvent>,
-        val autoOrderedFreshItems: List<FreshOrderLineItem>,
-        val incompleteOrderedFreshItems: List<IncompleteOrderLineItem>,
+        val autoOrderedFreshItems: List<AutoOrderLineItem>,
+        val incompleteOrderedFreshItems: List<IncompleteAutoOrderLineItem>,
         val deliveredTrucks: List<DeliveredTruckRecord>,
         val autoHireEvents: List<AutoHireEvent>,
         val markdownsSaved: Money, val markupExtraRevenue: Money, val itemsMarkedDown: Int,
@@ -392,8 +392,8 @@ object LegacyGameStateDeserializer {
         itemsExpired = json.optInt("itemsExpired", 0),
         expiredWasteCost = if (json.has("expiredWasteCost")) Money(json.getLong("expiredWasteCost")) else Money.ZERO,
         expiredItemEvents = optionalList(json, "expiredItemEvents")?.mapObjects { deserializeExpiredItemEvent(it) } ?: emptyList(),
-        autoOrderedFreshItems = optionalList(json, "autoOrderedFreshItems")?.mapObjects { deserializeFreshOrderLineItem(it) } ?: emptyList(),
-        incompleteOrderedFreshItems = optionalList(json, "incompleteOrderedFreshItems")?.mapObjects { deserializeIncompleteOrderLineItem(it) } ?: emptyList(),
+        autoOrderedFreshItems = optionalList(json, "autoOrderedFreshItems")?.mapObjects { deserializeAutoOrderLineItem(it) } ?: emptyList(),
+        incompleteOrderedFreshItems = optionalList(json, "incompleteOrderedFreshItems")?.mapObjects { deserializeIncompleteAutoOrderLineItem(it) } ?: emptyList(),
         deliveredTrucks = optionalList(json, "deliveredTrucks")?.mapObjects { deserializeDeliveredTruckRecord(it) } ?: emptyList(),
         autoHireEvents = optionalList(json, "autoHireEvents")?.mapObjects { deserializeAutoHireEvent(it) } ?: emptyList(),
         markdownsSaved = if (json.has("markdownsSaved")) Money(json.getLong("markdownsSaved")) else Money.ZERO,
@@ -401,9 +401,9 @@ object LegacyGameStateDeserializer {
         itemsMarkedDown = json.optInt("itemsMarkedDown", 0),
     )
 
-    private fun deserializeDailyMetricsAccumulator(json: JSONObject): DailyMetricsAccumulator {
+    private fun deserializeCurrentDayMetrics(json: JSONObject): DailyMetrics {
         val common = deserializeCommonMetrics(json)
-        return DailyMetricsAccumulator(
+        return DailyMetrics(
             dayNumber = if (json.has("dayNumber")) json.getInt("dayNumber") else 0,
             revenue = common.revenue, subtotal = common.subtotal, taxCollected = common.taxCollected,
             transactionsCompleted = common.transactionsCompleted,
@@ -490,8 +490,8 @@ object LegacyGameStateDeserializer {
             blockReason = json.optString("blockReason", ""),
         )
 
-    private fun deserializeFreshOrderLineItem(json: JSONObject): FreshOrderLineItem =
-        FreshOrderLineItem(
+    private fun deserializeAutoOrderLineItem(json: JSONObject): AutoOrderLineItem =
+        AutoOrderLineItem(
             itemId = json.getInt("itemId"),
             itemName = json.getString("itemName"),
             casePacksOrdered = json.getInt("casePacksOrdered"),
@@ -499,8 +499,8 @@ object LegacyGameStateDeserializer {
             totalCost = Money(json.getLong("totalCost")),
         )
 
-    private fun deserializeIncompleteOrderLineItem(json: JSONObject): IncompleteOrderLineItem =
-        IncompleteOrderLineItem(
+    private fun deserializeIncompleteAutoOrderLineItem(json: JSONObject): IncompleteAutoOrderLineItem =
+        IncompleteAutoOrderLineItem(
             itemId = json.getInt("itemId"),
             itemName = json.getString("itemName"),
             casePacksRequested = json.getInt("casePacksRequested"),

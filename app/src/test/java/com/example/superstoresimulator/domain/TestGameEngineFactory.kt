@@ -12,6 +12,7 @@ import com.example.superstoresimulator.domain.progression.ProgressionManager
 import com.example.superstoresimulator.domain.registers.RegisterManager
 import com.example.superstoresimulator.domain.staff.StaffManager
 import com.example.superstoresimulator.domain.store.StoreController
+import com.example.superstoresimulator.domain.helpers.FakeTransactionDao
 import com.example.superstoresimulator.domain.tick.DayRolloverProcessor
 import com.example.superstoresimulator.domain.tick.PlayerTickProcessor
 import com.example.superstoresimulator.domain.tick.StaffTickProcessor
@@ -35,7 +36,7 @@ fun createTestGameEngine(cache: ItemMetadataCache): GameEngine {
     val inventoryManager = InventoryManager(cache, truckManager)
     val spoilageManager = SpoilageManager(cache)
     val registerManager = RegisterManager()
-    val dayRolloverProcessor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager)
+    val dayRolloverProcessor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager, FakeTransactionDao())
     val trafficProcessor = TrafficProcessor(trafficManager, transactionEngine, registerManager)
     val staffTickProcessor = StaffTickProcessor(
         staffManager, inventoryManager, transactionEngine, registerManager, pricingManager, cache,

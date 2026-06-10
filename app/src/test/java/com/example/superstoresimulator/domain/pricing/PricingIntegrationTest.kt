@@ -11,7 +11,6 @@ import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
-import com.example.superstoresimulator.domain.items.ItemWithName
 import com.example.superstoresimulator.domain.items.MoneyData
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -189,7 +188,7 @@ class PricingIntegrationTest {
     @Test
     fun `pricing metrics fields survive serialization round-trip`() {
         val state = GameState(money = Money(10_000)).copy(
-            currentDayMetrics = com.example.superstoresimulator.domain.metrics.DailyMetricsAccumulator(
+            currentDayMetrics = com.example.superstoresimulator.domain.metrics.DailyMetrics(
                 dayNumber = 5,
                 markdownsSaved = Money(1500),
                 markupExtraRevenue = Money(3200),

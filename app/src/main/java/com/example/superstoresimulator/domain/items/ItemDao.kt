@@ -29,10 +29,6 @@ interface ItemDao {
     @Query("SELECT name FROM items WHERE id = :itemId")
     suspend fun getItemName(itemId: String): String?
 
-    // Batch queries for better performance
-    @Query("SELECT id, name FROM items")
-    suspend fun getAllItemsWithNames(): List<ItemWithName>
-
     @Query("SELECT * FROM items WHERE id IN (:itemIds)")
     suspend fun getItemsByIds(itemIds: List<String>): List<Item>
 
@@ -42,7 +38,6 @@ interface ItemDao {
     @Query("SELECT COUNT(*) FROM items")
     suspend fun getItemCount(): Int
 
-    // ✅ Problem #2: Query filtering for performance
     @Query("SELECT * FROM items WHERE category = :category ORDER BY name ASC")
     suspend fun getItemsByCategory(category: String): List<Item>
 

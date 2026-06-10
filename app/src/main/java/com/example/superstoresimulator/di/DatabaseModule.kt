@@ -2,7 +2,9 @@ package com.example.superstoresimulator.di
 
 import android.content.Context
 import androidx.room.Room
+import com.example.superstoresimulator.domain.Transactions.TransactionDao
 import com.example.superstoresimulator.domain.items.ItemDao
+
 import com.example.superstoresimulator.domain.persistence.GameStateRepository
 import dagger.Module
 import dagger.Provides
@@ -28,7 +30,7 @@ object DatabaseModule {
         val database = Room.databaseBuilder(
             context,
             AppDatabase::class.java,
-            "superstore-database-v7"
+            "superstore-database-v8"
         )
             .fallbackToDestructiveMigration(dropAllTables = true)
             .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
@@ -41,6 +43,12 @@ object DatabaseModule {
     @Singleton
     fun provideItemDao(database: AppDatabase): ItemDao {
         return database.itemDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideTransactionDao(database: AppDatabase): TransactionDao {
+        return database.transactionDao()
     }
 
     @Provides

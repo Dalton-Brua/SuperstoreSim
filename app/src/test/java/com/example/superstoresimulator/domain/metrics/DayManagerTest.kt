@@ -62,7 +62,7 @@ class DayManagerTest {
         playerPausedTime = playerPausedTime,
         pausedByEndOfDay = pausedByEndOfDay,
         showEndOfDayReport = showEndOfDayReport,
-        currentDayMetrics = DailyMetricsAccumulator(
+        currentDayMetrics = DailyMetrics(
             dayNumber = dayNumber,
             revenue = revenue,
         ),

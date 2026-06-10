@@ -22,7 +22,7 @@ data class DeliveredTruckRecord(
 )
 
 @Serializable
-data class FreshOrderLineItem(
+data class AutoOrderLineItem(
     val itemId: Int,
     val itemName: String,
     val casePacksOrdered: Int,
@@ -31,7 +31,7 @@ data class FreshOrderLineItem(
 )
 
 @Serializable
-data class IncompleteOrderLineItem(
+data class IncompleteAutoOrderLineItem(
     val itemId: Int,
     val itemName: String,
     val casePacksRequested: Int,
@@ -87,13 +87,13 @@ data class SoldItemEvent(
 
 @Serializable
 data class DailyMetrics(
-    val dayNumber: Int,
-    val dayOfWeek: Int,                  // 0 = Monday … 6 = Sunday
+    val dayNumber: Int = 0,
+    val dayOfWeek: Int = 0,              // 0 = Monday … 6 = Sunday
 
     // ── Sales ────────────────────────────────────────────────────────────
-    val revenue: Money = Money.ZERO,     // gross revenue (subtotal + tax)
     val subtotal: Money = Money.ZERO,
     val taxCollected: Money = Money.ZERO,
+    val revenue: get() = subtotal + taxCollected,      // gross revenue (subtotal + tax)
     val transactionsCompleted: Int = 0,
 
     // ── Operating Costs ──────────────────────────────────────────────────
@@ -126,12 +126,12 @@ data class DailyMetrics(
     val expiredItemEvents: List<ExpiredItemEvent> = emptyList(),
 
     // ── Fresh Item Auto-Ordering ──────────────────────────────────────────
-    val autoOrderedFreshItems: List<FreshOrderLineItem> = emptyList(),
-    val incompleteOrderedFreshItems: List<IncompleteOrderLineItem> = emptyList(),
+    val autoOrderedFreshItems: List<AutoOrderLineItem> = emptyList(),
+    val incompleteOrderedFreshItems: List<IncompleteAutoOrderLineItem> = emptyList(),
 
     // ── Normal Item Auto-Ordering (Stocking Manager) ─────────────────────
-    val autoOrderedNormalItems: List<FreshOrderLineItem> = emptyList(),
-    val incompleteOrderedNormalItems: List<IncompleteOrderLineItem> = emptyList(),
+    val autoOrderedNormalItems: List<AutoOrderLineItem> = emptyList(),
+    val incompleteOrderedNormalItems: List<IncompleteAutoOrderLineItem> = emptyList(),
 
     // ── Truck Deliveries ──────────────────────────────────────────────────
     val deliveredTrucks: List<DeliveredTruckRecord> = emptyList(),
@@ -166,92 +166,4 @@ data class DailyMetrics(
             4 -> "Friday"; 5 -> "Saturday"; 6 -> "Sunday"
             else -> "Unknown"
         }
-}
-
-@Serializable
-data class DailyMetricsAccumulator(
-    val dayNumber: Int = 0,
-
-    val revenue: Money = Money.ZERO,
-    val subtotal: Money = Money.ZERO,
-    val taxCollected: Money = Money.ZERO,
-    val transactionsCompleted: Int = 0,
-
-    val rentPaid: Money = Money.ZERO,
-    val wagesPaid: Money = Money.ZERO,
-
-    val refundsProcessed: Int = 0,
-    val refundAmount: Money = Money.ZERO,
-
-    val customersServed: Int = 0,
-
-    val itemsSold: Int = 0,
-    val itemsStocked: Int = 0,
-    val itemsOrdered: Int = 0,
-
-    // ── Out-of-stock losses ───────────────────────────────────────────────
-    val lostRevenue: Money = Money.ZERO,
-    val itemsLostToOutOfStock: Int = 0,
-    val outOfStockEvents: List<OutOfStockEvent> = emptyList(),
-
-    // ── Per-item sales breakdown ──────────────────────────────────────────
-    val soldItemEvents: List<SoldItemEvent> = emptyList(),
-
-    // ── Expiration & Shrinkage ────────────────────────────────────────────
-    val itemsExpired: Int = 0,
-    val expiredWasteCost: Money = Money.ZERO,
-    val expiredItemEvents: List<ExpiredItemEvent> = emptyList(),
-
-    // ── Fresh Item Auto-Ordering ──────────────────────────────────────────
-    val autoOrderedFreshItems: List<FreshOrderLineItem> = emptyList(),
-    val incompleteOrderedFreshItems: List<IncompleteOrderLineItem> = emptyList(),
-
-    // ── Normal Item Auto-Ordering (Stocking Manager) ─────────────────────
-    val autoOrderedNormalItems: List<FreshOrderLineItem> = emptyList(),
-    val incompleteOrderedNormalItems: List<IncompleteOrderLineItem> = emptyList(),
-
-    // ── Truck Deliveries ──────────────────────────────────────────────────
-    val deliveredTrucks: List<DeliveredTruckRecord> = emptyList(),
-
-    // ── Auto-Hire Events ─────────────────────────────────────────────────
-    val autoHireEvents: List<AutoHireEvent> = emptyList(),
-
-    // ── Pricing ─────────────────────────────────────────────────────────
-    val markdownsSaved: Money = Money.ZERO,
-    val markupExtraRevenue: Money = Money.ZERO,
-    val itemsMarkedDown: Int = 0,
-) {
-    /** Snapshot this accumulator into an immutable [DailyMetrics]. */
-    fun toSnapshot(dayOfWeek: Int): DailyMetrics = DailyMetrics(
-        dayNumber = dayNumber,
-        dayOfWeek = dayOfWeek,
-        revenue = revenue,
-        subtotal = subtotal,
-        taxCollected = taxCollected,
-        transactionsCompleted = transactionsCompleted,
-        rentPaid = rentPaid,
-        wagesPaid = wagesPaid,
-        refundsProcessed = refundsProcessed,
-        refundAmount = refundAmount,
-        customersServed = customersServed,
-        itemsSold = itemsSold,
-        itemsStocked = itemsStocked,
-        itemsOrdered = itemsOrdered,
-        lostRevenue = lostRevenue,
-        itemsLostToOutOfStock = itemsLostToOutOfStock,
-        outOfStockEvents = outOfStockEvents,
-        soldItemEvents = soldItemEvents,
-        itemsExpired = itemsExpired,
-        expiredWasteCost = expiredWasteCost,
-        expiredItemEvents = expiredItemEvents,
-        autoOrderedFreshItems = autoOrderedFreshItems,
-        incompleteOrderedFreshItems = incompleteOrderedFreshItems,
-        autoOrderedNormalItems = autoOrderedNormalItems,
-        incompleteOrderedNormalItems = incompleteOrderedNormalItems,
-        deliveredTrucks = deliveredTrucks,
-        autoHireEvents = autoHireEvents,
-        markdownsSaved = markdownsSaved,
-        markupExtraRevenue = markupExtraRevenue,
-        itemsMarkedDown = itemsMarkedDown,
-    )
 }

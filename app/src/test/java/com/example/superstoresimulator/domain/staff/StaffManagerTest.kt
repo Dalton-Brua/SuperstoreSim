@@ -9,7 +9,6 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.createTestGameEngine
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
-import com.example.superstoresimulator.domain.items.ItemWithName
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -314,7 +313,6 @@ class StaffManagerTest {
                 override suspend fun deleteItem(itemId: String) {}
                 override suspend fun deleteAll() {}
                 override suspend fun getItemName(itemId: String): String? = null
-                override suspend fun getAllItemsWithNames() = emptyList<ItemWithName>()
                 override suspend fun getItemsByIds(itemIds: List<String>) = emptyList<com.example.superstoresimulator.domain.items.Item>()
                 override suspend fun insertBatch(items: List<com.example.superstoresimulator.domain.items.Item>) {}
                 override suspend fun getItemCount() = 0

@@ -18,7 +18,7 @@ import com.example.superstoresimulator.domain.store.StaffWageCalculator
  *
  * Responsibilities:
  *  - Tracking the last processed day number to detect midnight rollovers
- *  - Snapshotting the live [DailyMetricsAccumulator] into an immutable [DailyMetrics]
+ *  - Snapshotting the live [DailyMetrics] accumulator into a completed [DailyMetrics]
  *  - Appending the snapshot to [GameState.completedDayMetrics]
  *  - Auto-pausing time for the end-of-day report (while respecting a player's manual pause)
  *  - Clearing the report flag and restoring the pause state when the player dismisses it
@@ -53,9 +53,9 @@ class DayManager {
     }
 
     /**
-     * Snapshot today's [DailyMetricsAccumulator] into an immutable [DailyMetrics]
-     * record, append it to [GameState.completedDayMetrics], start a fresh accumulator
-     * for the new day, and surface the end-of-day report.
+     * Snapshot today's [DailyMetrics] into a completed record, append it to
+     * [GameState.completedDayMetrics], start a fresh accumulator for the new day,
+     * and surface the end-of-day report.
      *
      * Auto-pauses time unless the player already has time paused — in which case
      * [GameState.pausedByEndOfDay] is set to `false` so [dismissEndOfDayReport] will
@@ -79,7 +79,7 @@ class DayManager {
         )
 
         // Snapshot metrics
-        val snapshot = metricsWithCosts.toSnapshot(dayOfWeek = dayNumber % 7)
+        val snapshot = metricsWithCosts.copy(dayOfWeek = dayNumber % 7)
 
         // Deduct operating costs
         val newCash = processedState.money - rentCost - wagesCost
@@ -88,7 +88,7 @@ class DayManager {
         return processedState.copy(
             money = newCash,
             completedDayMetrics = processedState.completedDayMetrics + snapshot,
-            currentDayMetrics = DailyMetricsAccumulator(dayNumber = dayNumber + 1),
+            currentDayMetrics = DailyMetrics(dayNumber = dayNumber + 1),
             showEndOfDayReport = true,
             lastEndOfDayReport = snapshot,
             playerPausedTime = true,

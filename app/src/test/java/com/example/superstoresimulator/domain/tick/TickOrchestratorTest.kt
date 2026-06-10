@@ -4,6 +4,7 @@ import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.createTestGameEngine
 import com.example.superstoresimulator.domain.helpers.FakeItemDao
+import com.example.superstoresimulator.domain.helpers.FakeTransactionDao
 import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
@@ -56,7 +57,7 @@ class TickOrchestratorTest {
         val inventoryManager = InventoryManager(cache, truckManager)
         val spoilageManager = SpoilageManager(cache)
         val registerManager = RegisterManager()
-        val dayRolloverProcessor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager)
+        val dayRolloverProcessor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager, FakeTransactionDao())
         val trafficProcessor = TrafficProcessor(trafficManager, transactionEngine, registerManager)
         val staffTickProcessor = StaffTickProcessor(
             staffManager, inventoryManager, transactionEngine, registerManager, pricingManager, cache,

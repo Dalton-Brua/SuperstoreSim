@@ -10,8 +10,8 @@ import com.example.superstoresimulator.domain.PendingOrderLine
 import com.example.superstoresimulator.domain.delivery.TruckManager
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
-import com.example.superstoresimulator.domain.metrics.FreshOrderLineItem
-import com.example.superstoresimulator.domain.metrics.IncompleteOrderLineItem
+import com.example.superstoresimulator.domain.metrics.AutoOrderLineItem
+import com.example.superstoresimulator.domain.metrics.IncompleteAutoOrderLineItem
 
 /**
  * Result of a buy operation: the updated [GameState] (money deducted, NO backroom change)
@@ -632,7 +632,7 @@ class InventoryManager(
                 s = s.copy(
                     currentDayMetrics = s.currentDayMetrics.copy(
                         autoOrderedNormalItems = s.currentDayMetrics.autoOrderedNormalItems +
-                            FreshOrderLineItem(
+                            AutoOrderLineItem(
                                 itemId = itemId,
                                 itemName = item.name,
                                 casePacksOrdered = casePacks,
@@ -645,7 +645,7 @@ class InventoryManager(
                 s = s.copy(
                     currentDayMetrics = s.currentDayMetrics.copy(
                         incompleteOrderedNormalItems = s.currentDayMetrics.incompleteOrderedNormalItems +
-                            IncompleteOrderLineItem(
+                            IncompleteAutoOrderLineItem(
                                 itemId = itemId,
                                 itemName = item.name,
                                 casePacksRequested = casePacks,
@@ -706,7 +706,7 @@ class InventoryManager(
                 s = s.copy(
                     currentDayMetrics = s.currentDayMetrics.copy(
                         autoOrderedNormalItems = s.currentDayMetrics.autoOrderedNormalItems +
-                            FreshOrderLineItem(
+                            AutoOrderLineItem(
                                 itemId = itemId,
                                 itemName = item.name,
                                 casePacksOrdered = casePacks,
@@ -719,7 +719,7 @@ class InventoryManager(
                 s = s.copy(
                     currentDayMetrics = s.currentDayMetrics.copy(
                         incompleteOrderedNormalItems = s.currentDayMetrics.incompleteOrderedNormalItems +
-                            IncompleteOrderLineItem(
+                            IncompleteAutoOrderLineItem(
                                 itemId = itemId,
                                 itemName = item.name,
                                 casePacksRequested = casePacks,
@@ -799,7 +799,7 @@ class InventoryManager(
                 s = s.copy(
                     currentDayMetrics = s.currentDayMetrics.copy(
                         autoOrderedFreshItems = s.currentDayMetrics.autoOrderedFreshItems +
-                            FreshOrderLineItem(
+                            AutoOrderLineItem(
                                 itemId = itemId,
                                 itemName = item.name,
                                 casePacksOrdered = casePacks,
@@ -812,7 +812,7 @@ class InventoryManager(
                 s = s.copy(
                     currentDayMetrics = s.currentDayMetrics.copy(
                         incompleteOrderedFreshItems = s.currentDayMetrics.incompleteOrderedFreshItems +
-                            IncompleteOrderLineItem(
+                            IncompleteAutoOrderLineItem(
                                 itemId = itemId,
                                 itemName = item.name,
                                 casePacksRequested = casePacks,

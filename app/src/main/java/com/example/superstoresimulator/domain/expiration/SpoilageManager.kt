@@ -20,7 +20,7 @@ data class SpoilageResult(
  * - Calculate waste costs (at unit cost, not sale price)
  * 
  * Called once per tick by GameEngine. Expired items are removed immediately
- * and accumulate in DailyMetricsAccumulator. The full accounting appears
+ * and accumulate in DailyMetrics. The full accounting appears
  * in the end-of-day report's "Shrinkage" section.
  * 
  * Architecture: Pure function — takes GameState, returns new GameState.

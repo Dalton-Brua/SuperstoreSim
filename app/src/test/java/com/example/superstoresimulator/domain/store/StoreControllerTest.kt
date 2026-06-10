@@ -5,7 +5,6 @@ import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.createTestGameEngine
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
-import com.example.superstoresimulator.domain.items.ItemWithName
 import com.example.superstoresimulator.domain.traffic.TrafficManager
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -207,7 +206,6 @@ class StoreControllerTest {
                 override suspend fun deleteItem(itemId: String) {}
                 override suspend fun deleteAll() {}
                 override suspend fun getItemName(itemId: String): String? = null
-                override suspend fun getAllItemsWithNames() = emptyList<ItemWithName>()
                 override suspend fun getItemsByIds(itemIds: List<String>) = emptyList<com.example.superstoresimulator.domain.items.Item>()
                 override suspend fun insertBatch(items: List<com.example.superstoresimulator.domain.items.Item>) {}
                 override suspend fun getItemCount() = 0
