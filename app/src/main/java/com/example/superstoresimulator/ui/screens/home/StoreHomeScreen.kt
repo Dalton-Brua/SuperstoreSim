@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
@@ -77,6 +78,7 @@ fun StoreHomeScreen (
     onAssignCashierToRegister: (cashierId: Int?, registerId: Int) -> Unit = { _, _ -> },
     onSetDefaultMarkup: (Int) -> Unit = {},
     onSetCategoryMarkup: (com.example.superstoresimulator.domain.items.ItemCategory, Int) -> Unit = { _, _ -> },
+    contentPadding: PaddingValues = PaddingValues(),
 ) {
     var showPendingRefunds by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
@@ -279,6 +281,7 @@ fun StoreHomeScreen (
                 currentStoreSize = currentStoreSize,
                 onTruckConfigChanged = onTruckConfigChanged,
                 onPurchaseExtraTruckSlot = onPurchaseExtraTruckSlot,
+                modifier = Modifier.padding(bottom = contentPadding.calculateBottomPadding()),
             )
         }
 

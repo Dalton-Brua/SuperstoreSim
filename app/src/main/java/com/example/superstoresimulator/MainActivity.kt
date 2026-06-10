@@ -225,6 +225,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 modifier = Modifier.padding(paddingValues),
+                                contentPadding = paddingValues,
                                 onSpeedChanged = { multiplier: Float -> viewModel.onEvent(GameEvent.SetGameSpeed(multiplier)) },
                                 onOpenStore = { viewModel.onEvent(GameEvent.ToggleStore) },
                                 onSetPlayerRole = { role: PlayerRole -> viewModel.onEvent(GameEvent.SetPlayerRole(role)) },
