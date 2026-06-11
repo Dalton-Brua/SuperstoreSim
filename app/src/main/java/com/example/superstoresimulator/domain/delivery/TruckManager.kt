@@ -28,7 +28,8 @@ import com.example.superstoresimulator.domain.metrics.DeliveredTruckRecord
  *  - Cancel pending order lines and refund costs
  *  - Book an on-demand early truck for $100
  */
-class TruckManager(private val cache: ItemMetadataCache) {
+@javax.inject.Singleton
+class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetadataCache) {
 
     companion object {
         const val OOS_BUY_SLOT_THRESHOLD = 10

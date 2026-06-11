@@ -3,30 +3,26 @@ package com.example.superstoresimulator.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.superstoresimulator.domain.GameEngine
-import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.GameState
-import com.example.superstoresimulator.domain.GameStateChange
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemDataLoader
-import com.example.superstoresimulator.domain.time.GameTime
 import com.example.superstoresimulator.ui.state.AppUIState
 import com.example.superstoresimulator.ui.state.DashboardUIState
-import com.example.superstoresimulator.ui.state.DeliveryUIState
 import com.example.superstoresimulator.ui.state.GameUiState
 import com.example.superstoresimulator.ui.state.HistoryUIState
 import com.example.superstoresimulator.ui.state.MetricsUIState
-import com.example.superstoresimulator.ui.state.PricingUIState
-import com.example.superstoresimulator.ui.state.ProgressionUIState
 import com.example.superstoresimulator.ui.state.StaffUIState
 import com.example.superstoresimulator.ui.state.TransactionUIState
 import com.example.superstoresimulator.ui.state.TimeUIState
-import com.example.superstoresimulator.ui.state.TruckUIState
-import com.example.superstoresimulator.ui.state.TruckOrderLineUI
 import com.example.superstoresimulator.ui.GameEvent
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.ui.state.mappers.MemoizedInventoryMapper
-import com.example.superstoresimulator.ui.state.builders.IncrementalUiStateBuilder
+import com.example.superstoresimulator.ui.state.mappers.buildRegistersUiState
+import com.example.superstoresimulator.ui.state.mappers.buildStaffScheduleEntries
+import com.example.superstoresimulator.ui.state.mappers.countActiveStaff
+import com.example.superstoresimulator.ui.state.mappers.buildDeliveryUiState
+import com.example.superstoresimulator.ui.state.mappers.buildPricingUiState
+import com.example.superstoresimulator.ui.state.mappers.buildProgressionUiState
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,11 +37,7 @@ import javax.inject.Inject
 import com.example.superstoresimulator.di.TickDelta
 import java.util.Locale
 import android.content.Context
-import com.example.superstoresimulator.ui.state.RegisterUIState
-import com.example.superstoresimulator.ui.state.RegistersUIState
-import com.example.superstoresimulator.ui.state.StaffScheduleEntryUI
 import com.example.superstoresimulator.domain.Entities.Tier
-import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.persistence.GameStateRepository
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.Entities.EntityDef
@@ -79,8 +71,6 @@ class GameViewModel @Inject constructor(
 
     private val inventoryMapper = MemoizedInventoryMapper(itemMetadataCache)
 
-    private var incrementalBuilder: IncrementalUiStateBuilder? = null
-
     init {
         viewModelScope.launch {
             ItemDataLoader.loadItemsIfNeeded(context, itemDao)
@@ -89,28 +79,27 @@ class GameViewModel @Inject constructor(
             val savedState = gameStateRepository.loadGameState()
             if (savedState != null) {
                 gameEngine.loadState(savedState)
+            } else {
+                gameEngine.seedNewGame()
             }
 
             gameEngineInitialized = true
 
             val initialState = gameEngine.currentState()
             _uiState.value = initialUiState(initialState)
-
-            incrementalBuilder = IncrementalUiStateBuilder(_uiState.value!!)
-
-            gameEngine.changes.collect { change ->
-                if (change != null && incrementalBuilder != null) {
-                    val newState = incrementalBuilder!!.applyChange(change, _uiState.value)
-                    _uiState.value = newState
-                }
-                if (change is GameStateChange.OrderScheduled) {
-                    val day = change.arrivalDay
-                    val dayOfWeekName = when (day % 7) {
-                        0 -> "Monday"; 1 -> "Tuesday"; 2 -> "Wednesday"; 3 -> "Thursday"
-                        4 -> "Friday"; 5 -> "Saturday"; 6 -> "Sunday"
-                        else -> "Day $day"
+        }
+        viewModelScope.launch {
+            gameEngine.engineEvents.collect { event ->
+                when (event) {
+                    is GameEngine.EngineEvent.OrderScheduled -> {
+                        val day = event.arrivalDay
+                        val dayOfWeekName = when (day % 7) {
+                            0 -> "Monday"; 1 -> "Tuesday"; 2 -> "Wednesday"; 3 -> "Thursday"
+                            4 -> "Friday"; 5 -> "Saturday"; 6 -> "Sunday"
+                            else -> "Day $day"
+                        }
+                        _snackbarMessage.tryEmit("Order placed — arriving $dayOfWeekName, Day ${day + 1}")
                     }
-                    _snackbarMessage.tryEmit("Order placed — arriving $dayOfWeekName, Day ${day + 1}")
                 }
             }
         }
@@ -174,7 +163,10 @@ class GameViewModel @Inject constructor(
             }
 
             GameEvent.SkipDay -> {
-                gameEngine.simulateRestOfDay()
+                viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+                    gameEngine.simulateRestOfDay()
+                }
+                return
             }
 
             GameEvent.UnlockNextTier -> {
@@ -355,26 +347,21 @@ class GameViewModel @Inject constructor(
                 gameEngine.updateStoreManagerConfig(event.config)
             }
 
-            GameEvent.Tick -> gameEngine.tick(tickDelta)
+            GameEvent.Tick -> {
+                if (!gameEngine.isSimulating) gameEngine.tick(tickDelta)
+            }
 
         }
         
-        // ✅ Performance Optimization #1: Only update UI state if domain state changed
         if (gameEngineInitialized) {
             val newDomainState = gameEngine.currentState()
             
-            // Check if domain state actually changed (structural equality)
             if (shouldRebuildUiState(newDomainState)) {
-                // Use _uiState.value (not lastUiState) so that direct _uiState.update calls
-                // from SelectStaffType / SelectItemCategory / FocusInventoryItem are never
-                // overwritten. lastUiState is only updated by this code path and would be
-                // stale after any of those early-return handlers fire.
                 val newUiState = toUiState(newDomainState, _uiState.value)
                 _uiState.value = newUiState
                 lastUiState = newUiState
                 lastDomainState = newDomainState
             }
-            // If nothing changed, keep reusing the same UI state object (no StateFlow update)
         }
 
     }
@@ -387,7 +374,6 @@ class GameViewModel @Inject constructor(
             }
         }
     }
-    // Map domain GameState to UI-level GameUiState
     private fun initialUiState(domain: GameState): GameUiState {
         val scheduleEntries = buildStaffScheduleEntries(domain)
         return GameUiState(
@@ -438,52 +424,12 @@ class GameViewModel @Inject constructor(
                 salesHistory = domain.salesHistory,
                 totalTaxCollected = domain.totalTaxCollected
             ),
-            time = TimeUIState(
-                currentTime = domain.currentTime,
-                storeState = domain.storeState,
-                speedMultiplier = domain.storeConfig.gameSpeedMultiplier,
-                playerPausedTime = domain.playerPausedTime,
-                playerRole = domain.playerRole,
-                playerCashierProgress = domain.playerCashierProgress,
-                playerStockerProgress = domain.playerStockerProgress,
-                currentStoreSize = domain.currentStoreSize,
-                dailyRent = domain.currentStoreSize.dailyRent,
-                dailyWages = calculateDailyWages(domain),
-            ),
-            metrics = MetricsUIState(
-                completedDays = domain.completedDayMetrics.sortedByDescending { it.dayNumber },
-                activeDay = domain.currentDayMetrics.copy(dayOfWeek = domain.currentTime.dayOfWeek),
-                showEndOfDayReport = domain.showEndOfDayReport,
-                lastReport = domain.lastEndOfDayReport,
-            ),
+            time = buildTimeUiState(domain),
+            metrics = buildMetricsUiState(domain),
             progression = buildProgressionUiState(domain, null),
-            delivery = buildDeliveryUiState(domain),
+            delivery = buildDeliveryUiState(domain, itemMetadataCache),
             registers = buildRegistersUiState(domain),
             pricing = buildPricingUiState(domain),
-        )
-    }
-
-    private fun calculateDailyWages(domain: GameState): Money {
-        return calculateTotalWages(domain.hiredEntityRegistry, domain.staffSchedules)
-    }
-
-    private fun buildProgressionUiState(domain: GameState, old: ProgressionUIState?): ProgressionUIState {
-        val nextTier = ItemUnlockTier.nextTier(domain.currentTier)
-        val tierStart = domain.currentTier.unlockAmount
-        val tierEnd = nextTier?.unlockAmount
-        val earned = domain.totalRevenue.cents
-        // availableTier: next tier whose revenue gate is met but which hasn't been paid for yet
-        val availableTier = nextTier?.takeIf { earned >= it.unlockAmount }
-        return ProgressionUIState(
-            currentTier = domain.currentTier,
-            totalRevenue = domain.totalRevenue,
-            nextTier = nextTier,
-            revenueToNextTier = tierEnd?.let { Money(it - earned) },
-            tierProgressFraction = if (tierEnd != null && tierEnd > tierStart)
-                ((earned - tierStart).toFloat() / (tierEnd - tierStart)).coerceIn(0f, 1f)
-            else 1f,
-            justUnlockedTier = old?.justUnlockedTier,
-            availableTier = availableTier,
         )
     }
 
@@ -552,227 +498,38 @@ class GameViewModel @Inject constructor(
                 salesHistory = domain.salesHistory,
                 totalTaxCollected = domain.totalTaxCollected
             ),
-            time = TimeUIState(
-                currentTime = domain.currentTime,
-                storeState = domain.storeState,
-                speedMultiplier = domain.storeConfig.gameSpeedMultiplier,
-                playerPausedTime = domain.playerPausedTime,
-                playerRole = domain.playerRole,
-                playerCashierProgress = domain.playerCashierProgress,
-                playerStockerProgress = domain.playerStockerProgress,
-                currentStoreSize = domain.currentStoreSize,
-                dailyRent = domain.currentStoreSize.dailyRent,
-                dailyWages = calculateDailyWages(domain),
-            ),
-            metrics = MetricsUIState(
-                completedDays = domain.completedDayMetrics.sortedByDescending { it.dayNumber },
-                activeDay = domain.currentDayMetrics.copy(dayOfWeek = domain.currentTime.dayOfWeek),
-                showEndOfDayReport = domain.showEndOfDayReport,
-                lastReport = domain.lastEndOfDayReport,
-            ),
+            time = buildTimeUiState(domain),
+            metrics = buildMetricsUiState(domain),
             progression = buildProgressionUiState(domain, oldUi?.progression),
-            delivery = buildDeliveryUiState(domain),
+            delivery = buildDeliveryUiState(domain, itemMetadataCache),
             registers = buildRegistersUiState(domain),
             pricing = buildPricingUiState(domain),
         )
     }
 
-    // ✅ Performance Optimization #1: Detect structural changes in domain state
-    // Returns true only if significant fields changed, preventing unnecessary UI rebuilds
     private fun shouldRebuildUiState(newDomainState: GameState): Boolean {
-        val oldDomainState = lastDomainState
-        
-        // First time - always rebuild
-        oldDomainState ?: return true
-        
-        // Check only critical fields that affect UI rendering
-        // (Skip checking fields that don't affect the UI)
-        return newDomainState.money != oldDomainState.money ||
-               newDomainState.inventory != oldDomainState.inventory ||
-               newDomainState.currentTime != oldDomainState.currentTime ||
-               newDomainState.registers != oldDomainState.registers ||
-               newDomainState.hiredEntityRegistry != oldDomainState.hiredEntityRegistry ||
-               newDomainState.storeState != oldDomainState.storeState ||
-               newDomainState.storeName != oldDomainState.storeName ||
-               newDomainState.totalTransactionsCompleted != oldDomainState.totalTransactionsCompleted ||
-               newDomainState.totalTaxCollected != oldDomainState.totalTaxCollected ||
-               newDomainState.salesHistory != oldDomainState.salesHistory ||
-               newDomainState.pendingRefunds != oldDomainState.pendingRefunds ||
-               newDomainState.playerPausedTime != oldDomainState.playerPausedTime ||
-               newDomainState.playerRole != oldDomainState.playerRole ||
-               newDomainState.pendingCustomers != oldDomainState.pendingCustomers ||
-               newDomainState.showEndOfDayReport != oldDomainState.showEndOfDayReport ||
-               newDomainState.completedDayMetrics.size != oldDomainState.completedDayMetrics.size ||
-               newDomainState.currentTier != oldDomainState.currentTier ||
-               newDomainState.totalRevenue != oldDomainState.totalRevenue ||
-               newDomainState.currentStoreSize != oldDomainState.currentStoreSize ||
-               newDomainState.scheduledTrucks != oldDomainState.scheduledTrucks ||
-               newDomainState.truckConfig != oldDomainState.truckConfig ||
-               newDomainState.staffSchedules != oldDomainState.staffSchedules ||
-               newDomainState.playerAssignedRegisterId != oldDomainState.playerAssignedRegisterId ||
-               newDomainState.ownedRegisterCount != oldDomainState.ownedRegisterCount ||
-               newDomainState.autoHireBudget != oldDomainState.autoHireBudget ||
-               newDomainState.storeManagerConfig != oldDomainState.storeManagerConfig
+        return newDomainState != lastDomainState
     }
 
-    // ── Register & Schedule UI State Builders ────────────────────────────────────
+    private fun buildTimeUiState(domain: GameState) = TimeUIState(
+        currentTime = domain.currentTime,
+        storeState = domain.storeState,
+        speedMultiplier = domain.storeConfig.gameSpeedMultiplier,
+        playerPausedTime = domain.playerPausedTime,
+        playerRole = domain.playerRole,
+        playerCashierProgress = domain.playerCashierProgress,
+        playerStockerProgress = domain.playerStockerProgress,
+        currentStoreSize = domain.currentStoreSize,
+        dailyRent = domain.currentStoreSize.dailyRent,
+        dailyWages = calculateTotalWages(domain.hiredEntityRegistry, domain.staffSchedules),
+    )
 
-    private fun countActiveStaff(domain: GameState): Int {
-        val currentHour = domain.currentTime.hour
-        val shiftMap = domain.staffSchedules.associateBy { it.entityId }
-        return domain.hiredEntityRegistry.hiredEntities.count { entity ->
-            // If no shift defined, employee is treated as always on (no restriction set yet)
-            shiftMap[entity.id]?.isOnShift(currentHour) ?: true
-        }
-    }
-
-    private fun buildRegistersUiState(domain: GameState): RegistersUIState {
-        val currentHour = domain.currentTime.hour
-        val playerAssigReg = domain.playerAssignedRegisterId
-
-        val registerUiList = domain.registers.map { reg ->
-            val cashierId = reg.assignedCashierId
-            val cashier = cashierId?.let { id ->
-                domain.hiredEntityRegistry.hiredEntities.firstOrNull { it.id == id }
-            }
-            val cashierShift = cashierId?.let { id ->
-                domain.staffSchedules.firstOrNull { it.entityId == id }
-            }
-            val cashierOnShift = cashierShift?.isOnShift(currentHour) ?: (cashierId != null)
-            val isPlayerAssigned = reg.registerId == playerAssigReg
-
-            RegisterUIState(
-                registerId = reg.registerId,
-                assignedCashierName = cashier?.name,
-                assignedCashierId = cashierId,
-                isPlayerAssigned = isPlayerAssigned,
-                transactionActive = reg.transactionActive,
-                isManned = (cashierId != null && cashierOnShift) || isPlayerAssigned,
-                cashierOnShift = cashierOnShift,
-                dailyTransactions = reg.dailyTransactions,
-                dailyRevenue = reg.dailyRevenue,
-            )
-        }
-
-        val maxRegs = domain.currentStoreSize.maxRegisters
-        val canPurchase = domain.ownedRegisterCount < maxRegs &&
-            domain.money >= StoreSize.nextRegisterCost(domain.ownedRegisterCount)
-
-        return RegistersUIState(
-            registers = registerUiList,
-            ownedCount = domain.ownedRegisterCount,
-            maxRegisters = maxRegs,
-            nextRegisterCost = StoreSize.nextRegisterCost(domain.ownedRegisterCount),
-            canPurchase = canPurchase,
-            playerAssignedRegisterId = playerAssigReg,
-        )
-    }
-
-    private fun buildStaffScheduleEntries(domain: GameState): List<StaffScheduleEntryUI> {
-        val currentHour = domain.currentTime.hour
-        val shiftMap = domain.staffSchedules.associateBy { it.entityId }
-
-        val cashierRegisterMap = domain.registers
-            .filter { it.assignedCashierId != null }
-            .associate { it.assignedCashierId!! to it.registerId }
-
-        return domain.hiredEntityRegistry.hiredEntities.map { entity ->
-            val shift = shiftMap[entity.id]
-            val isOnShift = shift?.isOnShift(currentHour) ?: true
-            val tierLabel = when (entity.tier) {
-                Tier.BASE -> ""
-                Tier.FAST -> "Fast"
-                Tier.MANAGER -> "Dept. Mgr"
-            }
-
-            StaffScheduleEntryUI(
-                entityId = entity.id,
-                entityName = entity.name,
-                entityTypeName = entity.entityDefinition.displayName,
-                entityDefKey = entity.entityDefinition.key,
-                startHour = shift?.startHour,
-                endHour = shift?.endHour,
-                isOnShift = isOnShift,
-                tierLabel = tierLabel,
-                level = entity.level,
-                assignedRegisterId = cashierRegisterMap[entity.id],
-            )
-        }
-    }
-
-    private fun buildDeliveryUiState(domain: GameState): DeliveryUIState {
-        val currentDay = domain.currentTime.dayNumber
-        val nextDay = currentDay + 1
-
-        fun makeTruckUI(truck: com.example.superstoresimulator.domain.ScheduledTruck): TruckUIState {
-            return TruckUIState(
-                truckId = truck.truckId,
-                arrivalDay = truck.scheduledArrivalDay,
-                arrivalDayOfWeek = truck.scheduledArrivalDay % 7,
-                capacityUsed = truck.usedCapacityCasePacks,
-                capacityTotal = truck.capacityCasePacks,
-                isFreshTruck = truck.isFreshTruck,
-                isEarlyTruck = truck.isEarlyTruck,
-                orderLines = truck.orders
-                    .groupBy { it.itemId }
-                    .map { (itemId, lines) ->
-                        TruckOrderLineUI(
-                            itemId = itemId,
-                            itemName = itemMetadataCache.get(itemId)?.name ?: "Item $itemId",
-                            casePacks = lines.sumOf { it.casePacksCount },
-                            quantity = lines.sumOf { it.quantity },
-                            canCancel = truck.scheduledArrivalDay > currentDay,
-                            truckId = truck.truckId,
-                        )
-                    }
-            )
-        }
-
-        val freshTruck = domain.scheduledTrucks
-            .firstOrNull { it.isFreshTruck && it.scheduledArrivalDay == nextDay }
-            ?.let { makeTruckUI(it) }
-
-        val regularTrucks = domain.scheduledTrucks
-            .filter { !it.isFreshTruck }
-            .sortedBy { it.scheduledArrivalDay }
-            .map { makeTruckUI(it) }
-
-        val earlyTruckAlreadyExists = domain.scheduledTrucks.any {
-            it.isEarlyTruck && it.scheduledArrivalDay == nextDay
-        }
-
-        val freeTrucks = com.example.superstoresimulator.domain.TruckConfig.BASE_FREE_SLOTS +
-            domain.currentStoreSize.ordinal
-        val maxTrucks = freeTrucks + domain.truckConfig.extraTruckSlotsUnlocked
-
-        return DeliveryUIState(
-            regularTrucks = regularTrucks,
-            freshTruck = freshTruck,
-            earlyTruckAvailable = !earlyTruckAlreadyExists,
-            earlyTruckCost = Money(10_000L),
-            maxTrucksPerWeek = maxTrucks,
-            freeTrucksPerWeek = freeTrucks,
-            extraTruckSlotsUnlocked = domain.truckConfig.extraTruckSlotsUnlocked,
-            extraTruckSlotCost = com.example.superstoresimulator.domain.TruckConfig.EXTRA_SLOT_COST,
-        )
-    }
-
-    private fun buildPricingUiState(domain: GameState): PricingUIState {
-        val pricing = domain.pricingState
-        val reputationLabel = when {
-            pricing.smoothedPriceIndex < 0.9f -> "Budget"
-            pricing.smoothedPriceIndex > 1.1f -> "Premium"
-            else -> "Standard"
-        }
-        return PricingUIState(
-            pricingState = pricing,
-            priceIndex = pricing.smoothedPriceIndex,
-            trafficMultiplier = pricing.priceTrafficMultiplier,
-            basketMultiplier = pricing.basketSizeMultiplier,
-            reputationLabel = reputationLabel,
-            itemsMarkedDown = pricing.activeMarkdowns.size,
-        )
-    }
+    private fun buildMetricsUiState(domain: GameState) = MetricsUIState(
+        completedDays = domain.completedDayMetrics.sortedByDescending { it.dayNumber },
+        activeDay = domain.currentDayMetrics.copy(dayOfWeek = domain.currentTime.dayOfWeek),
+        showEndOfDayReport = domain.showEndOfDayReport,
+        lastReport = domain.lastEndOfDayReport,
+    )
 
     // ── Pricing Controls ─────────────────────────────────────────────────────
 
@@ -824,18 +581,10 @@ class GameViewModel @Inject constructor(
                 lastUiState = null
 
                 val freshState = gameEngine.currentState()
-                val freshUiState = initialUiState(freshState)
-                _uiState.value = freshUiState
-
-                incrementalBuilder = IncrementalUiStateBuilder(freshUiState)
+                _uiState.value = initialUiState(freshState)
             }
         }
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        // Auto-save when the ViewModel is destroyed (app closed or process killed)
-        saveGameState()
-    }
 }
 

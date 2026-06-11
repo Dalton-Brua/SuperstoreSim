@@ -2,7 +2,10 @@ package com.example.superstoresimulator.domain.progression
 
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.helpers.FakeItemDao
+import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -36,7 +39,9 @@ class ProgressionManagerTest {
 
     @Before
     fun setUp() {
-        manager = ProgressionManager()
+        val cache = ItemMetadataCache(FakeItemDao(emptyList()))
+        runBlocking { cache.initialize() }
+        manager = ProgressionManager(cache)
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────

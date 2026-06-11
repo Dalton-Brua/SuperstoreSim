@@ -2,27 +2,11 @@ package com.example.superstoresimulator.domain.store
 
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.traffic.TrafficManager
+import javax.inject.Inject
+import javax.inject.Singleton
 
-/**
- * Sub-system responsible for store administrative operations.
- *
- * This is a pure sub-system: each method receives a [GameState] and returns a new
- * [GameState]. It never holds a reference to the engine's mutable state or the
- * change-emission stream — [GameEngine] retains those responsibilities.
- *
- * The exception is [handleStoreStateChange], which accepts a [TrafficManager] as a
- * method parameter so it can call [TrafficManager.reset] on the CLOSED transition.
- * That side-effect is intentional: the traffic accumulator must be drained whenever
- * the store closes so stale fractional customer counts do not carry over to the next
- * business day.
- *
- * Responsibilities:
- *  - Store name changes
- *  - Player pause / resume toggle
- *  - Game-speed state synchronisation
- *  - Store open/closing/closed transition side-effects
- */
-class StoreController {
+@Singleton
+class StoreController @Inject constructor() {
 
     /**
      * Update the store's display name.

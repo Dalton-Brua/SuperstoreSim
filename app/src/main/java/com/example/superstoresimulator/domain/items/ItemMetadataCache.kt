@@ -2,19 +2,11 @@ package com.example.superstoresimulator.domain.items
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
-/**
- * Metadata Cache Layer
- * 
- * SINGLE SOURCE OF TRUTH for all item data. Loads from database ONCE at startup.
- * - Caches item metadata (name, price, category) for 60 FPS inventory rendering
- * - Also caches full Item objects for GameEngine and other components
- * - Replaces 3+ redundant database calls with a single load
- * 
- * Architecture: All components that need item data should call initialize() once,
- * then use get() or getItem() for metadata/full data lookups.
- */
-class ItemMetadataCache(private val itemDao: ItemDao) {
+@Singleton
+class ItemMetadataCache @Inject constructor(private val itemDao: ItemDao) {
     
     private var metadataCache: Map<Int, ItemMetadata> = emptyMap()
     private var itemsCache: Map<Int, Item> = emptyMap()

@@ -93,7 +93,6 @@ data class DailyMetrics(
     // ── Sales ────────────────────────────────────────────────────────────
     val subtotal: Money = Money.ZERO,
     val taxCollected: Money = Money.ZERO,
-    val revenue: get() = subtotal + taxCollected,      // gross revenue (subtotal + tax)
     val transactionsCompleted: Int = 0,
 
     // ── Operating Costs ──────────────────────────────────────────────────
@@ -144,6 +143,8 @@ data class DailyMetrics(
     val markupExtraRevenue: Money = Money.ZERO,
     val itemsMarkedDown: Int = 0,
 ) {
+    val revenue: Money get() = subtotal + taxCollected
+
     /** Average value per completed transaction (ZERO if no transactions). */
     val averageTransactionValue: Money
         get() = if (transactionsCompleted > 0)

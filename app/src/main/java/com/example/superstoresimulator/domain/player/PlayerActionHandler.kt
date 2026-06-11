@@ -1,41 +1,16 @@
 package com.example.superstoresimulator.domain.player
 
 import com.example.superstoresimulator.domain.GameState
+import javax.inject.Inject
+import javax.inject.Singleton
 
-/**
- * Result of a single-tick player work calculation.
- *
- * @param actionsToTake Maximum number of actions the player should perform this tick.
- *                      For cashier work this is a ceiling — [GameEngine] still checks
- *                      [GameState.transactionActive] before each ring-up so the actual
- *                      number performed may be less if the transaction completes mid-tick.
- * @param newProgress   The fractional accumulator value after deducting [actionsToTake]
- *                      whole units. The caller is responsible for discarding this and
- *                      storing 0f when a transaction/backroom event terminates the work
- *                      cycle early.
- */
 data class PlayerWorkResult(
     val actionsToTake: Int,
     val newProgress: Float,
 )
 
-/**
- * Sub-system responsible for player-role management and per-tick player work calculations.
- *
- * This is a pure sub-system: [setPlayerRole] receives a [GameState] and returns a new
- * [GameState]. [calculateCashierWork] and [calculateStockerWork] are also pure — they
- * read from [GameState] and return a [PlayerWorkResult] without performing any actions.
- *
- * The actual ring-up and stocking calls remain in [GameEngine]'s private helpers because
- * they must mutate live state between iterations (checking [GameState.transactionActive]
- * after every ring-up, and [GameState.inventory] after every stocking action).
- *
- * Responsibilities:
- *  - Toggle the player's active role (dispatching the active role again returns to NONE)
- *  - Calculate how many cashier ring-up actions and the new progress fraction for a tick
- *  - Calculate how many stocker stocking actions and the new progress fraction for a tick
- */
-class PlayerActionHandler {
+@Singleton
+class PlayerActionHandler @Inject constructor() {
 
     // ── Role management ───────────────────────────────────────────────────────
 

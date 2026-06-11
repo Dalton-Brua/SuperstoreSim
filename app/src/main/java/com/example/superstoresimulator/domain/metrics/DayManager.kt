@@ -3,27 +3,11 @@ package com.example.superstoresimulator.domain.metrics
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.store.StaffWageCalculator
+import javax.inject.Inject
+import javax.inject.Singleton
 
-/**
- * Sub-system responsible for day-boundary management and the end-of-day report lifecycle.
- *
- * This is a pure sub-system: [rollOverDay] and [dismissEndOfDayReport] each receive a
- * [GameState] and return a new [GameState]. They never hold a reference to the engine's
- * mutable state or its change-emission stream — [GameEngine] retains those responsibilities.
- *
- * The one piece of mutable state owned here is [lastKnownDayNumber], an accumulator
- * that [GameEngine.tick] uses to detect when the game clock has crossed midnight.
- * It is intentionally kept outside [GameState] (like the cashier/stocker progress
- * accumulators) because it is an engine-internal counter, not player-visible data.
- *
- * Responsibilities:
- *  - Tracking the last processed day number to detect midnight rollovers
- *  - Snapshotting the live [DailyMetrics] accumulator into a completed [DailyMetrics]
- *  - Appending the snapshot to [GameState.completedDayMetrics]
- *  - Auto-pausing time for the end-of-day report (while respecting a player's manual pause)
- *  - Clearing the report flag and restoring the pause state when the player dismisses it
- */
-class DayManager {
+@Singleton
+class DayManager @Inject constructor() {
 
     /**
      * The last [GameState.currentTime.dayNumber] that [GameEngine.tick] has fully

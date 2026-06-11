@@ -44,9 +44,7 @@ class TransactionEngine(
             val itemTier = cache?.get(itemId)?.tier ?: ItemUnlockTier.TIER_1
             itemTier.unlockAmount <= currentTierAmount
         }
-        if (availableItemIds.isEmpty()) {
-            throw IllegalStateException("No items in inventory to create transactions")
-        }
+        if (availableItemIds.isEmpty()) return state
 
         val numLines = (1..availableItemIds.size.coerceAtMost(5)).random(random)
         val lines = mutableListOf<TransactionLine>()
@@ -526,11 +524,16 @@ class TransactionEngine(
             completedAt = getCurrentTime() // Use adjusted method
         )
 
+        val refundTotal = refund.subtotal + refund.tax
         return state.copy(
             money = state.money - refund.subtotal,
             totalTaxCollected = state.totalTaxCollected - refund.tax,
             salesHistory = state.salesHistory + refundTx,
-            pendingRefunds = state.pendingRefunds.filter { it.id != refundId }
+            pendingRefunds = state.pendingRefunds.filter { it.id != refundId },
+            currentDayMetrics = state.currentDayMetrics.copy(
+                refundsProcessed = state.currentDayMetrics.refundsProcessed + 1,
+                refundAmount = state.currentDayMetrics.refundAmount + refundTotal,
+            ),
         )
     }
 
@@ -698,7 +701,6 @@ class TransactionEngine(
 
         s = s.copy(
             currentDayMetrics = acc.copy(
-                revenue = acc.revenue + tx.totalEarned,
                 subtotal = acc.subtotal + tx.subtotal,
                 taxCollected = acc.taxCollected + tx.tax,
                 transactionsCompleted = acc.transactionsCompleted + 1,

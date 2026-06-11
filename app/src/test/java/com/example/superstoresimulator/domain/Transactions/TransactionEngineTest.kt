@@ -98,12 +98,10 @@ class TransactionEngineTest {
     }
 
     @Test
-    fun testStartNewTransactionWithEmptyInventoryThrows() {
+    fun testStartNewTransactionWithEmptyInventoryIsNoOp() {
         val emptyState = baseState.copy(inventory = emptyMap())
-
-        assertThrows(IllegalStateException::class.java) {
-            engine.startNewTransaction(emptyState)
-        }
+        val result = engine.startNewTransaction(emptyState)
+        assertEquals(emptyState, result)
     }
 
     @Test

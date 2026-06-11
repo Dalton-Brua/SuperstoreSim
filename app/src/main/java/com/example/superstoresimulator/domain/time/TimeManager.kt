@@ -2,18 +2,17 @@ package com.example.superstoresimulator.domain.time
 
 import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreState
+import javax.inject.Inject
+import javax.inject.Singleton
 
-/**
- * Manages game time progression and store state
- */
-class TimeManager(
+@Singleton
+class TimeManager @Inject constructor() {
     var config: StoreConfig = StoreConfig()
-) {
     var currentTime = GameTime(0)
         private set
     
     // Accumulate fractional time to avoid rounding errors with small tick deltas
-    private var accumulatedMilliseconds = 0L
+    internal var accumulatedMilliseconds = 0L
 
     fun update(deltaMilliseconds: Long) {
         // Base speed: 60.0f = 1 real second = 1 game minute

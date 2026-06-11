@@ -107,18 +107,14 @@ data class TruckConfig(
 }
 
 @Serializable
-data class FreshAutoOrderConfig(
+data class AutoOrderConfig(
     val enabled: Boolean = true,
     val minStockThreshold: Int = 5,
     val casePacksPerItem: Int = 1,
 )
 
-@Serializable
-data class NormalAutoOrderConfig(
-    val enabled: Boolean = true,
-    val minStockThreshold: Int = 5,
-    val casePacksPerItem: Int = 1,
-)
+typealias FreshAutoOrderConfig = AutoOrderConfig
+typealias NormalAutoOrderConfig = AutoOrderConfig
 
 @Serializable
 data class StoreManagerConfig(
@@ -142,6 +138,24 @@ data class StoreManagerConfig(
     val autoBuyRegistersEnabled: Boolean = true,
     // Shifts
     val autoRebalanceShiftsEnabled: Boolean = true,
+)
+
+@Serializable
+data class ZoningState(
+    val targetItemId: Int? = null,
+    val progress: Float = 0f,
+)
+
+@Serializable
+data class SimAccumulators(
+    val timeAccumulatorMs: Long = 0L,
+    val trafficAccumulator: Double = 0.0,
+    val lastKnownDayNumber: Int = 0,
+    val cashierProgressByRegister: Map<Int, Float> = emptyMap(),
+    val stockerProgress: Float = 0f,
+    val stockingManagerProgress: Float = 0f,
+    val freshHandlerProgress: Float = 0f,
+    val zoningByStockerId: Map<Int, ZoningState> = emptyMap(),
 )
 
 @Serializable
@@ -249,6 +263,9 @@ data class GameState(
 
     // Pricing system
     val pricingState: PricingState = PricingState(),
+
+    // Simulation accumulators — fractional progress, traffic, day tracking
+    val simAccumulators: SimAccumulators = SimAccumulators(),
 ) {
     val ownedRegisterCount: Int get() = registers.size
 

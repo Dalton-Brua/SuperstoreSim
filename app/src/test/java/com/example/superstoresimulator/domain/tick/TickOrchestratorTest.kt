@@ -71,6 +71,7 @@ class TickOrchestratorTest {
             registerManager, transactionEngine, trafficManager,
             dayRolloverProcessor, trafficProcessor, staffTickProcessor,
             playerTickProcessor, utilizationTracker,
+            staffManager, dayManager,
         )
     }
 
@@ -79,7 +80,6 @@ class TickOrchestratorTest {
         val state = GameState(playerPausedTime = true, money = Money(1000))
         val result = orchestrator.tick(state, 16L)
         assertEquals(state, result.state)
-        assertTrue(result.changes.isEmpty())
     }
 
     @Test

@@ -64,7 +64,7 @@ class DayManagerTest {
         showEndOfDayReport = showEndOfDayReport,
         currentDayMetrics = DailyMetrics(
             dayNumber = dayNumber,
-            revenue = revenue,
+            subtotal = revenue,
         ),
         completedDayMetrics = List(completedDays) {
             DailyMetrics(dayNumber = it, dayOfWeek = it % 7)

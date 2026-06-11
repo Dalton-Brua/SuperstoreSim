@@ -27,7 +27,7 @@ import com.example.superstoresimulator.domain.helpers.FakeItemDao
  *   - unlockNextTier() is a no-op at max tier TIER_GM
  *   - Tier does NOT auto-advance — the player must call unlockNextTier() explicitly
  *   - unlockCost is deducted from [GameState.money]; totalRevenue is never affected
- *   - On success a [GameStateChange.TierUnlocked] is emitted via [GameEngine.changes]
+ *   - On success [GameState.currentTier] advances to the next tier
  *
  * Uses [FakeItemDao] in-memory instead of Mockito (byte-buddy/JaCoCo incompatibility).
  * All pre-conditions are injected via [engine.state] assignment helpers so that tests
@@ -260,26 +260,6 @@ class TierUnlockTest {
             ItemUnlockTier.TIER_2,
             engine.currentState().currentTier
         )
-    }
-
-    // ── GameStateChange emission ──────────────────────────────────────────────
-
-    @Test
-    fun `unlockNextTier emits TierUnlocked state change with correct previous and new tiers`() {
-        val engine = newEngine()
-        setRevenue(engine, 500_000L)
-        setMoney(engine, 500_000L)
-
-        engine.unlockNextTier()
-
-        val change = engine.changes.value
-        assertTrue(
-            "changes.value must be a TierUnlocked instance after a successful unlock",
-            change is GameStateChange.TierUnlocked
-        )
-        val tierChange = change as GameStateChange.TierUnlocked
-        assertEquals("newTier must be TIER_2", ItemUnlockTier.TIER_2, tierChange.newTier)
-        assertEquals("previousTier must be TIER_1", ItemUnlockTier.TIER_1, tierChange.previousTier)
     }
 
     // ── Revenue accumulation via a real completed transaction ─────────────────

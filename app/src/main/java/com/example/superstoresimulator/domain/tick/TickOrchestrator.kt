@@ -1,18 +1,21 @@
 package com.example.superstoresimulator.domain.tick
 
 import com.example.superstoresimulator.domain.GameState
-import com.example.superstoresimulator.domain.GameStateChange
+import com.example.superstoresimulator.domain.SimAccumulators
+import com.example.superstoresimulator.domain.ZoningState
 import com.example.superstoresimulator.domain.Transactions.TransactionEngine
 import com.example.superstoresimulator.domain.expiration.SpoilageManager
+import com.example.superstoresimulator.domain.metrics.DayManager
 import com.example.superstoresimulator.domain.pricing.PricingManager
 import com.example.superstoresimulator.domain.registers.RegisterManager
+import com.example.superstoresimulator.domain.staff.StaffManager
 import com.example.superstoresimulator.domain.store.StoreController
 import com.example.superstoresimulator.domain.time.TimeManager
 import com.example.superstoresimulator.domain.traffic.TrafficManager
 import javax.inject.Inject
 import javax.inject.Singleton
 
-data class TickResult(val state: GameState, val changes: List<GameStateChange>)
+data class TickResult(val state: GameState)
 
 @Singleton
 class TickOrchestrator @Inject constructor(
@@ -28,9 +31,11 @@ class TickOrchestrator @Inject constructor(
     private val staffTickProcessor: StaffTickProcessor,
     private val playerTickProcessor: PlayerTickProcessor,
     private val utilizationTracker: UtilizationTracker,
+    private val staffManager: StaffManager,
+    private val dayManager: DayManager,
 ) {
     fun tick(state: GameState, deltaMilliseconds: Long): TickResult {
-        if (state.playerPausedTime) return TickResult(state, emptyList())
+        if (state.playerPausedTime) return TickResult(state)
 
         var s = advanceTime(state, deltaMilliseconds)
         s = processSpoilage(s)
@@ -48,8 +53,22 @@ class TickOrchestrator @Inject constructor(
         s = playerTickProcessor.process(s, delta, currentHour)
         utilizationTracker.sample(s, currentHour)
 
-        return TickResult(s, emptyList())
+        s = s.copy(simAccumulators = snapshotAccumulators())
+        return TickResult(s)
     }
+
+    private fun snapshotAccumulators(): SimAccumulators = SimAccumulators(
+        timeAccumulatorMs = timeManager.accumulatedMilliseconds,
+        trafficAccumulator = trafficManager.accumulatedCustomers,
+        lastKnownDayNumber = dayManager.lastKnownDayNumber,
+        cashierProgressByRegister = staffManager.cashierProgressByRegister.toMap(),
+        stockerProgress = staffManager.stockerProgress,
+        stockingManagerProgress = staffManager.stockingManagerProgress,
+        freshHandlerProgress = staffManager.freshHandlerProgress,
+        zoningByStockerId = staffManager.zoningByStockerId.mapValues {
+            ZoningState(it.value.targetItemId, it.value.progress)
+        },
+    )
 
     private fun advanceTime(state: GameState, deltaMilliseconds: Long): GameState {
         timeManager.update(deltaMilliseconds)

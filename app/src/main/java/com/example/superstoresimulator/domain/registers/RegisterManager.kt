@@ -62,6 +62,27 @@ class RegisterManager @Inject constructor() {
         return state.copy(playerAssignedRegisterId = registerId)
     }
 
+    fun autoAssignUnassignedCashiers(state: GameState): GameState {
+        var registers = state.registers
+        val unassigned = state.hiredEntityRegistry.hiredEntities.filter { entity ->
+            entity.entityDefinition == EntityDef.CASHIER &&
+                entity.id !in state.manuallyUnassignedCashiers &&
+                registers.none { reg -> reg.assignedCashierId == entity.id }
+        }
+        for (cashier in unassigned) {
+            val free = registers.firstOrNull { it.assignedCashierId == null } ?: break
+            registers = registers.updateRegister(free.copy(assignedCashierId = cashier.id))
+        }
+        return if (registers != state.registers) state.copy(registers = registers) else state
+    }
+
+    fun unassignEntity(state: GameState, entityId: Int): GameState {
+        val updated = state.registers.map { reg ->
+            if (reg.assignedCashierId == entityId) reg.copy(assignedCashierId = null) else reg
+        }
+        return if (updated != state.registers) state.copy(registers = updated) else state
+    }
+
     fun performShiftCheckAndReassignment(state: GameState, currentHour: Int): GameState {
         val registersAfterShiftCheck = state.registers.map { reg ->
             val assignedId = reg.assignedCashierId ?: return@map reg

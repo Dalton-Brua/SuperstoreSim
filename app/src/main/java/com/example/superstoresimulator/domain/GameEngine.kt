@@ -24,9 +24,10 @@ import com.example.superstoresimulator.domain.store.StoreState
 import com.example.superstoresimulator.domain.tick.TickOrchestrator
 import com.example.superstoresimulator.domain.time.TimeManager
 import com.example.superstoresimulator.domain.traffic.TrafficManager
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -47,52 +48,18 @@ class GameEngine @Inject constructor(
     private val trafficManager: TrafficManager,
     private val truckManager: TruckManager,
 ) {
-    private val _changes = MutableStateFlow<GameStateChange?>(null)
-    val changes: StateFlow<GameStateChange?> = _changes.asStateFlow()
-
-    var state = GameState(
-        inventory = mutableMapOf(),
-        currentTime = timeManager.currentTime,
-        storeState = timeManager.getStoreState(),
-        storeConfig = StoreConfig(backroomCapPerItem = StoreSize.MOM_AND_POP.backroomCapPerItem),
-        money = Money.ZERO,
-        currentTier = ItemUnlockTier.TIER_1,
-        totalRevenue = Money.ZERO,
-    )
-        internal set
-
-    init {
-        val allDbItems = itemMetadataCache.getAllItems()
-        if (allDbItems.isNotEmpty()) {
-            val startingTier = ItemUnlockTier.TIER_2
-            val inventory = mutableMapOf<Int, InventoryState>()
-            val currentDay = state.currentTime.dayNumber
-            allDbItems.forEach { (itemId, item) ->
-                val metadata = itemMetadataCache.get(itemId)
-                val itemTier = metadata?.tier ?: ItemUnlockTier.TIER_1
-                if (itemTier.unlockAmount > startingTier.unlockAmount) return@forEach
-                val expirationDay = if (item.shelfLifeDays != null) {
-                    currentDay + item.shelfLifeDays
-                } else Int.MAX_VALUE
-                val startingBatch = ItemBatch(
-                    receivedDay = currentDay,
-                    quantity = 10,
-                    expirationDay = expirationDay,
-                )
-                inventory[itemId] = InventoryState(
-                    shelfBatches = listOf(startingBatch),
-                    backroomBatches = listOf(startingBatch),
-                )
-            }
-            state = state.copy(
-                inventory = inventory,
-                money = Money(5_000_000),
-                currentTier = startingTier,
-                currentStoreSize = StoreSize.SMALL_GROCERY,
-                storeConfig = StoreConfig(backroomCapPerItem = StoreSize.SMALL_GROCERY.backroomCapPerItem),
-            )
-        }
+    sealed interface EngineEvent {
+        data class OrderScheduled(val arrivalDay: Int) : EngineEvent
     }
+
+    private val _engineEvents = MutableSharedFlow<EngineEvent>(
+        extraBufferCapacity = 4,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val engineEvents: SharedFlow<EngineEvent> = _engineEvents.asSharedFlow()
+
+    var state = GameState()
+        internal set
 
     // ── Queries ───────────────────────────────────────────────────────────────
 
@@ -108,39 +75,33 @@ class GameEngine @Inject constructor(
     fun tick(deltaMilliseconds: Long) {
         val result = tickOrchestrator.tick(state, deltaMilliseconds)
         state = result.state
-        result.changes.lastOrNull()?.let { _changes.value = it }
     }
 
     // ── Inventory ─────────────────────────────────────────────────────────────
 
     fun stockItemFromBackroom(itemId: Int) {
-        val before = state.inventory[itemId]
         state = inventoryManager.stockItemFromBackroom(state, itemId)
-        val after = state.inventory[itemId]
-        if (after != null && after != before) {
-            _changes.value = GameStateChange.InventoryUpdated(itemId, after)
-        }
     }
 
     fun buyItemToBackroom(itemId: Int) {
         val moneyBefore = state.money
         val result = inventoryManager.scheduleAndEmitOrder(state, inventoryManager.buyItemToBackroom(state, itemId), moneyBefore)
         state = result.state
-        result.changes.lastOrNull()?.let { _changes.value = it }
+        result.orderArrivalDay?.let { _engineEvents.tryEmit(EngineEvent.OrderScheduled(it)) }
     }
 
     fun buyItemCasePacks(itemId: Int, numCasePacks: Int) {
         val moneyBefore = state.money
         val result = inventoryManager.scheduleAndEmitOrder(state, inventoryManager.buyItemCasePacks(state, itemId, numCasePacks), moneyBefore)
         state = result.state
-        result.changes.lastOrNull()?.let { _changes.value = it }
+        result.orderArrivalDay?.let { _engineEvents.tryEmit(EngineEvent.OrderScheduled(it)) }
     }
 
     fun placeBulkOrder(maxTotalQuantity: Int, casePacksPerItem: Int, categoryFilter: ItemCategory?) {
         val moneyBefore = state.money
         val result = inventoryManager.scheduleAndEmitOrder(state, inventoryManager.placeBulkOrder(state, maxTotalQuantity, casePacksPerItem, categoryFilter), moneyBefore)
         state = result.state
-        result.changes.lastOrNull()?.let { _changes.value = it }
+        result.orderArrivalDay?.let { _engineEvents.tryEmit(EngineEvent.OrderScheduled(it)) }
     }
 
     fun placeFreshBulkOrder(maxTotalQuantity: Int, casePacksPerItem: Int) {
@@ -151,13 +112,13 @@ class GameEngine @Inject constructor(
             moneyBefore,
         )
         state = result.state
-        result.changes.lastOrNull()?.let { _changes.value = it }
+        result.orderArrivalDay?.let { _engineEvents.tryEmit(EngineEvent.OrderScheduled(it)) }
     }
 
     fun orderIncompleteItem(itemId: Int, casePacksRequested: Int) {
         val result = inventoryManager.orderIncompleteItem(state, itemId, casePacksRequested)
         state = result.state
-        result.changes.lastOrNull()?.let { _changes.value = it }
+        result.orderArrivalDay?.let { _engineEvents.tryEmit(EngineEvent.OrderScheduled(it)) }
     }
 
     // ── Transactions ──────────────────────────────────────────────────────────
@@ -185,17 +146,7 @@ class GameEngine @Inject constructor(
     }
 
     fun processRefund(refundId: Int) {
-        val refund = state.pendingRefunds.find { it.id == refundId }
         state = transactionEngine.processRefund(state, refundId)
-        if (refund != null) {
-            val refundTotal = refund.subtotal + refund.tax
-            state = state.copy(
-                currentDayMetrics = state.currentDayMetrics.copy(
-                    refundsProcessed = state.currentDayMetrics.refundsProcessed + 1,
-                    refundAmount = state.currentDayMetrics.refundAmount + refundTotal,
-                )
-            )
-        }
     }
 
     fun processRefundLine(refundId: Int, itemId: Int, qty: Int = 1) {
@@ -207,23 +158,7 @@ class GameEngine @Inject constructor(
     fun hireEntity(def: EntityDef) {
         state = staffManager.hireEntity(state, def)
         if (def == EntityDef.CASHIER) {
-            var updatedRegisters = state.registers
-            val unassignedCashiers = state.hiredEntityRegistry.hiredEntities.filter { entity ->
-                entity.entityDefinition == EntityDef.CASHIER &&
-                    entity.id !in state.manuallyUnassignedCashiers &&
-                    updatedRegisters.none { reg -> reg.assignedCashierId == entity.id }
-            }
-            for (cashier in unassignedCashiers) {
-                val freeRegister = updatedRegisters.firstOrNull { it.assignedCashierId == null }
-                if (freeRegister != null) {
-                    updatedRegisters = updatedRegisters.updateRegister(
-                        freeRegister.copy(assignedCashierId = cashier.id)
-                    )
-                }
-            }
-            if (updatedRegisters != state.registers) {
-                state = state.copy(registers = updatedRegisters)
-            }
+            state = registerManager.autoAssignUnassignedCashiers(state)
         }
     }
 
@@ -231,13 +166,7 @@ class GameEngine @Inject constructor(
 
     fun fireEntity(entityId: Int) {
         state = staffManager.fireEntity(state, entityId)
-        val updatedRegisters = state.registers.map { register ->
-            if (register.assignedCashierId == entityId) register.copy(assignedCashierId = null)
-            else register
-        }
-        if (updatedRegisters != state.registers) {
-            state = state.copy(registers = updatedRegisters)
-        }
+        state = registerManager.unassignEntity(state, entityId)
     }
 
     fun updateShift(entityId: Int, newStartHour: Int, newDuration: Int = 8) {
@@ -251,9 +180,7 @@ class GameEngine @Inject constructor(
     fun updateStoreName(newName: String) { state = storeController.updateStoreName(state, newName) }
 
     fun upgradeStoreSize() {
-        val moneyBefore = state.money
         state = storeController.upgradeStoreSize(state)
-        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
     }
 
     fun setGameSpeed(multiplier: Float) {
@@ -270,9 +197,7 @@ class GameEngine @Inject constructor(
     // ── Registers ─────────────────────────────────────────────────────────────
 
     fun purchaseRegister() {
-        val moneyBefore = state.money
         state = registerManager.purchaseRegister(state)
-        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
     }
 
     fun assignCashierToRegister(cashierId: Int?, registerId: Int) {
@@ -287,42 +212,40 @@ class GameEngine @Inject constructor(
 
     fun dismissEndOfDayReport() { state = dayManager.dismissEndOfDayReport(state) }
 
+    @Volatile
+    var isSimulating: Boolean = false
+        private set
+
     fun simulateRestOfDay() {
-        if (state.showEndOfDayReport) return
-        val currentDayNumber = state.currentTime.dayNumber
-        val nextMidnightMinutes = (currentDayNumber + 1).toLong() * 1440L
-        state = state.copy(
-            playerPausedTime = false,
-            playerCashierProgress = 0f,
-            playerStockerProgress = 0f,
-        )
-        val simulationDeltaMs = 500L
-        while (state.currentTime.totalMinutesElapsed < nextMidnightMinutes && !state.showEndOfDayReport) {
-            tick(simulationDeltaMs)
+        if (state.showEndOfDayReport || isSimulating) return
+        isSimulating = true
+        try {
+            state = state.copy(
+                playerPausedTime = false,
+                playerCashierProgress = 0f,
+                playerStockerProgress = 0f,
+            )
+            val targetMinutes = (state.currentTime.dayNumber + 1).toLong() * 1440L
+            state = simulateUntil(state, targetMinutes)
+        } finally {
+            isSimulating = false
         }
+    }
+
+    fun simulateUntil(startState: GameState, targetMinutes: Long): GameState {
+        var s = startState
+        val simulationDeltaMs = 500L
+        while (s.currentTime.totalMinutesElapsed < targetMinutes && !s.showEndOfDayReport) {
+            val result = tickOrchestrator.tick(s, simulationDeltaMs)
+            s = result.state
+        }
+        return s
     }
 
     // ── Progression ───────────────────────────────────────────────────────────
 
     fun unlockNextTier() {
-        val previousTier = state.currentTier
         state = progressionManager.unlockNextTier(state)
-        if (state.currentTier != previousTier) {
-            val newItems = itemMetadataCache.getAllItems().filter { (itemId, _) ->
-                val meta = itemMetadataCache.get(itemId) ?: return@filter false
-                meta.tier.unlockAmount > previousTier.unlockAmount &&
-                    meta.tier.unlockAmount <= state.currentTier.unlockAmount &&
-                    itemId !in state.inventory
-            }
-            if (newItems.isNotEmpty()) {
-                val updatedInventory = state.inventory.toMutableMap()
-                for ((itemId, _) in newItems) {
-                    updatedInventory[itemId] = InventoryState()
-                }
-                state = state.copy(inventory = updatedInventory)
-            }
-            _changes.value = GameStateChange.TierUnlocked(state.currentTier, previousTier)
-        }
     }
 
     // ── Auto-Order Config ──────────────────────────────────────────────────────
@@ -354,7 +277,7 @@ class GameEngine @Inject constructor(
     fun orderIncompleteNormalItem(itemId: Int, casePacksRequested: Int) {
         val result = inventoryManager.orderIncompleteNormalItem(state, itemId, casePacksRequested)
         state = result.state
-        result.changes.lastOrNull()?.let { _changes.value = it }
+        result.orderArrivalDay?.let { _engineEvents.tryEmit(EngineEvent.OrderScheduled(it)) }
     }
 
     // ── Truck Delivery ────────────────────────────────────────────────────────
@@ -371,27 +294,19 @@ class GameEngine @Inject constructor(
     }
 
     fun cancelPendingOrderLine(itemId: Int, truckId: Int) {
-        val moneyBefore = state.money
         state = truckManager.cancelPendingOrderLine(state, itemId, truckId, state.currentTime.dayNumber)
-        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
     }
 
     fun decrementOrderLine(itemId: Int, truckId: Int) {
-        val moneyBefore = state.money
         state = truckManager.decrementOrderLine(state, itemId, truckId, state.currentTime.dayNumber)
-        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
     }
 
     fun purchaseExtraTruckSlot() {
-        val moneyBefore = state.money
         state = truckManager.purchaseExtraTruckSlot(state)
-        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
     }
 
     fun requestEarlyTruck() {
-        val moneyBefore = state.money
         state = truckManager.requestEarlyTruck(state, state.currentTime.dayNumber)
-        if (state.money != moneyBefore) _changes.value = GameStateChange.MoneyChanged(state.money)
     }
 
     // ── Pricing ───────────────────────────────────────────────────────────────
@@ -414,64 +329,62 @@ class GameEngine @Inject constructor(
 
     fun loadState(savedState: GameState) {
         state = savedState
-        timeManager.syncTime(savedState.currentTime)
-        timeManager.config = savedState.storeConfig.copy()
-        timeManager.setSpeedMultiplier(savedState.storeConfig.gameSpeedMultiplier)
-        dayManager.syncDay(savedState.currentTime.dayNumber)
-        staffManager.reset()
-        trafficManager.reset()
+        restoreManagersFromState()
         state = pricingManager.updateSmoothedPriceIndex(state)
-        _changes.value = null
+    }
+
+    fun seedNewGame() {
+        state = buildSeededState()
+        restoreManagersFromState()
     }
 
     fun resetState() {
-        staffManager.reset()
-        trafficManager.reset()
-        timeManager.syncTime(com.example.superstoresimulator.domain.time.GameTime(0))
-        timeManager.config = StoreConfig()
-        timeManager.setSpeedMultiplier(1.0f)
-        dayManager.syncDay(0)
-        _changes.value = null
+        state = buildSeededState()
+        restoreManagersFromState()
+    }
 
-        state = GameState(
-            inventory = mutableMapOf(),
-            currentTime = timeManager.currentTime,
-            storeState = timeManager.getStoreState(),
-            storeConfig = StoreConfig(backroomCapPerItem = StoreSize.MOM_AND_POP.backroomCapPerItem),
-            money = Money.ZERO,
-            currentTier = ItemUnlockTier.TIER_1,
-            totalRevenue = Money.ZERO,
-        )
-
+    private fun buildSeededState(): GameState {
+        val baseState = GameState()
         val allDbItems = itemMetadataCache.getAllItems()
-        if (allDbItems.isNotEmpty()) {
-            val startingTier = ItemUnlockTier.TIER_2
-            val inventory = mutableMapOf<Int, InventoryState>()
-            val currentDay = state.currentTime.dayNumber
-            allDbItems.forEach { (itemId, item) ->
-                val metadata = itemMetadataCache.get(itemId)
-                val itemTier = metadata?.tier ?: ItemUnlockTier.TIER_1
-                if (itemTier.unlockAmount > startingTier.unlockAmount) return@forEach
-                val expirationDay = if (item.shelfLifeDays != null) {
-                    currentDay + item.shelfLifeDays
-                } else Int.MAX_VALUE
-                val startingBatch = ItemBatch(
-                    receivedDay = currentDay,
-                    quantity = 10,
-                    expirationDay = expirationDay,
-                )
-                inventory[itemId] = InventoryState(
-                    shelfBatches = listOf(startingBatch),
-                    backroomBatches = listOf(startingBatch),
-                )
-            }
-            state = state.copy(
-                inventory = inventory,
-                money = Money(5_000_000),
-                currentTier = startingTier,
-                currentStoreSize = StoreSize.SMALL_GROCERY,
-                storeConfig = StoreConfig(backroomCapPerItem = StoreSize.SMALL_GROCERY.backroomCapPerItem),
+        if (allDbItems.isEmpty()) return baseState
+
+        val startingTier = ItemUnlockTier.TIER_2
+        val inventory = mutableMapOf<Int, InventoryState>()
+        val currentDay = baseState.currentTime.dayNumber
+        allDbItems.forEach { (itemId, item) ->
+            val metadata = itemMetadataCache.get(itemId)
+            val itemTier = metadata?.tier ?: ItemUnlockTier.TIER_1
+            if (itemTier.unlockAmount > startingTier.unlockAmount) return@forEach
+            val expirationDay = if (item.shelfLifeDays != null) {
+                currentDay + item.shelfLifeDays
+            } else Int.MAX_VALUE
+            val startingBatch = ItemBatch(
+                receivedDay = currentDay,
+                quantity = 10,
+                expirationDay = expirationDay,
+            )
+            inventory[itemId] = InventoryState(
+                shelfBatches = listOf(startingBatch),
+                backroomBatches = listOf(startingBatch),
             )
         }
+        return baseState.copy(
+            inventory = inventory,
+            money = Money(5_000_000),
+            currentTier = startingTier,
+            currentStoreSize = StoreSize.SMALL_GROCERY,
+            storeConfig = StoreConfig(backroomCapPerItem = StoreSize.SMALL_GROCERY.backroomCapPerItem),
+        )
+    }
+
+    private fun restoreManagersFromState() {
+        val acc = state.simAccumulators
+        timeManager.syncTime(state.currentTime)
+        timeManager.accumulatedMilliseconds = acc.timeAccumulatorMs
+        timeManager.config = state.storeConfig.copy()
+        timeManager.setSpeedMultiplier(state.storeConfig.gameSpeedMultiplier)
+        dayManager.syncDay(acc.lastKnownDayNumber)
+        trafficManager.accumulatedCustomers = acc.trafficAccumulator
+        staffManager.restoreAccumulators(acc)
     }
 }

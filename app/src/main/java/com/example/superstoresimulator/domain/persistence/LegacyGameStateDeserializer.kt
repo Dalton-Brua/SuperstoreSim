@@ -405,7 +405,7 @@ object LegacyGameStateDeserializer {
         val common = deserializeCommonMetrics(json)
         return DailyMetrics(
             dayNumber = if (json.has("dayNumber")) json.getInt("dayNumber") else 0,
-            revenue = common.revenue, subtotal = common.subtotal, taxCollected = common.taxCollected,
+            subtotal = common.subtotal, taxCollected = common.taxCollected,
             transactionsCompleted = common.transactionsCompleted,
             rentPaid = common.rentPaid, wagesPaid = common.wagesPaid,
             refundsProcessed = common.refundsProcessed, refundAmount = common.refundAmount,
@@ -430,7 +430,7 @@ object LegacyGameStateDeserializer {
         return DailyMetrics(
             dayNumber = json.getInt("dayNumber"),
             dayOfWeek = json.getInt("dayOfWeek"),
-            revenue = common.revenue, subtotal = common.subtotal, taxCollected = common.taxCollected,
+            subtotal = common.subtotal, taxCollected = common.taxCollected,
             transactionsCompleted = common.transactionsCompleted,
             rentPaid = common.rentPaid, wagesPaid = common.wagesPaid,
             refundsProcessed = common.refundsProcessed, refundAmount = common.refundAmount,

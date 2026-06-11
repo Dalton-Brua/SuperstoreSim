@@ -31,7 +31,8 @@ data class SpoilageResult(
  * can add paid disposal ($50/day) and composting ($5k one-time, +$10/day revenue).
  * See EXTREME_FEATURES_PROPOSAL.md for complete waste disposal system design.
  */
-class SpoilageManager(
+@javax.inject.Singleton
+class SpoilageManager @javax.inject.Inject constructor(
     private val itemMetadataCache: ItemMetadataCache
 ) {
     /**

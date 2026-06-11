@@ -5,6 +5,7 @@ import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.MoneyData
+import com.example.superstoresimulator.domain.persistence.GameStateSerializer
 import com.example.superstoresimulator.domain.time.GameTime
 import com.example.superstoresimulator.domain.store.StoreState
 import kotlinx.coroutines.runBlocking
@@ -247,6 +248,58 @@ class GameEngineIntegrationTest {
     }
 
     // ── Delegation to managers (smoke tests) ──────────────────────────────────
+
+    // ── Round-trip determinism (Phase 1 verification) ─────────────────────────
+
+    @Test
+    fun `save-load round-trip preserves simulation accumulators`() {
+        // Run N ticks to build up accumulator state
+        repeat(50) { gameEngine.tick(16L) }
+
+        val stateAfterN = gameEngine.currentState()
+        val json = GameStateSerializer.serialize(stateAfterN)
+        val deserialized = GameStateSerializer.deserialize(json)!!
+
+        assertEquals(
+            stateAfterN.simAccumulators.timeAccumulatorMs,
+            deserialized.simAccumulators.timeAccumulatorMs,
+        )
+        assertEquals(
+            stateAfterN.simAccumulators.lastKnownDayNumber,
+            deserialized.simAccumulators.lastKnownDayNumber,
+        )
+        assertEquals(
+            stateAfterN.simAccumulators.trafficAccumulator,
+            deserialized.simAccumulators.trafficAccumulator,
+            0.0,
+        )
+        assertEquals(stateAfterN.currentTime, deserialized.currentTime)
+        assertEquals(stateAfterN.money, deserialized.money)
+        assertEquals(stateAfterN.inventory, deserialized.inventory)
+    }
+
+    @Test
+    fun `load into fresh engine then tick produces valid state`() {
+        // Run N ticks
+        repeat(50) { gameEngine.tick(16L) }
+        val midState = gameEngine.currentState()
+
+        // Serialize → deserialize → load into fresh engine
+        val json = GameStateSerializer.serialize(midState)
+        val deserialized = GameStateSerializer.deserialize(json)!!
+        val engine2 = newEngine()
+        engine2.loadState(deserialized)
+
+        // Run M more ticks on the restored engine
+        repeat(50) { engine2.tick(16L) }
+        val restored = engine2.currentState()
+
+        assertTrue("Time must advance past saved state",
+            restored.currentTime.totalMinutesElapsed >= midState.currentTime.totalMinutesElapsed)
+        assertTrue("Money must stay non-negative", restored.money.cents >= 0)
+        assertTrue("Inventory values non-negative",
+            restored.inventory.values.all { it.shelfStock >= 0 && it.backroomStock >= 0 })
+    }
 
     /**
      * Smoke test: Verify that cross-manager state updates work together.

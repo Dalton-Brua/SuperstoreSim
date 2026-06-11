@@ -14,13 +14,18 @@ import com.example.superstoresimulator.domain.StaffShift
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.player.PlayerRole
+import com.example.superstoresimulator.domain.SimAccumulators
+import com.example.superstoresimulator.domain.ZoningState
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class StaffManager {
+@Singleton
+class StaffManager @Inject constructor() {
 
-    private val cashierProgressByRegister: MutableMap<Int, Float> = mutableMapOf()
-    private var stockerProgress: Float = 0f
-    private var stockingManagerProgress: Float = 0f
-    private var freshHandlerProgress: Float = 0f
+    internal val cashierProgressByRegister: MutableMap<Int, Float> = mutableMapOf()
+    internal var stockerProgress: Float = 0f
+    internal var stockingManagerProgress: Float = 0f
+    internal var freshHandlerProgress: Float = 0f
 
     // Assignment queues: when an action fires, pop an entity ID to credit with XP.
     // Queues are refilled proportional to each employee's speed weight so fast
@@ -31,12 +36,7 @@ class StaffManager {
 
     // ── Zoning state (Phase 5B) ──────────────────────────────────────────────
 
-    data class StockerZoningState(
-        val targetItemId: Int? = null,
-        val progress: Float = 0f,
-    )
-
-    private val zoningByStockerId: MutableMap<Int, StockerZoningState> = mutableMapOf()
+    internal val zoningByStockerId: MutableMap<Int, ZoningState> = mutableMapOf()
 
     data class ZoneAction(val stockerId: Int, val targetItemId: Int)
 
@@ -172,7 +172,7 @@ class StaffManager {
         multiplier: Float,
     ): List<ZoneAction> {
         if (stockerWeight <= 0f) return emptyList()
-        val state = zoningByStockerId.getOrPut(stockerId) { StockerZoningState() }
+        val state = zoningByStockerId.getOrPut(stockerId) { ZoningState() }
         val targetId = state.targetItemId ?: return emptyList()
         val updated = state.progress + ZONE_ACTIONS_PER_SECOND * stockerWeight * delta.toFloat() * multiplier
         val actions = mutableListOf<ZoneAction>()
@@ -188,7 +188,7 @@ class StaffManager {
     fun assignZoningTarget(stockerId: Int, itemId: Int) {
         val current = zoningByStockerId[stockerId]
         if (current?.targetItemId == itemId) return
-        zoningByStockerId[stockerId] = StockerZoningState(targetItemId = itemId, progress = current?.progress ?: 0f)
+        zoningByStockerId[stockerId] = ZoningState(targetItemId = itemId, progress = current?.progress ?: 0f)
     }
 
     fun clearZoningTarget(stockerId: Int) {
@@ -671,6 +671,17 @@ class StaffManager {
         freshHandlerProgress = 0f
         stockingManagerProgress = 0f
         zoningByStockerId.clear()
+        resetDailyMetrics()
+    }
+
+    fun restoreAccumulators(acc: SimAccumulators) {
+        cashierProgressByRegister.clear()
+        cashierProgressByRegister.putAll(acc.cashierProgressByRegister)
+        stockerProgress = acc.stockerProgress
+        stockingManagerProgress = acc.stockingManagerProgress
+        freshHandlerProgress = acc.freshHandlerProgress
+        zoningByStockerId.clear()
+        zoningByStockerId.putAll(acc.zoningByStockerId)
         resetDailyMetrics()
     }
 

@@ -31,7 +31,7 @@ fun createTestGameEngine(cache: ItemMetadataCache): GameEngine {
     val dayManager = DayManager()
     val storeController = StoreController()
     val playerActionHandler = PlayerActionHandler()
-    val progressionManager = ProgressionManager()
+    val progressionManager = ProgressionManager(cache)
     val truckManager = TruckManager(cache)
     val inventoryManager = InventoryManager(cache, truckManager)
     val spoilageManager = SpoilageManager(cache)
@@ -50,8 +50,9 @@ fun createTestGameEngine(cache: ItemMetadataCache): GameEngine {
         registerManager, transactionEngine, trafficManager,
         dayRolloverProcessor, trafficProcessor, staffTickProcessor,
         playerTickProcessor, utilizationTracker,
+        staffManager, dayManager,
     )
-    return GameEngine(
+    val engine = GameEngine(
         itemMetadataCache = cache,
         tickOrchestrator = tickOrchestrator,
         transactionEngine = transactionEngine,
@@ -67,4 +68,6 @@ fun createTestGameEngine(cache: ItemMetadataCache): GameEngine {
         trafficManager = trafficManager,
         truckManager = truckManager,
     )
+    engine.seedNewGame()
+    return engine
 }

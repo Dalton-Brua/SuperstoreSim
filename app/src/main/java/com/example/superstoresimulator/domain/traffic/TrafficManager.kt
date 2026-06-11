@@ -2,20 +2,15 @@ package com.example.superstoresimulator.domain.traffic
 
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.store.StoreState
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlin.random.Random
 
-/**
- * Manages autonomous customer generation based on time-of-day traffic patterns.
- *
- * Uses fractional accumulation (same technique as TimeManager and stocker progress)
- * so customer arrivals are smooth and rate-correct regardless of tick granularity.
- *
- * Integrates with GameEngine.tick() — called once per frame when the store is open.
- */
-class TrafficManager {
+@Singleton
+class TrafficManager @Inject constructor() {
 
     /** Accumulated fractional customers from previous ticks. */
-    private var accumulatedCustomers = 0.0
+    internal var accumulatedCustomers = 0.0
 
     /**
      * Update customer traffic for this tick.

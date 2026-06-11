@@ -13,10 +13,11 @@ data class ResolvedPrice(
     val modifierPercent: Int,
 )
 
-class PricingManager(
+@javax.inject.Singleton
+class PricingManager @javax.inject.Inject constructor(
     private val cache: ItemMetadataCache,
-    val config: PricingConfig = PricingConfig.DEFAULT,
 ) {
+    val config: PricingConfig = PricingConfig.DEFAULT
 
     fun resolvePrice(itemId: Int, state: GameState): ResolvedPrice {
         val meta = cache.get(itemId) ?: return ResolvedPrice(Money.ZERO, Money.ZERO, 0)
