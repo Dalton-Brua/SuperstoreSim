@@ -9,7 +9,7 @@ data class PricingState(
     val categoryMarkups: Map<ItemCategory, Int> = emptyMap(),
     val itemOverrides: Map<Int, Int> = emptyMap(),
     val activeMarkdowns: Map<Int, Markdown> = emptyMap(),
-    val defaultMarkup: Int = 10,
+    val defaultMarkup: Int = 0,
     val smoothedPriceIndex: Float = 1.0f,
     val priceHistory: List<PriceChangeEvent> = emptyList(),
     val lastPriceIndexHour: Int = -1,

@@ -223,6 +223,8 @@ class BulkOrderTest {
     @Test
     fun `placeBulkOrder excludes items whose tier is above the current tier`() {
         // Item 1 is TIER_1 (qualifies); Item 3 is TIER_2 (excluded at TIER_1)
+        // Tier-locked items are not seeded into inventory at all (no entry until unlock),
+        // so they cannot match the bulk-order filter.
         // 1 item × 1 case = 1 total case (<20 → no discount)
         // baseCost = 3_000×1 = 3_000 ¢;  money: 100_000 - 3_000 = 97_000
         val items = listOf(
@@ -237,12 +239,15 @@ class BulkOrderTest {
         val state = engine.currentState()
         assertEquals("Money reflects only TIER_1 item", Money(97_000L), state.money)
         assertEquals("Item 1 (TIER_1) scheduled 6 units", 6, scheduledQtyForItem(engine, 1))
-        assertEquals("Item 3 (TIER_2) backroom must be unchanged at TIER_1", 10, state.inventory[3]?.backroomStock)
+        assertEquals("Item 3 (TIER_2) has no inventory entry at TIER_1", null, state.inventory[3])
+        assertEquals("Item 3 (TIER_2) nothing scheduled", 0, scheduledQtyForItem(engine, 3))
     }
 
     @Test
     fun `placeBulkOrder includes TIER_2 items once the player has advanced to TIER_2`() {
-        // Same item set as above, but currentTier is advanced to TIER_2 via state injection
+        // Same item set as above, but currentTier is advanced to TIER_2 via state injection.
+        // Mirrors ProgressionManager.unlockNextTier, which adds an empty inventory entry
+        // for each newly unlocked item so it becomes orderable.
         // Both items qualify; 2 items × 1 case = 2 total cases (<20 → no discount)
         // baseCost = 3_000×1 + 3_600×1 = 6_600 ¢;  money: 100_000 - 6_600 = 93_400
         val items = listOf(
@@ -250,7 +255,10 @@ class BulkOrderTest {
             makeItem(id = 3, category = ItemCategory.DAIRY,   casePack = 6, unitCostCents = 600, tier = "TIER_2"),
         )
         val engine = newEngine(items)
-        engine.state = engine.state.copy(currentTier = ItemUnlockTier.TIER_2)
+        engine.state = engine.state.copy(
+            currentTier = ItemUnlockTier.TIER_2,
+            inventory = engine.state.inventory + (3 to InventoryState()),
+        )
         setMoney(engine, 100_000L)
 
         engine.placeBulkOrder(maxTotalQuantity = 20, casePacksPerItem = 1, categoryFilter = null)
