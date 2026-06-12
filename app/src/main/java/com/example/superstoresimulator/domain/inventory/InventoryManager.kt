@@ -217,6 +217,7 @@ class InventoryManager(
         val inv = state.inventory[itemId] ?: return BuyResult(state, emptyList())
         val dbItem = cache.getItem(itemId) ?: return BuyResult(state, emptyList())
         val metadata = cache.get(itemId) ?: return BuyResult(state, emptyList())
+        if (metadata.isVendorItem) return BuyResult(state, emptyList())
 
         val casePackCost = dbItem.getCasePackCostAsMoney()
         if (state.money < casePackCost) return BuyResult(state, emptyList())
@@ -253,6 +254,7 @@ class InventoryManager(
         val inv = state.inventory[itemId] ?: return BuyResult(state, emptyList())
         val dbItem = cache.getItem(itemId) ?: return BuyResult(state, emptyList())
         val metadata = cache.get(itemId) ?: return BuyResult(state, emptyList())
+        if (metadata.isVendorItem) return BuyResult(state, emptyList())
         if (numCasePacks <= 0) return BuyResult(state, emptyList())
 
         val capInCasePacks = state.storeConfig.backroomCapPerItem
@@ -326,7 +328,8 @@ class InventoryManager(
             val categoryOk = categoryFilter == null || meta.category == categoryFilter
             val qtyOk = inv.shelfStock + inv.backroomStock <= maxTotalQuantity
             val notFresh = !isFreshItem(itemId)
-            tierOk && categoryOk && qtyOk && notFresh
+            val notVendor = !meta.isVendorItem
+            tierOk && categoryOk && qtyOk && notFresh && notVendor
         }
         if (matchingEntries.isEmpty()) return BuyResult(state, emptyList())
 
@@ -546,6 +549,7 @@ class InventoryManager(
         if (!config.enabled) return false
         if (isFreshItem(itemId)) return false
         val meta = cache.get(itemId) ?: return false
+        if (meta.isVendorItem) return false
         if (meta.tier.unlockAmount > state.currentTier.unlockAmount) return false
         val inv = state.inventory[itemId] ?: return false
         val totalStock = inv.shelfStock + inv.backroomStock
@@ -654,6 +658,7 @@ class InventoryManager(
             if (itemId in alreadyHandled) continue
             if (isFreshItem(itemId)) continue
             val meta = cache.get(itemId) ?: continue
+            if (meta.isVendorItem) continue
             if (meta.tier.unlockAmount > s.currentTier.unlockAmount) continue
             if (inv.shelfStock + inv.backroomStock > 0) continue
             if ((pending[itemId] ?: 0) > 0) continue

@@ -4,7 +4,7 @@
 
 The game currently has **136 items** across **12 categories**, with a planned research system (see `plans/plan-researchSystem.md`) that will gate items behind **24 product-line research entries**. Many of these gates have only 3-4 items, making discoveries feel thin. Additionally, real-world superstores carry entire departments not yet represented.
 
-This document defines **~218 new items** across existing and new categories, brings the total to **~354 items** across **20 categories**, and adds **31 new research gates** (55 total product-line gates). It also introduces **28 item affinity groups** — tagged cross-selling relationships (e.g. `breakfast`, `burger_bbq`, `cleaning_day`) that make customer baskets feel realistic by boosting the purchase weight of related items after one is selected. All items follow the existing `items.json` format (prices in cents, casePack, purchaseWeight, optional shelfLifeDays/soldByWeight).
+This document defines **~218 new items** across existing and new categories, brings the total to **~354 items** across **20 categories**, and adds **31 new research gates** (55 total product-line gates). It also introduces **28 item affinity groups** — tagged cross-selling relationships (e.g. `breakfast`, `burger_bbq`, `cleaning_day`) that make customer baskets feel realistic by boosting the purchase weight of related items after one is selected — and **31 substitution groups** that suppress co-purchase of items serving the same purpose (e.g. large vs small chips, Ground Beef vs Ground Turkey). All items follow the existing `items.json` format (prices in cents, casePack, purchaseWeight, optional shelfLifeDays/soldByWeight).
 
 **Gating philosophy**: Items are gated by **store size** (must have a large enough store), **research** (must spend research points to discover), and **prerequisite research** (must discover earlier gates first). No revenue gates — progression is driven by store upgrades and research, not arbitrary revenue thresholds.
 
@@ -994,13 +994,183 @@ When finalizing, each item should have 0-3 groups. Most items will have 1-2 grou
 ### Implementation Notes
 
 **Files to modify:**
-- `items.json` — add `"affinityGroups": ["breakfast", "dairy_staples"]` per item
-- `Item.kt` — add `affinityGroups: String` (comma-separated, stored as single column)
-- `ItemMetadata.kt` — add `affinityGroups: List<String>`
-- `ItemMetadataCache.kt` — add `sharesAffinityGroup(id1, id2): Boolean` and precomputed group→items index
-- `TransactionEngine.kt` — modify `weightedSample()` lines 343-371
+- `items.json` — add `"affinityGroups": ["breakfast", "dairy_staples"]` and optional `"substitutionGroup": "sub_bread_loaf"` per item
+- `Item.kt` — add `affinityGroups: String` (comma-separated), `substitutionGroup: String?` (single value)
+- `ItemMetadata.kt` — add `affinityGroups: List<String>`, `substitutionGroup: String?`
+- `ItemMetadataCache.kt` — add `sharesAffinityGroup(id1, id2): Boolean`, `sharesSubstitutionGroup(id1, id2): Boolean`, and precomputed group→items indexes for both
+- `TransactionEngine.kt` — modify `weightedSample()` lines 343-371. After each pick: boost items sharing affinity group (2.0x), suppress items sharing substitution group (0.1x). Substitution penalty overrides affinity boost when both apply.
 
-**No UI changes needed** — affinity is invisible to the player, it just makes baskets feel more realistic.
+**No UI changes needed** — affinity and substitution are invisible to the player, they just make baskets feel more realistic.
+
+---
+
+## Part 5: Substitution Groups
+
+### Design
+
+Items belong to at most **one substitution group** — a tag representing "replaces" relationships. When a customer picks an item, other items sharing the same substitution group get their weight **suppressed** (multiplied by `SUBSTITUTION_PENALTY = 0.1f`), making it nearly impossible for the same customer to buy both.
+
+**Key difference from affinity groups:**
+- Affinity groups **boost** (2.0x): "goes well with" — buy chips AND dip
+- Substitution groups **suppress** (0.1x): "replaces" — buy large chips OR small chips, not both
+
+**When both apply**: Substitution penalty wins. If two items share an affinity group AND a substitution group, the penalty applies (the "replaces" signal is stronger than "goes well with").
+
+**Data model**: Each item has at most one `substitutionGroup: String?`. An item can be in multiple affinity groups but only one substitution group.
+
+**What qualifies as substitutes:**
+- Same product, different size (8oz chips vs 16oz chips)
+- Same product, variant swap (Peanut Butter vs Organic Peanut Butter)
+- Same meal slot, pick one (Ground Beef vs Ground Turkey)
+- Same format, flavor choice (Coca-Cola 2L vs Diet Cola 2L)
+
+### Substitution Groups
+
+#### Bread & Bakery
+
+**`sub_sandwich_bread`** — Pick one sandwich loaf
+- Bread (Whole Wheat), White Bread, Multigrain Bread, Keto Bread, Cinnamon Raisin Bread
+
+**`sub_artisan_bread`** — Pick one artisan bread
+- Sourdough Loaf, French Baguette, Ciabatta Roll, Pumpernickel Bread
+
+**`sub_dessert_pastry`** — Pick one bakery dessert slice
+- Chocolate Cake Slice, Lemon Tart, Tiramisu Slice, Fruit Tart
+
+#### Grains & Pasta
+
+**`sub_rice`** — Pick one rice type
+- White Rice, Brown Rice
+
+**`sub_spaghetti`** — Pick one long pasta
+- Spaghetti Pasta, Whole Wheat Pasta
+
+#### Spreads
+
+**`sub_nut_butter`** — Pick one nut spread
+- Peanut Butter, Organic Peanut Butter, Almond Butter
+
+#### Dairy & Alternatives
+
+**`sub_milk`** — Pick one milk type
+- Milk, Oat Milk, Almond Milk
+
+**`sub_yogurt`** — Pick one yogurt type
+- Strawberry Yogurt, Greek Yogurt, Coconut Yogurt
+
+#### Snacks
+
+**`sub_chips_classic_size`** — Same flavor, different size
+- Potato Chips (8 oz), Family Size Chips (16 oz)
+
+**`sub_gummy_candy`** — Pick one gummy candy
+- Gummy Bears, Sour Gummy Worms
+
+**`sub_granola_bar`** — Pick one granola bar type
+- Granola Bar, Organic Granola Bars
+
+#### Canned Goods
+
+**`sub_canned_beans`** — Pick one canned bean
+- Canned Black Beans, Canned Pinto Beans
+
+**`sub_tomato_sauce`** — Both tomato-based cooking sauces
+- Tomato Sauce, Marinara Sauce
+
+**`sub_salsa`** — Pick one salsa condiment
+- Salsa, Salsa Verde
+
+#### Meat & Protein
+
+**`sub_ground_meat`** — Pick one ground meat for a recipe
+- Ground Beef, Ground Turkey
+
+**`sub_deli_sliced`** — Pick one sliced deli meat
+- Deli Turkey, Deli Ham, Deli Roast Beef, Deli Salami
+
+**`sub_grilling_link`** — Pick one grilling sausage/link
+- Hot Dogs, Bratwurst
+
+**`sub_premium_steak`** — Pick one premium steak cut
+- Ribeye Steak, Filet Mignon
+
+**`sub_premium_fish`** — Pick one premium fish filet
+- Salmon Fillet, Tuna Steak
+
+**`sub_luxury_seafood`** — Pick one luxury shellfish
+- Scallops, Lobster Tail, Crab Legs
+
+**`sub_soy_protein`** — Pick one soy-based protein
+- Tofu, Tempeh
+
+#### Drinks
+
+**`sub_soda_2l`** — Pick one 2-liter soda flavor
+- Coca-Cola 2L, Diet Cola 2L, Lemon-Lime Soda 2L, Root Beer 2L, Ginger Ale 2L, Grape Soda 2L, Cherry Cola 2L
+
+**`sub_juice_64oz`** — Pick one 64oz juice bottle
+- Orange Juice, Apple Juice, Cranberry Juice, Grape Juice
+
+**`sub_coffee`** — Pick one home coffee format
+- Ground Coffee, Whole Bean Coffee
+
+#### Frozen
+
+**`sub_frozen_dessert_pint`** — Pick one frozen dessert container
+- Vanilla Ice Cream, Mango Sorbet, Gelato Pint
+
+**`sub_frozen_wrapped`** — Pick one frozen wrapped appetizer
+- Frozen Dumplings, Frozen Samosas, Frozen Spring Rolls, Frozen Empanadas
+
+#### Deli
+
+**`sub_deli_salad`** — Pick one deli side salad
+- Potato Salad, Macaroni Salad, Pasta Salad
+
+#### Health & Pharmacy
+
+**`sub_pain_reliever`** — Pick one OTC pain reliever
+- Aspirin, Ibuprofen
+
+#### Electronics
+
+**`sub_headphones`** — Pick one personal audio device
+- Headphones, Wireless Earbuds
+
+#### Pet
+
+**`sub_dog_food`** — Pick one main dog food format
+- Dry Dog Food 15lb, Wet Dog Food 12-Pack
+
+**`sub_cat_food`** — Pick one main cat food format
+- Dry Cat Food 10lb, Wet Cat Food 12-Pack
+
+### Items With No Substitution Group
+
+Most items have no substitution group — they serve a unique enough purpose that buying multiples makes sense. Examples:
+- All chip **flavors** (BBQ, Sour Cream & Onion, etc.) — a party shopper buys several flavors
+- Shampoo + Conditioner — complementary, not substitutes
+- Ketchup + Mustard — complementary condiments
+- Chicken Breast + Pork Chops — different proteins for different meals
+- Baby Diapers + Baby Wipes — complementary baby supplies
+- All cleaning products — different surfaces/purposes
+
+### Substitution vs Affinity Overlap
+
+Some items appear in **both** an affinity group and a substitution group. This is correct:
+- Peanut Butter and Almond Butter share `sub_nut_butter` (substitute) AND both appear in the `pbj` affinity group
+- Ground Beef and Ground Turkey share `sub_ground_meat` (substitute) AND both appear in `burger_bbq`
+- All 2L sodas share `sub_soda_2l` (substitute) AND some appear in `snack_party`, `burger_bbq`, etc.
+
+The substitution penalty (0.1x) overrides the affinity boost (2.0x) when both apply. If a customer picks Coca-Cola 2L, Diet Cola 2L gets suppressed even though both are in `snack_party`.
+
+### Summary
+
+| Metric | Count |
+|--------|-------|
+| Total substitution groups | 31 |
+| Items with a substitution group | ~95 |
+| Items without a substitution group | ~259 |
 
 ---
 

@@ -94,9 +94,10 @@ class VendorManager @Inject constructor(private val cache: ItemMetadataCache) {
 
             val items = cache.getVendorItemsByTier(vendorId, vendorTier)
             var totalDelivered = 0
+            val maxCasePacks = state.storeConfig.backroomCapPerItem
 
             for (item in items) {
-                val quantity = item.casePack * VendorConfig.RESTOCK_CASE_PACK_MULTIPLIER
+                val quantity = item.casePack * maxCasePacks
                 val expirationDay = if (item.shelfLifeDays != null) {
                     currentDay + item.shelfLifeDays
                 } else Int.MAX_VALUE
@@ -110,7 +111,6 @@ class VendorManager @Inject constructor(private val cache: ItemMetadataCache) {
                 val existing = inventory[item.id] ?: InventoryState()
                 inventory[item.id] = existing.copy(
                     shelfBatches = existing.shelfBatches + batch,
-                    zoneScore = 1.0f,
                 )
                 totalDelivered += quantity
             }

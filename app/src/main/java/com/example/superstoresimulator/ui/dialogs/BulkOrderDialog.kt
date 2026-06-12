@@ -106,7 +106,8 @@ fun BulkOrderDialog(
         allItems.filter { item ->
             val totalQty = item.shelfStock + item.backroomStock
             val categoryOk = selectedCategory == null || item.category == selectedCategory
-            totalQty <= maxTotalQuantity && categoryOk
+            val notVendor = item.vendorName == null
+            totalQty <= maxTotalQuantity && categoryOk && notVendor
         }
     }
 

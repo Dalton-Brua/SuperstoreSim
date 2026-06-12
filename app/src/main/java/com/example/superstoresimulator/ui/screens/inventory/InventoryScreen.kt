@@ -528,29 +528,31 @@ internal fun InventoryItemDetailScreen(
                 )
             }
 
-            // Order button
-            item {
-                Button(
-                    onClick = { onBuyItem(item.id) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = PrimaryDark,
-                        disabledContainerColor = ChipSurface
-                    ),
-                    enabled = money >= item.casePackCost,
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        text = when {
-                            money < item.casePackCost -> "Insufficient Funds"
-                            else -> "Order Case Pack (${item.casePackCost})"
-                        },
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (money >= item.casePackCost) TextWhite else TextMuted
-                    )
+            // Order button (hidden for vendor-stocked items)
+            if (item.vendorName == null) {
+                item {
+                    Button(
+                        onClick = { onBuyItem(item.id) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = PrimaryDark,
+                            disabledContainerColor = ChipSurface
+                        ),
+                        enabled = money >= item.casePackCost,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = when {
+                                money < item.casePackCost -> "Insufficient Funds"
+                                else -> "Order Case Pack (${item.casePackCost})"
+                            },
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (money >= item.casePackCost) TextWhite else TextMuted
+                        )
+                    }
                 }
             }
         }

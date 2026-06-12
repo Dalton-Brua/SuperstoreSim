@@ -195,22 +195,33 @@ fun InventoryItemCard(
 
             Spacer(Modifier.height(8.dp))
 
-            Button(
-                onClick = onBuy,
-                modifier = Modifier.fillMaxWidth(),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = PrimaryDark,
-                    contentColor = TextWhite,
-                    disabledContainerColor = ChipSurface,
-                    disabledContentColor = TextMuted
-                ),
-                enabled = canAffordBuy,
-                shape = GameButtonStyles.Shape,
-            ) {
+            if (item.vendorName != null) {
                 Text(
-                    "Order (${item.casePackCost})",
-                    fontWeight = FontWeight.Bold
+                    "Vendor Stocked",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Violet,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
+            } else {
+                Button(
+                    onClick = onBuy,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = PrimaryDark,
+                        contentColor = TextWhite,
+                        disabledContainerColor = ChipSurface,
+                        disabledContentColor = TextMuted
+                    ),
+                    enabled = canAffordBuy,
+                    shape = GameButtonStyles.Shape,
+                ) {
+                    Text(
+                        "Order (${item.casePackCost})",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }

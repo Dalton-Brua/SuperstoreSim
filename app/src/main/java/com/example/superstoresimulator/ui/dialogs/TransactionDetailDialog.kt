@@ -237,7 +237,7 @@ fun TransactionDetailDialog(
                     .fillMaxWidth(0.95f)
                     .fillMaxHeight(0.8f),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = LightBackground),
+                colors = CardDefaults.cardColors(containerColor = CardWhite),
                 elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
             ) {
                 Column {
@@ -245,7 +245,7 @@ fun TransactionDetailDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(LightBackground)
+                            .background(CardWhite)
                             .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
