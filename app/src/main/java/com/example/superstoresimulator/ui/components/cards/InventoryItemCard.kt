@@ -36,6 +36,8 @@ import com.example.superstoresimulator.ui.theme.SuccessChipSurface
 import com.example.superstoresimulator.ui.theme.TextMuted
 import com.example.superstoresimulator.ui.theme.TextSecondary
 import com.example.superstoresimulator.ui.theme.TextWhite
+import com.example.superstoresimulator.ui.theme.Primary
+import com.example.superstoresimulator.ui.theme.Violet
 import com.example.superstoresimulator.domain.time.GameTime
 
 @Composable
@@ -60,13 +62,31 @@ fun InventoryItemCard(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
 
-            // Name
-            Text(
-                text = item.name,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                color = PrimaryDark
-            )
+            // Name + vendor badge
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = item.name,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = PrimaryDark,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (item.vendorName != null) {
+                    Text(
+                        text = item.vendorName,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextWhite,
+                        modifier = Modifier
+                            .background(Violet, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                }
+            }
 
             // First stat row
             Row(

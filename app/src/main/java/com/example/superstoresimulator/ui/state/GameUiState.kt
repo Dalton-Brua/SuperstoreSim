@@ -36,6 +36,7 @@ data class GameUiState(
     /** Register system — per-register status, assignment, and purchase info. */
     val registers: RegistersUIState = RegistersUIState(),
     val pricing: PricingUIState = PricingUIState(),
+    val vendors: VendorUIState = VendorUIState(),
 )
 
 data class AppUIState(
@@ -115,6 +116,7 @@ data class InventoryItemUI(
     val priceModifierPercent: Int = 0,
     val hasActiveMarkdown: Boolean = false,
     val soldByWeight: Boolean = false,
+    val vendorName: String? = null,
 )
 
 
@@ -303,5 +305,35 @@ data class PricingUIState(
     val basketMultiplier: Float = 1.0f,
     val reputationLabel: String = "Standard",
     val itemsMarkedDown: Int = 0,
+)
+
+// ── Vendor System UI State ──────────────────────────────────────────────────
+
+data class VendorItemInfo(
+    val name: String,
+    val price: Money,
+    val vendorTier: Int,
+)
+
+data class VendorCardUI(
+    val vendorId: String,
+    val vendorName: String,
+    val reputation: Int,
+    val maxReputation: Int,
+    val tierName: String,
+    val commissionPercent: Int,
+    val restockIntervalDays: Int,
+    val investCost: Money,
+    val canInvest: Boolean,
+    val atMaxRep: Boolean,
+    val items: List<VendorItemInfo> = emptyList(),
+)
+
+data class VendorUIState(
+    val vendors: List<VendorCardUI> = emptyList(),
+    val currentVendorTier: Int = 0,
+    val nextTierCost: Money? = null,
+    val canUnlockNextTier: Boolean = false,
+    val maxTierReached: Boolean = false,
 )
 

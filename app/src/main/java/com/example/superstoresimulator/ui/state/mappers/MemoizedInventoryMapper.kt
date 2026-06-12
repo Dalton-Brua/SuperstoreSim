@@ -8,6 +8,7 @@ import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.pricing.PricingState
 import com.example.superstoresimulator.domain.pricing.ResolvedPrice
+import com.example.superstoresimulator.domain.vendor.VendorConfig
 import com.example.superstoresimulator.ui.state.InventoryItemUI
 import com.example.superstoresimulator.ui.state.InventoryUIState
 
@@ -32,13 +33,16 @@ import com.example.superstoresimulator.ui.state.InventoryUIState
 class MemoizedInventoryMapper(
     private val metadataCache: ItemMetadataCache
 ) {
-    
+    private val vendorNameLookup: Map<String, String> =
+        VendorConfig.VENDORS.associate { it.vendorId to it.vendorName }
+
     private var lastDomainInventory: Map<Int, InventoryState>? = null
     private var lastMappedItems: List<InventoryItemUI>? = null
     private var lastTier: ItemUnlockTier? = null
     private var lastBackroomCap: Int? = null
     private var lastScheduledTrucks: List<ScheduledTruck>? = null
     private var lastPricingState: PricingState? = null
+    private var lastVendorTier: Int? = null
     private val itemCache: MutableMap<Int, InventoryItemUI> = mutableMapOf()
 
     fun map(
@@ -52,15 +56,18 @@ class MemoizedInventoryMapper(
         val domainInventory = currentInventory
 
         val currentPricing = gameState?.pricingState
-        // Invalidate the cache when the tier, backroom cap, truck, or pricing state changes
+        val currentVendorTier = gameState?.vendorSystem?.currentVendorTier
+        // Invalidate the cache when the tier, backroom cap, truck, vendor tier, or pricing state changes
         if (tier != lastTier || backroomCap != lastBackroomCap ||
-            scheduledTrucks != lastScheduledTrucks || currentPricing != lastPricingState) {
+            scheduledTrucks != lastScheduledTrucks || currentPricing != lastPricingState ||
+            currentVendorTier != lastVendorTier) {
             lastDomainInventory = null
             lastMappedItems = null
             lastTier = tier
             lastBackroomCap = backroomCap
             lastScheduledTrucks = scheduledTrucks
             lastPricingState = currentPricing
+            lastVendorTier = currentVendorTier
         }
 
         // ✅ If inventory hasn't changed structurally, return cached result immediately
@@ -151,15 +158,20 @@ class MemoizedInventoryMapper(
                 soldByWeight = meta.soldByWeight,
                 description = metadataCache.getItem(itemId)?.description ?: "",
                 tierLabel = meta.tier.name,
+                vendorName = meta.vendorId?.let { vendorNameLookup[it] },
             )
         }
         
         // Rebuild items list, filtering to only items whose tier is unlocked
         val currentTierAmount = tier.unlockAmount
+        val vendorTier = currentVendorTier ?: 0
         val items = domainInventory.keys.mapNotNull { itemId ->
             val ui = itemCache[itemId] ?: return@mapNotNull null
-            val itemTier = metadataCache.get(itemId)?.tier ?: ItemUnlockTier.TIER_1
-            if (itemTier.unlockAmount > currentTierAmount) null else ui
+            val meta = metadataCache.get(itemId)
+            val itemTier = meta?.tier ?: ItemUnlockTier.TIER_1
+            if (itemTier.unlockAmount > currentTierAmount) return@mapNotNull null
+            if (meta?.isVendorItem == true && meta.vendorTier > vendorTier) return@mapNotNull null
+            ui
         }
         
         // Cache the result for next frame

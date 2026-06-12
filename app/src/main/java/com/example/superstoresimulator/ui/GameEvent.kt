@@ -151,4 +151,8 @@ sealed interface GameEvent {
 
     // Store Manager Config
     data class UpdateStoreManagerConfig(val config: StoreManagerConfig) : GameEvent
+
+    // Vendor System
+    data object UnlockNextVendorTier : GameEvent
+    data class InvestInVendor(val vendorId: String) : GameEvent
 }

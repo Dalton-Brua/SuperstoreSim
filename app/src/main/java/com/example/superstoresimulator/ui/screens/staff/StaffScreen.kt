@@ -55,6 +55,7 @@ import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.dialogs.StoreManagerConfigDialog
 import com.example.superstoresimulator.ui.state.ProgressionUIState
 import com.example.superstoresimulator.ui.state.StaffUIState
+import com.example.superstoresimulator.ui.state.VendorUIState
 import com.example.superstoresimulator.ui.theme.Amber
 import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.CautionDark
@@ -558,19 +559,22 @@ private fun UtilizationBar(label: String, utilization: Float) {
 fun StaffAndUnlocksScreen(
     staffState: StaffUIState,
     progression: ProgressionUIState,
+    vendorState: VendorUIState,
     money: Money,
     modifier: Modifier = Modifier,
     initialTab: Int = 0,
     onTabChanged: (Int) -> Unit,
     onSelectStaffDef: (EntityDef?) -> Unit,
     onUnlockNextTier: () -> Unit,
+    onUnlockNextVendorTier: () -> Unit,
+    onInvestInVendor: (String) -> Unit,
     onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int) -> Unit = { _, _, _ -> },
     onUpdateStoreManagerConfig: (StoreManagerConfig) -> Unit = {},
-) {    val tabs = listOf("Staff", "Schedule", "Unlocks")
+) {    val tabs = listOf("Staff", "Schedule", "Unlocks", "Vendors")
 
     // Pager state for tab navigation
     val pagerState = rememberPagerState(
-        pageCount = { 3 },
+        pageCount = { 4 },
         initialPage = initialTab
     )
     val coroutineScope = rememberCoroutineScope()
@@ -650,6 +654,12 @@ fun StaffAndUnlocksScreen(
                     progression = progression,
                     money = money,
                     onUnlockNextTier = onUnlockNextTier,
+                )
+                3 -> VendorsScreen(
+                    vendorState = vendorState,
+                    money = money,
+                    onUnlockNextTier = onUnlockNextVendorTier,
+                    onInvestInVendor = onInvestInVendor,
                 )
             }
         }

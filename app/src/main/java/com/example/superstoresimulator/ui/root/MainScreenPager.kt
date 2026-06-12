@@ -128,6 +128,7 @@ fun MainScreenPager(
             Screen.STAFF -> StaffAndUnlocksScreen(
                 staffState = state.staff,
                 progression = state.progression,
+                vendorState = state.vendors,
                 money = state.app.money,
                 initialTab = navState.selectedStaffTab,
                 onTabChanged = { tab -> navState.selectedStaffTab = tab },
@@ -136,6 +137,8 @@ fun MainScreenPager(
                     navState.currentScreen = Screen.STAFF_ENTITY_LIST
                 },
                 onUnlockNextTier = { onEvent(GameEvent.UnlockNextTier) },
+                onUnlockNextVendorTier = { onEvent(GameEvent.UnlockNextVendorTier) },
+                onInvestInVendor = { vendorId -> onEvent(GameEvent.InvestInVendor(vendorId)) },
                 onUpdateShift = { entityId, newStartHour, newDuration ->
                     onEvent(GameEvent.UpdateShift(entityId, newStartHour, newDuration))
                 },

@@ -42,9 +42,13 @@ class TransactionEngine(
         val register = state.registers.findRegisterById(registerId) ?: return state
 
         val currentTierAmount = state.currentTier.unlockAmount
+        val currentVendorTier = state.vendorSystem.currentVendorTier
         val availableItemIds = state.inventory.keys.filter { itemId ->
-            val itemTier = cache?.get(itemId)?.tier ?: ItemUnlockTier.TIER_1
-            itemTier.unlockAmount <= currentTierAmount
+            val meta = cache?.get(itemId)
+            val itemTier = meta?.tier ?: ItemUnlockTier.TIER_1
+            if (itemTier.unlockAmount > currentTierAmount) return@filter false
+            if (meta?.isVendorItem == true && meta.vendorTier > currentVendorTier) return@filter false
+            true
         }
         if (availableItemIds.isEmpty()) return state
 
@@ -99,9 +103,13 @@ class TransactionEngine(
         if (register.transactionActive) return state
 
         val currentTierAmount = state.currentTier.unlockAmount
+        val currentVendorTier = state.vendorSystem.currentVendorTier
         val availableItemIds = state.inventory.keys.filter { itemId ->
-            val itemTier = cache?.get(itemId)?.tier ?: ItemUnlockTier.TIER_1
-            itemTier.unlockAmount <= currentTierAmount
+            val meta = cache?.get(itemId)
+            val itemTier = meta?.tier ?: ItemUnlockTier.TIER_1
+            if (itemTier.unlockAmount > currentTierAmount) return@filter false
+            if (meta?.isVendorItem == true && meta.vendorTier > currentVendorTier) return@filter false
+            true
         }
         if (availableItemIds.isEmpty()) return state
 

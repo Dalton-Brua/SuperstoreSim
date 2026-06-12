@@ -22,6 +22,7 @@ import com.example.superstoresimulator.ui.state.mappers.buildStaffScheduleEntrie
 import com.example.superstoresimulator.ui.state.mappers.countActiveStaff
 import com.example.superstoresimulator.ui.state.mappers.buildDeliveryUiState
 import com.example.superstoresimulator.ui.state.mappers.buildPricingUiState
+import com.example.superstoresimulator.ui.state.mappers.buildVendorUiState
 import com.example.superstoresimulator.ui.state.mappers.buildProgressionUiState
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -82,7 +83,7 @@ class GameViewModel @Inject constructor(
     private var tickLoopActive = true
 
     companion object {
-        private const val MIN_OFFLINE_THRESHOLD_MS = 5L * 1000 // TEMP: 5 seconds for testing
+        private const val MIN_OFFLINE_THRESHOLD_MS = 2L * 60 * 1000
     }
 
     init {
@@ -358,6 +359,14 @@ class GameViewModel @Inject constructor(
                 gameEngine.updateStoreManagerConfig(event.config)
             }
 
+            GameEvent.UnlockNextVendorTier -> {
+                gameEngine.unlockNextVendorTier()
+            }
+
+            is GameEvent.InvestInVendor -> {
+                gameEngine.investInVendor(event.vendorId)
+            }
+
             GameEvent.Tick -> {
                 if (!gameEngine.isSimulating) gameEngine.tick(tickDelta)
             }
@@ -467,6 +476,7 @@ class GameViewModel @Inject constructor(
             delivery = buildDeliveryUiState(domain, itemMetadataCache),
             registers = buildRegistersUiState(domain),
             pricing = buildPricingUiState(domain),
+            vendors = buildVendorUiState(domain, itemMetadataCache),
         )
     }
 
