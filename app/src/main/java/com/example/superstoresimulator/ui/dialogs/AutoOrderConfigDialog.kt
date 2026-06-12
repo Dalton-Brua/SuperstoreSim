@@ -17,6 +17,7 @@ import com.example.superstoresimulator.ui.theme.PrimaryDark
 import com.example.superstoresimulator.ui.theme.PrimaryLight
 import com.example.superstoresimulator.ui.theme.TextPrimary
 import com.example.superstoresimulator.ui.theme.TextSecondary
+import com.example.superstoresimulator.ui.theme.TextWhite
 
 @Composable
 fun AutoOrderConfigDialog(
@@ -130,7 +131,7 @@ fun AutoOrderConfigDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryDark),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Save")
+                        Text("Save", color = TextWhite)
                     }
                 }
             }
@@ -229,7 +230,7 @@ fun BasicAutoOrderInfoDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryDark),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Save")
+                        Text("Save", color = TextWhite)
                     }
                 }
             }

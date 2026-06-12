@@ -21,9 +21,12 @@ data class ItemMetadata(
     /** Number of days until item expires. Null = non-perishable (never expires). */
     val shelfLifeDays: Int? = null,
     val soldByWeight: Boolean = false,
+    val vendorId: String? = null,
+    val vendorTier: Int = -1,
 ) {
     /** Returns true if this item is perishable (has an expiration date). */
     val isPerishable: Boolean get() = shelfLifeDays != null
+    val isVendorItem: Boolean get() = vendorId != null
     
     companion object {
         fun default(itemId: Int): ItemMetadata {

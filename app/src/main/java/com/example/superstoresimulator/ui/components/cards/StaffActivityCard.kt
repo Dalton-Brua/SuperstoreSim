@@ -25,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.example.superstoresimulator.ui.components.common.ActivityChip
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -185,25 +186,14 @@ fun StaffActivityCard(
 
 @Composable
 private fun ActivityCountChip(activity: EmployeeActivity, count: Int) {
-    val (label, chipColor, textColor) = when (activity) {
-        EmployeeActivity.STOCKING -> Triple("Stocking", SuccessChipSurface, SuccessTextDark)
-        EmployeeActivity.ZONING -> Triple("Zoning", InfoChipSurface, PrimaryDark)
-        EmployeeActivity.HANDLING_FRESH -> Triple("Fresh", SuccessChipSurface, SuccessTextDark)
-        EmployeeActivity.CASHIERING -> Triple("Cashiering", SuccessChipSurface, SuccessTextDark)
-        EmployeeActivity.WAITING_FOR_CUSTOMER -> Triple("Waiting", WarningChipSurface, WarningTextDark)
-        EmployeeActivity.IDLE -> Triple("Idle", ErrorSurface, CriticalRed)
-        EmployeeActivity.OFF_SHIFT -> Triple("Off shift", PlaceholderSurface, TextSecondary)
+    val label = when (activity) {
+        EmployeeActivity.STOCKING -> "Stocking"
+        EmployeeActivity.ZONING -> "Zoning"
+        EmployeeActivity.HANDLING_FRESH -> "Fresh"
+        EmployeeActivity.CASHIERING -> "Cashiering"
+        EmployeeActivity.WAITING_FOR_CUSTOMER -> "Waiting"
+        EmployeeActivity.IDLE -> "Idle"
+        EmployeeActivity.OFF_SHIFT -> "Off shift"
     }
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = chipColor,
-    ) {
-        Text(
-            text = "$count $label",
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = textColor,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-        )
-    }
+    ActivityChip("$count $label", activity)
 }

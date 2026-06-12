@@ -30,6 +30,8 @@ data class Item(
     /** Number of days until item expires. Null = non-perishable (never expires). */
     val shelfLifeDays: Int? = null,
     val soldByWeight: Boolean = false,
+    val vendorId: String? = null,
+    val vendorTier: Int = -1,
 ) {
     /**
      * Get price as Money object

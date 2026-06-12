@@ -2,6 +2,7 @@ package com.example.superstoresimulator.ui.screens.staff
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import com.example.superstoresimulator.domain.Entities.EntityDef
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -491,13 +492,10 @@ private fun formatHour(hour: Int): String = when {
     else -> "${hour - 12} PM"
 }
 
-private fun roleDisplayName(key: String): String = when (key) {
-    "cashier" -> "CASHIERS"
-    "stocker" -> "STOCKERS"
-    "fresh_handler" -> "FRESH HANDLERS"
-    "manager" -> "MANAGERS"
-    else -> key.uppercase()
-}
+private fun roleDisplayName(key: String): String =
+    EntityDef.allEntities.firstOrNull { it.key == key }
+        ?.let { "${it.displayName.uppercase()}S" }
+        ?: key.uppercase()
 
 private fun roleColor(key: String): Color = when (key) {
     "cashier" -> ROLE_COLOR_CASHIER

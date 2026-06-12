@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.Transactions.TransactionEngine
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.ui.state.GameUiState
 import com.example.superstoresimulator.ui.state.RegisterUIState
@@ -266,7 +267,7 @@ fun RegisterDetailDialog(
                         val rungSubtotal = txLines
                             .filter { !it.lostToOutOfStock }
                             .fold(Money.ZERO) { acc, line -> acc + line.unitPrice * line.rungQty }
-                        val rungTax = rungSubtotal * 0.0825
+                        val rungTax = rungSubtotal * TransactionEngine.DEFAULT_SALES_TAX_RATE
                         TransactionDetails(
                             transactionLines = txLines,
                             subtotal = rungSubtotal,

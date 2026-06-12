@@ -47,6 +47,8 @@ object ItemDataLoader {
                         tier = if (itemJson.has("tier")) itemJson.getString("tier") else "TIER_1",
                         shelfLifeDays = if (itemJson.has("shelfLifeDays")) itemJson.getInt("shelfLifeDays") else null,
                         soldByWeight = if (itemJson.has("soldByWeight")) itemJson.getBoolean("soldByWeight") else false,
+                        vendorId = if (itemJson.has("vendorId")) itemJson.getString("vendorId") else null,
+                        vendorTier = if (itemJson.has("vendorTier")) itemJson.getInt("vendorTier") else -1,
                     )
                     items.add(item)
                 }

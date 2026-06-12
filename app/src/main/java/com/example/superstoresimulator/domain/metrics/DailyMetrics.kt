@@ -1,6 +1,7 @@
 package com.example.superstoresimulator.domain.metrics
 
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.time.GameTime
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -9,6 +10,8 @@ data class DeliveredItemLine(
     val itemName: String,
     val casePacks: Int,
     val quantity: Int,
+    val deferredCasePacks: Int = 0,
+    val deferredQuantity: Int = 0,
 )
 
 @Serializable
@@ -61,7 +64,7 @@ data class OutOfStockEvent(
 )
 
 @Serializable
-enum class AutoHireAction { HIRED, SKIPPED, REBALANCED, PURCHASED }
+enum class AutoHireAction { HIRED, SKIPPED, REBALANCED, PURCHASED, PROMOTED, TERMINATED }
 
 @Serializable
 data class AutoHireEvent(
@@ -138,10 +141,21 @@ data class DailyMetrics(
     // ── Auto-Hire Events ─────────────────────────────────────────────────
     val autoHireEvents: List<AutoHireEvent> = emptyList(),
 
+    // ── Staff Utilization ────────────────────────────────────────────────
+    val avgCashierUtilization: Float = 0f,
+    val avgStockerUtilization: Float = 0f,
+    val avgFreshUtilization: Float = 0f,
+    val avgZoneScore: Float = 1f,
+
     // ── Pricing ─────────────────────────────────────────────────────────
     val markdownsSaved: Money = Money.ZERO,
     val markupExtraRevenue: Money = Money.ZERO,
     val itemsMarkedDown: Int = 0,
+
+    // ── Vendor System ────────────────────────────────────────────────────
+    val vendorCommissionPaid: Money = Money.ZERO,
+    val vendorItemsSold: Int = 0,
+    val vendorRevenue: Money = Money.ZERO,
 ) {
     val revenue: Money get() = subtotal + taxCollected
 
@@ -159,12 +173,8 @@ data class DailyMetrics(
 
     /** Net revenue after refunds, rent, wages, and waste costs. */
     val netRevenue: Money
-        get() = (revenue - refundAmount) - rentPaid - wagesPaid - expiredWasteCost
+        get() = (revenue - refundAmount) - rentPaid - wagesPaid - expiredWasteCost - vendorCommissionPaid
 
     val dayOfWeekName: String
-        get() = when (dayOfWeek) {
-            0 -> "Monday"; 1 -> "Tuesday"; 2 -> "Wednesday"; 3 -> "Thursday"
-            4 -> "Friday"; 5 -> "Saturday"; 6 -> "Sunday"
-            else -> "Unknown"
-        }
+        get() = GameTime.fullDayName(dayOfWeek)
 }

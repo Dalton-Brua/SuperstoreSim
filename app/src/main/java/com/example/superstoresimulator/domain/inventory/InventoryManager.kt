@@ -39,19 +39,6 @@ class InventoryManager(
     private val truckManager: TruckManager? = null,
 ) {
 
-    companion object {
-        /**
-         * Maximum number of future truck delivery slots that can be pre-committed per item.
-         * With cap=2 this allows up to 4 case packs committed total (backroom + transit).
-         * Used only by [buyItemCasePacks] for multi-truck pre-ordering; [buyItemToBackroom]
-         * is strictly capped at [GameState.storeConfig.backroomCapPerItem].
-         */
-        private const val MAX_TRUCKS_AHEAD = 2
-    }
-
-    private fun pendingCasePacksFor(state: GameState, itemId: Int): Int =
-        state.scheduledTrucks.flatMap { it.orders }.filter { it.itemId == itemId }.sumOf { it.casePacksCount }
-
     // ── Stocking operations ───────────────────────────────────────────────────
 
     /**
@@ -231,13 +218,6 @@ class InventoryManager(
         val dbItem = cache.getItem(itemId) ?: return BuyResult(state, emptyList())
         val metadata = cache.get(itemId) ?: return BuyResult(state, emptyList())
 
-        val capInCasePacks = state.storeConfig.backroomCapPerItem
-        val currentCasePacksInBackroom = inv.backroomStock / dbItem.casePack
-        val pendingCasePacks = precomputedPendingCasePacks?.get(itemId)
-            ?: pendingCasePacksFor(state, itemId)
-        val totalCommitted = currentCasePacksInBackroom + pendingCasePacks
-        if (totalCommitted + 1 > capInCasePacks) return BuyResult(state, emptyList())
-
         val casePackCost = dbItem.getCasePackCostAsMoney()
         if (state.money < casePackCost) return BuyResult(state, emptyList())
 
@@ -261,13 +241,8 @@ class InventoryManager(
     }
 
     /**
-     * Order [numCasePacks] case-packs of [itemId].
-     * Deducts money immediately. Does NOT add to backroom.
-     *
-     * Supports **multi-truck pre-ordering**: orders up to [MAX_TRUCKS_AHEAD] × cap case packs
-     * total (counting in-transit). When the requested amount exceeds the per-truck backroom cap,
-     * the order is automatically split into lines of at most [cap] case packs each so that
-     * TruckManager distributes them across separate trucks, respecting the per-item-per-truck cap.
+     * Order [numCasePacks] case-packs of [itemId], capped at [backroomCapPerItem].
+     * Deducts money immediately. Does NOT add to backroom — overflow is handled at delivery time.
      */
     fun buyItemCasePacks(
         state: GameState,
@@ -281,15 +256,7 @@ class InventoryManager(
         if (numCasePacks <= 0) return BuyResult(state, emptyList())
 
         val capInCasePacks = state.storeConfig.backroomCapPerItem
-        val currentCasePacksInBackroom = inv.backroomStock / dbItem.casePack
-        val pendingCasePacks = precomputedPendingCasePacks?.get(itemId)
-            ?: pendingCasePacksFor(state, itemId)
-        val totalCommitted = currentCasePacksInBackroom + pendingCasePacks
-
-        // Allow pre-ordering up to MAX_TRUCKS_AHEAD × cap case packs total (backroom + transit).
-        val maxPreOrder = (capInCasePacks * MAX_TRUCKS_AHEAD).coerceAtLeast(capInCasePacks)
-        val remainingAllowable = (maxPreOrder - totalCommitted).coerceAtLeast(0)
-        val actualCasePacks = minOf(numCasePacks, remainingAllowable)
+        val actualCasePacks = minOf(numCasePacks, capInCasePacks)
         if (actualCasePacks <= 0) return BuyResult(state, emptyList())
 
         val totalCost = dbItem.getCasePackCostAsMoney() * actualCasePacks
@@ -353,26 +320,13 @@ class InventoryManager(
         val capInCasePacks = state.storeConfig.backroomCapPerItem
         val currentDay = state.currentTime.dayNumber
 
-        // Precompute pending (in-transit) case packs per item once, outside the filter loop.
-        val pendingCasePacksMap = mutableMapOf<Int, Int>()
-        for (truck in state.scheduledTrucks) {
-            for (line in truck.orders) {
-                pendingCasePacksMap[line.itemId] =
-                    (pendingCasePacksMap[line.itemId] ?: 0) + line.casePacksCount
-            }
-        }
-
         val matchingEntries = state.inventory.filter { (itemId, inv) ->
             val meta = cache.get(itemId) ?: return@filter false
             val tierOk = meta.tier.unlockAmount <= state.currentTier.unlockAmount
             val categoryOk = categoryFilter == null || meta.category == categoryFilter
             val qtyOk = inv.shelfStock + inv.backroomStock <= maxTotalQuantity
-            val currentCasePacksInBackroom = inv.backroomStock / meta.casePack
-            val pendingCasePacks = pendingCasePacksMap[itemId] ?: 0
-            val totalCommitted = currentCasePacksInBackroom + pendingCasePacks
-            val capOk = totalCommitted < capInCasePacks
             val notFresh = !isFreshItem(itemId)
-            tierOk && categoryOk && qtyOk && capOk && notFresh
+            tierOk && categoryOk && qtyOk && notFresh
         }
         if (matchingEntries.isEmpty()) return BuyResult(state, emptyList())
 
@@ -380,13 +334,9 @@ class InventoryManager(
         var totalCases = 0
         var baseCost = Money.ZERO
 
-        matchingEntries.forEach { (itemId, inv) ->
+        matchingEntries.forEach { (itemId, _) ->
             val dbItem = cache.getItem(itemId) ?: return@forEach
-            val currentCasePacksInBackroom = inv.backroomStock / dbItem.casePack
-            val pendingCasePacks = pendingCasePacksMap[itemId] ?: 0
-            val totalCommitted = currentCasePacksInBackroom + pendingCasePacks
-            val availableCasePacks = capInCasePacks - totalCommitted
-            val actualCasePacks = minOf(casePacksPerItem, availableCasePacks)
+            val actualCasePacks = minOf(casePacksPerItem, capInCasePacks)
             if (actualCasePacks <= 0) return@forEach
 
             itemsToAddMap[itemId] = OrderInfo(
@@ -532,7 +482,7 @@ class InventoryManager(
 
     data class OrderResult(val state: GameState, val orderArrivalDay: Int? = null)
 
-    fun scheduleAndEmitOrder(state: GameState, result: BuyResult, moneyBefore: Money): OrderResult {
+    fun scheduleAndEmitOrder(result: BuyResult): OrderResult {
         val tm = truckManager ?: return OrderResult(result.state)
         var s = result.state
         var arrivalDay: Int? = null

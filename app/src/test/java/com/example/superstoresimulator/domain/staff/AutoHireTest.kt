@@ -169,7 +169,7 @@ class AutoHireTest {
     // ── Budget guard ─────────────────────────────────────────────────────────
 
     @Test
-    fun `auto-hire blocked when budget guard would be violated`() {
+    fun `auto-hire succeeds regardless of budget since hiring is free`() {
         simulateUnstaffedRegisters()
 
         val state = buildState(
@@ -179,10 +179,9 @@ class AutoHireTest {
             registers = listOf(RegisterState(0), RegisterState(1)),
         )
         val result = staffManager.evaluateAutoHire(state)
-        assertEquals(
-            "Budget guard should prevent hire",
-            state.hiredEntityRegistry.totalCount(),
-            result.hiredEntityRegistry.totalCount(),
+        assertTrue(
+            "Hiring is free so budget guard should not block",
+            result.hiredEntityRegistry.totalCount() > state.hiredEntityRegistry.totalCount(),
         )
     }
 

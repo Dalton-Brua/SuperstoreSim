@@ -5,6 +5,7 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.ScheduledTruck
 import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
+import com.example.superstoresimulator.domain.vendor.VendorConfig
 import com.example.superstoresimulator.ui.state.DeliveryUIState
 import com.example.superstoresimulator.ui.state.TruckOrderLineUI
 import com.example.superstoresimulator.ui.state.TruckUIState
@@ -53,6 +54,37 @@ fun buildDeliveryUiState(domain: GameState, cache: ItemMetadataCache): DeliveryU
     val freeTrucks = TruckConfig.BASE_FREE_SLOTS + domain.currentStoreSize.ordinal
     val maxTrucks = freeTrucks + domain.truckConfig.extraTruckSlotsUnlocked
 
+    val vendorTrucks = domain.vendorSystem.vendors.values
+        .filter { it.unlocked }
+        .map { vendor ->
+            val vendorDef = VendorConfig.VENDORS.firstOrNull { it.vendorId == vendor.vendorId }
+            val interval = VendorConfig.getRestockInterval(vendor.reputation)
+            val nextArrival = vendor.lastRestockDay + interval
+            val vendorItems = cache.getVendorItemsByTier(vendor.vendorId, domain.vendorSystem.currentVendorTier)
+            TruckUIState(
+                truckId = -1,
+                arrivalDay = nextArrival,
+                arrivalDayOfWeek = nextArrival % 7,
+                capacityUsed = 0,
+                capacityTotal = 0,
+                isFreshTruck = false,
+                isEarlyTruck = false,
+                isVendorTruck = true,
+                vendorName = vendorDef?.vendorName ?: vendor.vendorId,
+                orderLines = vendorItems.map { item ->
+                    val qty = item.casePack * VendorConfig.RESTOCK_CASE_PACK_MULTIPLIER
+                    TruckOrderLineUI(
+                        itemId = item.id,
+                        itemName = item.name,
+                        casePacks = VendorConfig.RESTOCK_CASE_PACK_MULTIPLIER,
+                        quantity = qty,
+                        canCancel = false,
+                    )
+                },
+            )
+        }
+        .sortedBy { it.arrivalDay }
+
     return DeliveryUIState(
         regularTrucks = regularTrucks,
         freshTruck = freshTruck,
@@ -62,5 +94,7 @@ fun buildDeliveryUiState(domain: GameState, cache: ItemMetadataCache): DeliveryU
         freeTrucksPerWeek = freeTrucks,
         extraTruckSlotsUnlocked = domain.truckConfig.extraTruckSlotsUnlocked,
         extraTruckSlotCost = TruckConfig.EXTRA_SLOT_COST,
+        truckConfig = domain.truckConfig,
+        vendorTrucks = vendorTrucks,
     )
 }

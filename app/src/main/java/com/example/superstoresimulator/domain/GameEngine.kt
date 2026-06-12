@@ -24,6 +24,7 @@ import com.example.superstoresimulator.domain.store.StoreState
 import com.example.superstoresimulator.domain.tick.TickOrchestrator
 import com.example.superstoresimulator.domain.time.TimeManager
 import com.example.superstoresimulator.domain.traffic.TrafficManager
+import com.example.superstoresimulator.domain.vendor.VendorManager
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -47,6 +48,7 @@ class GameEngine @Inject constructor(
     private val timeManager: TimeManager,
     private val trafficManager: TrafficManager,
     private val truckManager: TruckManager,
+    private val vendorManager: VendorManager,
 ) {
     sealed interface EngineEvent {
         data class OrderScheduled(val arrivalDay: Int) : EngineEvent
@@ -58,6 +60,7 @@ class GameEngine @Inject constructor(
     )
     val engineEvents: SharedFlow<EngineEvent> = _engineEvents.asSharedFlow()
 
+    @Volatile
     var state = GameState()
         internal set
 
@@ -72,9 +75,12 @@ class GameEngine @Inject constructor(
 
     // ── Tick ──────────────────────────────────────────────────────────────────
 
-    fun tick(deltaMilliseconds: Long) {
-        val result = tickOrchestrator.tick(state, deltaMilliseconds)
-        state = result.state
+    fun tick(
+        deltaMilliseconds: Long,
+        offlineMode: Boolean = false,
+        sampleUtilization: Boolean = true,
+    ) {
+        state = tickOrchestrator.tick(state, deltaMilliseconds, offlineMode, sampleUtilization)
     }
 
     // ── Inventory ─────────────────────────────────────────────────────────────
@@ -83,42 +89,33 @@ class GameEngine @Inject constructor(
         state = inventoryManager.stockItemFromBackroom(state, itemId)
     }
 
-    fun buyItemToBackroom(itemId: Int) {
-        val moneyBefore = state.money
-        val result = inventoryManager.scheduleAndEmitOrder(state, inventoryManager.buyItemToBackroom(state, itemId), moneyBefore)
+    private fun applyOrder(result: InventoryManager.OrderResult) {
         state = result.state
         result.orderArrivalDay?.let { _engineEvents.tryEmit(EngineEvent.OrderScheduled(it)) }
+    }
+
+    fun buyItemToBackroom(itemId: Int) {
+        applyOrder(inventoryManager.scheduleAndEmitOrder(inventoryManager.buyItemToBackroom(state, itemId)))
     }
 
     fun buyItemCasePacks(itemId: Int, numCasePacks: Int) {
-        val moneyBefore = state.money
-        val result = inventoryManager.scheduleAndEmitOrder(state, inventoryManager.buyItemCasePacks(state, itemId, numCasePacks), moneyBefore)
-        state = result.state
-        result.orderArrivalDay?.let { _engineEvents.tryEmit(EngineEvent.OrderScheduled(it)) }
+        applyOrder(inventoryManager.scheduleAndEmitOrder(inventoryManager.buyItemCasePacks(state, itemId, numCasePacks)))
     }
 
     fun placeBulkOrder(maxTotalQuantity: Int, casePacksPerItem: Int, categoryFilter: ItemCategory?) {
-        val moneyBefore = state.money
-        val result = inventoryManager.scheduleAndEmitOrder(state, inventoryManager.placeBulkOrder(state, maxTotalQuantity, casePacksPerItem, categoryFilter), moneyBefore)
-        state = result.state
-        result.orderArrivalDay?.let { _engineEvents.tryEmit(EngineEvent.OrderScheduled(it)) }
+        applyOrder(inventoryManager.scheduleAndEmitOrder(inventoryManager.placeBulkOrder(state, maxTotalQuantity, casePacksPerItem, categoryFilter)))
     }
 
     fun placeFreshBulkOrder(maxTotalQuantity: Int, casePacksPerItem: Int) {
-        val moneyBefore = state.money
-        val result = inventoryManager.scheduleAndEmitOrder(
-            state,
-            inventoryManager.placeFreshBulkOrder(state, maxTotalQuantity, casePacksPerItem, state.currentTier),
-            moneyBefore,
+        applyOrder(
+            inventoryManager.scheduleAndEmitOrder(
+                inventoryManager.placeFreshBulkOrder(state, maxTotalQuantity, casePacksPerItem, state.currentTier),
+            )
         )
-        state = result.state
-        result.orderArrivalDay?.let { _engineEvents.tryEmit(EngineEvent.OrderScheduled(it)) }
     }
 
     fun orderIncompleteItem(itemId: Int, casePacksRequested: Int) {
-        val result = inventoryManager.orderIncompleteItem(state, itemId, casePacksRequested)
-        state = result.state
-        result.orderArrivalDay?.let { _engineEvents.tryEmit(EngineEvent.OrderScheduled(it)) }
+        applyOrder(inventoryManager.orderIncompleteItem(state, itemId, casePacksRequested))
     }
 
     // ── Transactions ──────────────────────────────────────────────────────────
@@ -214,7 +211,7 @@ class GameEngine @Inject constructor(
 
     @Volatile
     var isSimulating: Boolean = false
-        private set
+        internal set
 
     fun simulateRestOfDay() {
         if (state.showEndOfDayReport || isSimulating) return
@@ -236,8 +233,7 @@ class GameEngine @Inject constructor(
         var s = startState
         val simulationDeltaMs = 500L
         while (s.currentTime.totalMinutesElapsed < targetMinutes && !s.showEndOfDayReport) {
-            val result = tickOrchestrator.tick(s, simulationDeltaMs)
-            s = result.state
+            s = tickOrchestrator.tick(s, simulationDeltaMs)
         }
         return s
     }
@@ -275,9 +271,7 @@ class GameEngine @Inject constructor(
     }
 
     fun orderIncompleteNormalItem(itemId: Int, casePacksRequested: Int) {
-        val result = inventoryManager.orderIncompleteNormalItem(state, itemId, casePacksRequested)
-        state = result.state
-        result.orderArrivalDay?.let { _engineEvents.tryEmit(EngineEvent.OrderScheduled(it)) }
+        applyOrder(inventoryManager.orderIncompleteNormalItem(state, itemId, casePacksRequested))
     }
 
     // ── Truck Delivery ────────────────────────────────────────────────────────
@@ -328,9 +322,22 @@ class GameEngine @Inject constructor(
     // ── Save/Load ─────────────────────────────────────────────────────────────
 
     fun loadState(savedState: GameState) {
-        state = savedState
+        state = repairMetricsIfNeeded(savedState)
         restoreManagersFromState()
         state = pricingManager.updateSmoothedPriceIndex(state)
+    }
+
+    private fun repairMetricsIfNeeded(saved: GameState): GameState {
+        val currentDay = saved.currentTime.dayNumber
+        val metricsDay = saved.currentDayMetrics.dayNumber
+        // Fix currentDayMetrics.dayNumber if it's behind the actual day
+        // (happens with saves predating simAccumulators)
+        if (metricsDay < currentDay && saved.completedDayMetrics.any { it.dayNumber == metricsDay }) {
+            return saved.copy(
+                currentDayMetrics = saved.currentDayMetrics.copy(dayNumber = currentDay)
+            )
+        }
+        return saved
     }
 
     fun seedNewGame() {
@@ -338,29 +345,19 @@ class GameEngine @Inject constructor(
         restoreManagersFromState()
     }
 
-    fun resetState() {
-        state = buildSeededState()
-        restoreManagersFromState()
-    }
+    fun resetState() = seedNewGame()
 
-    private fun buildSeededState(): GameState {
-        val baseState = GameState()
-        val allDbItems = itemMetadataCache.getAllItems()
-        if (allDbItems.isEmpty()) return baseState
-
-        val startingTier = ItemUnlockTier.TIER_2
+    private fun seedInventory(startingTier: ItemUnlockTier, quantity: Int, currentDay: Int): Map<Int, InventoryState> {
         val inventory = mutableMapOf<Int, InventoryState>()
-        val currentDay = baseState.currentTime.dayNumber
-        allDbItems.forEach { (itemId, item) ->
-            val metadata = itemMetadataCache.get(itemId)
-            val itemTier = metadata?.tier ?: ItemUnlockTier.TIER_1
+        itemMetadataCache.getAllItems().forEach { (itemId, item) ->
+            val itemTier = itemMetadataCache.get(itemId)?.tier ?: ItemUnlockTier.TIER_1
             if (itemTier.unlockAmount > startingTier.unlockAmount) return@forEach
             val expirationDay = if (item.shelfLifeDays != null) {
                 currentDay + item.shelfLifeDays
             } else Int.MAX_VALUE
             val startingBatch = ItemBatch(
                 receivedDay = currentDay,
-                quantity = 10,
+                quantity = quantity,
                 expirationDay = expirationDay,
             )
             inventory[itemId] = InventoryState(
@@ -368,13 +365,72 @@ class GameEngine @Inject constructor(
                 backroomBatches = listOf(startingBatch),
             )
         }
+        return inventory
+    }
+
+    private fun buildSeededState(): GameState {
+        if (DEBUG_RICH_SEED) return buildDebugRichState()
+
+        val baseState = GameState()
+        if (itemMetadataCache.getAllItems().isEmpty()) return baseState
+
+        val seeded = baseState.copy(
+            inventory = seedInventory(ItemUnlockTier.TIER_1, quantity = 10, baseState.currentTime.dayNumber),
+            money = Money(100_000),
+        )
+        return vendorManager.initializeStartingVendors(seeded)
+    }
+
+    fun unlockNextVendorTier() {
+        state = vendorManager.unlockNextVendorTier(state)
+    }
+
+    fun investInVendor(vendorId: String) {
+        state = vendorManager.investInVendor(state, vendorId)
+    }
+
+    private fun buildDebugRichState(): GameState {
+        val baseState = GameState()
+        if (itemMetadataCache.getAllItems().isEmpty()) return baseState
+
+        val startingTier = ItemUnlockTier.TIER_3
+        val storeSize = StoreSize.GROCERY_STORE
+        val inventory = seedInventory(startingTier, quantity = 20, baseState.currentTime.dayNumber)
+
+        var registry = baseState.hiredEntityRegistry
+        // Hire staff: 2 cashiers, 2 stockers, 1 fresh handler, 1 manager
+        val hireList = listOf(
+            EntityDef.CASHIER, EntityDef.CASHIER,
+            EntityDef.STOCKER, EntityDef.STOCKER,
+            EntityDef.FRESH_HANDLER,
+            EntityDef.MANAGER,
+        )
+        val staffShifts = mutableListOf<StaffShift>()
+        for (def in hireList) {
+            registry = registry.hireEntity(def)
+            val newId = registry.hiredEntities.last().id
+            staffShifts.add(StaffShift(entityId = newId, startHour = 6, durationHours = 8))
+        }
+
         return baseState.copy(
             inventory = inventory,
-            money = Money(5_000_000),
+            money = Money(50_000_000),
             currentTier = startingTier,
-            currentStoreSize = StoreSize.SMALL_GROCERY,
-            storeConfig = StoreConfig(backroomCapPerItem = StoreSize.SMALL_GROCERY.backroomCapPerItem),
+            currentStoreSize = storeSize,
+            storeConfig = StoreConfig(backroomCapPerItem = storeSize.backroomCapPerItem),
+            hiredEntityRegistry = registry,
+            staffSchedules = staffShifts,
+            registers = listOf(
+                RegisterState(registerId = 0),
+                RegisterState(registerId = 1),
+                RegisterState(registerId = 2),
+            ),
         )
+    }
+
+    companion object {
+        // TEMP: Set to true for rich test seed with staff/inventory/grocery store
+        const val DEBUG_RICH_SEED = false
     }
 
     private fun restoreManagersFromState() {
@@ -383,7 +439,9 @@ class GameEngine @Inject constructor(
         timeManager.accumulatedMilliseconds = acc.timeAccumulatorMs
         timeManager.config = state.storeConfig.copy()
         timeManager.setSpeedMultiplier(state.storeConfig.gameSpeedMultiplier)
-        dayManager.syncDay(acc.lastKnownDayNumber)
+        // Use currentTime.dayNumber as fallback for saves that predate simAccumulators
+        val effectiveDayNumber = maxOf(acc.lastKnownDayNumber, state.currentTime.dayNumber)
+        dayManager.syncDay(effectiveDayNumber)
         trafficManager.accumulatedCustomers = acc.trafficAccumulator
         staffManager.restoreAccumulators(acc)
     }

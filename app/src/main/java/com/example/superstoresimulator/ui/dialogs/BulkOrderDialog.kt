@@ -106,8 +106,7 @@ fun BulkOrderDialog(
         allItems.filter { item ->
             val totalQty = item.shelfStock + item.backroomStock
             val categoryOk = selectedCategory == null || item.category == selectedCategory
-            // Exclude items whose backroom is already full (engine would skip them too)
-            totalQty <= maxTotalQuantity && categoryOk && !item.backroomFull
+            totalQty <= maxTotalQuantity && categoryOk
         }
     }
 

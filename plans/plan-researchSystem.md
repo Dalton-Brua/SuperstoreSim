@@ -256,37 +256,66 @@ val MARKET_ANALYST = EntityDef(
 
 Add to `EntityDef.allEntities` list.
 
-### Research Point Generation — Event-Driven
+### Research Point Generation — Event-Driven, Per-Assignment
 
-Market Analysts don't passively generate points. They **observe store activity** and derive insights from it. Points are generated when store events happen *while at least one analyst is on shift*.
+Market Analysts don't passively generate points. They **observe store activity** and derive insights from it. Points are generated when store events happen *while an assigned analyst is on shift*. **Idle analysts produce nothing.**
 
 #### Triggering Events
 
-| Store Event | Points per Event | Where Triggered |
-|-------------|-----------------|-----------------|
+| Store Event | Base Points | Where Triggered |
+|-------------|------------|-----------------|
 | **Transaction completed** | `TRANSACTION_INSIGHT` | `TransactionEngine.completeTransaction()` |
 | **Case pack stocked to shelf** | `STOCK_INSIGHT` | Stocker/Fresh Handler action in `GameEngine.tick()` |
 | **Item spoiled** | `SPOILAGE_INSIGHT` | `SpoilageManager` batch expiration |
 | **Truck delivery received** | `DELIVERY_INSIGHT` | Truck arrives and unloads in `GameEngine` |
 | **Customer lost (walked away)** | `LOST_CUSTOMER_INSIGHT` | Customer leaves due to no open register / queue full |
 
-#### Point Calculation
+#### Point Calculation — Per Topic
 
-When a triggering event fires, check if any Market Analyst is on shift. If yes:
+When a triggering event fires, group on-shift analysts by assignment and process each group:
 
+```kotlin
+fun distributeInsightPoints(
+    baseEventPoints: Float,
+    onShiftAnalysts: List<HiredEntity>,
+    assignments: Map<Int, AnalystAssignment>,
+    state: GameState
+): GameState {
+    var updated = state
+
+    // Group assigned analysts by their topic
+    val byTopic = mutableMapOf<String, MutableList<HiredEntity>>()
+    val consultants = mutableListOf<HiredEntity>()
+
+    for (analyst in onShiftAnalysts) {
+        when (val assignment = assignments[analyst.id]) {
+            is AnalystAssignment.Research -> byTopic.getOrPut(assignment.upgradeId) { mutableListOf() }.add(analyst)
+            is AnalystAssignment.Consulting -> consultants.add(analyst)
+            null -> { /* idle — skip */ }
+        }
+    }
+
+    // Research: diminishing returns per topic (sqrt scaling)
+    for ((upgradeId, analysts) in byTopic) {
+        val effectiveCount = sqrt(analysts.size.toFloat())
+        val avgThroughput = analysts.map { it.throughputWeight * it.levelMultiplier }.average().toFloat()
+        val topicPoints = baseEventPoints * effectiveCount * avgThroughput
+        // Add to researchProgress[upgradeId]
+        updated = addResearchProgress(updated, upgradeId, topicPoints)
+    }
+
+    // Consulting: each analyst independently converts points to cash
+    for (analyst in consultants) {
+        val cashPoints = baseEventPoints * analyst.throughputWeight * analyst.levelMultiplier
+        val cashEarned = Money((cashPoints * CONSULTING_CASH_PER_POINT.cents).toLong())
+        updated = updated.copy(money = updated.money + cashEarned)
+    }
+
+    return updated
+}
 ```
-insightPoints = baseEventPoints × analystMultiplier
-analystMultiplier = sum over on-shift analysts of (throughputWeight × levelMultiplier × traitMultiplier)
-```
 
-**Diminishing returns**: Multiple analysts don't linearly multiply — they share observations. Use a square-root scaling on analyst count:
-
-```
-effectiveAnalysts = sqrt(onShiftAnalystCount)
-analystMultiplier = effectiveAnalysts × avgThroughputWeight × avgLevelMultiplier
-```
-
-This means 1 analyst = 1.0x, 2 analysts ≈ 1.41x, 4 analysts = 2.0x. Hiring more helps but with diminishing returns.
+**Diminishing returns are per-topic**: 2 analysts on same topic = ~1.41x speed. But 2 analysts on different topics = full speed on both. Incentivizes spreading analysts across active research. Consulting analysts work independently (no diminishing returns — each converts their own output to cash).
 
 #### Tuning Constants
 
@@ -298,7 +327,9 @@ This means 1 analyst = 1.0x, 2 analysts ≈ 1.41x, 4 analysts = 2.0x. Hiring mor
 | `DELIVERY_INSIGHT` | 1.5 | Supply chain insight — infrequent, high value |
 | `LOST_CUSTOMER_INSIGHT` | 0.15 | Demand analysis — learning from failures |
 
-#### Earning Rate Analysis (revised)
+#### Earning Rate Analysis (Per Analyst, Per Topic)
+
+Base points per day from store activity (1 base analyst assigned to a single topic):
 
 Typical early game (~20 transactions/day, ~50 stock actions, ~5 spoilage events, ~0.3 deliveries/day avg, ~2 lost customers):
 - Transactions: 20 × 0.3 = 6.0 pts
@@ -306,19 +337,24 @@ Typical early game (~20 transactions/day, ~50 stock actions, ~5 spoilage events,
 - Spoilage: 5 × 0.2 = 1.0 pts
 - Deliveries: 0.3 × 1.5 = 0.45 pts
 - Lost customers: 2 × 0.15 = 0.3 pts
-- **~10.25 pts/day** with 1 base analyst
+- **~10.25 pts/day** per topic with 1 base analyst assigned
 
 Late game (~100 transactions/day, ~200 stock actions, ~20 spoilage, ~0.7 deliveries/day avg, ~10 lost customers):
-- Transactions: 100 × 0.3 = 30.0 pts
-- Stocking: 200 × 0.05 = 10.0 pts
-- Spoilage: 20 × 0.2 = 4.0 pts
-- Deliveries: 0.7 × 1.5 = 1.05 pts
-- Lost customers: 10 × 0.15 = 1.5 pts
-- **~46.55 pts/day** with 1 base analyst (before tier/level multipliers)
+- **~46.55 pts/day** per topic with 1 base analyst (before tier/level multipliers)
 
-Research naturally accelerates as the store grows — busier stores generate more data for analysts to study. Early research (8-10 pts) takes ~1 day. Late research (100 pts) takes ~2-3 days at full speed.
+**Multi-analyst scenarios:**
 
-Research points accumulate as `Float` in `ResearchState.researchPoints`, displayed as integer (floor) in UI.
+| Setup | Topic A Rate | Topic B Rate |
+|---|---|---|
+| 1 analyst on A | 10.25 pts/day | — |
+| 2 analysts on A | ~14.5 pts/day (√2) | — |
+| 1 analyst on A, 1 on B | 10.25 pts/day | 10.25 pts/day |
+| 2 on A, 1 on B | ~14.5 pts/day | 10.25 pts/day |
+| 1 on consulting | — (earns ~$50/day) | — |
+
+Research naturally accelerates as the store grows — busier stores generate more data for analysts to study. Early research (8–10 pts) takes ~1 day with a dedicated analyst. Late research (100 pts) takes ~2–3 days.
+
+Research progress is tracked per-topic as `Float` in `ResearchState.researchProgress`, displayed as progress bars in UI.
 
 ### XP and Leveling
 
@@ -391,12 +427,17 @@ fun isItemAccessible(itemId: Int, researchedUpgrades: Set<String>): Boolean {
 ### Research State
 
 ```kotlin
+@Serializable
+sealed interface AnalystAssignment {
+    @Serializable data class Research(val upgradeId: String) : AnalystAssignment
+    @Serializable data object Consulting : AnalystAssignment
+}
+
 data class ResearchState(
-    val researchPoints: Float = 0f,
-    val totalPointsEarned: Float = 0f,       // lifetime, never decreases (for metrics)
-    val researchedUpgrades: Set<String> = emptySet(),  // ids of completed research
-    val activeResearch: String? = null,       // id of upgrade currently being researched (if queued)
-    val activeResearchProgress: Float = 0f,   // points accumulated toward activeResearch
+    val researchProgress: Map<String, Float> = emptyMap(),  // upgradeId → accumulated points
+    val totalPointsEarned: Float = 0f,                      // lifetime, never decreases (for metrics)
+    val researchedUpgrades: Set<String> = emptySet(),       // ids of completed research
+    val analystAssignments: Map<Int, AnalystAssignment> = emptyMap(),  // entityId → assignment
 )
 ```
 
@@ -405,17 +446,54 @@ Added to `GameState`:
 val researchState: ResearchState = ResearchState(),
 ```
 
-### Research Flow
+### Research Flow — Assignment-Based
 
-1. **Point generation**: Market Analysts on shift add to `researchState.researchPoints` each tick
-2. **Player queues research**: Player selects an upgrade from the research screen → sets `activeResearch`
-3. **Auto-progress**: Each tick, if `activeResearch` is set, points flow from pool into `activeResearchProgress`
-4. **Completion**: When `activeResearchProgress >= researchCost`, upgrade moves to `researchedUpgrades`, `activeResearch` clears
-5. **Visibility unlocked**: UI checks `researchedUpgrades.contains(id)` before showing any upgrade option
+Each Market Analyst is **individually assigned** to a research topic, consulting, or left idle. Points flow directly to the assigned topic. No global pool.
 
-**Alternative (simpler, recommended)**: Skip the queue mechanic. Research points accumulate passively. Player spends points directly from the pool to instantly research an upgrade (like spending currency). Simpler UI, same gameplay feel.
+1. **Player assigns analysts**: On the Research Screen, player assigns each hired analyst to a specific research topic or consulting
+2. **Point generation**: On store events, each on-shift assigned analyst generates points
+   - **Research assignment** → points flow into `researchProgress[upgradeId]`
+   - **Consulting assignment** → small cash generated (event points × consulting rate)
+   - **Idle (no assignment)** → nothing generated, still costs wages
+3. **Auto-completion**: When `researchProgress[id] >= researchCost`, topic auto-completes → added to `researchedUpgrades`, assigned analysts become idle
+4. **Visibility unlocked**: UI checks `researchedUpgrades.contains(id)` before showing any upgrade option
 
-→ **Go with the spend-from-pool model.** Player opens research screen, sees available research options, clicks "Research" button which deducts points from pool. Instant discovery, no waiting queue.
+**Multiple analysts on same topic**: Diminishing returns apply per-topic, not globally. If 2 analysts are assigned to the same topic, use sqrt scaling on the count for that topic:
+
+```kotlin
+// Per store event, for each unique assigned upgradeId:
+val analystsOnTopic = onShiftAnalysts.filter { assignment[it.id] == Research(upgradeId) }
+val effectiveCount = sqrt(analystsOnTopic.size.toFloat())
+val avgThroughput = analystsOnTopic.map { it.throughputWeight * it.levelMultiplier }.average()
+val topicPoints = baseEventPoints * effectiveCount * avgThroughput
+researchProgress[upgradeId] += topicPoints
+```
+
+Two analysts on one topic = ~1.41x speed, not 2x. But two analysts on *different* topics = full speed on both. Player is rewarded for spreading analysts across multiple active topics.
+
+### Consulting Assignment (Earn Cash)
+
+Analysts assigned to consulting convert insight events into small cash instead of research points. **Not profitable** — designed as a less-bad alternative to idle, not a money-making strategy.
+
+```kotlin
+// Per store event, for each on-shift consulting analyst:
+val cashEarned = baseEventPoints * analyst.throughputWeight * analyst.levelMultiplier * CONSULTING_CASH_PER_POINT
+state.money += Money((cashEarned * 100).toLong())  // convert to cents
+```
+
+**Consulting rate**: `$5.00 per research-point-equivalent`
+
+| | Analyst Cost | Consulting Earnings | Net |
+|---|---|---|---|
+| Early game (8hr shift) | $72/day wage | ~$50/day (10 pts equiv × $5) | **-$22/day** |
+| Late game (8hr shift) | $72/day wage | ~$235/day (47 pts equiv × $5) | **+$163/day** |
+
+Early game: consulting is a net loss but better than idle ($72 loss). Late game with high-level analysts: can become slightly profitable. Player trades progression speed for cash.
+
+Constants:
+```kotlin
+val CONSULTING_CASH_PER_POINT = Money(500)  // $5.00 per research-point-equivalent
+```
 
 ### Research Tree
 
@@ -508,6 +586,8 @@ Enough to run a basic convenience store. Everything else requires research.
 
 **Total: 24 product research entries** unlocking 124 items in groups of 3-6.
 
+> **Future expansion**: 31 additional product-line gates and ~218 new items (across existing and 8 new categories) are planned in [`plan-futureItems.md`](plan-futureItems.md). That document also defines 28 item affinity groups for realistic basket generation.
+
 #### Relationship to Old Tier System
 
 The old `ItemUnlockTier` system (TIER_1/2/3/GM with revenue gates + unlock costs) is **removed**. There are no more monolithic tier unlocks. Each product research entry replaces what was formerly a tier gate.
@@ -575,12 +655,15 @@ Tier progression is replaced by the research system — no separate unlocks scre
 
 New tab/screen accessible from the main navigation. Shows:
 
-1. **Research Points Balance**: current pool at top
-2. **Market Analyst Status**: number of analysts on shift, generation rate
-3. **Available Research**: grid/list of researchable upgrades grouped by `ResearchCategory`
+1. **Analyst Roster**: list of all hired Market Analysts with current assignment, tier, level, on-shift status
+   - Each analyst has a dropdown/picker: "Idle" | "Consulting" | list of available research topics
+   - Reassignment takes effect immediately
+2. **Active Research**: topics with analysts assigned or progress > 0
+   - Each shows: name, progress bar (X / Y pts), assigned analyst count, estimated time to completion
+   - Topics auto-complete when progress hits cost
+3. **Available Research**: topics the player can assign analysts to, grouped by `ResearchCategory`
    - Only shows upgrades where: prerequisites met AND gate check passes AND not already researched
-   - Each entry shows: name, teaser description, research point cost, "Research" button
-   - Button disabled if insufficient points
+   - Each entry shows: name, teaser description, research point cost, "Assign Analyst" button
 4. **Completed Research**: collapsible section showing what's been discovered
 
 ### Upgrade Visibility Gating
@@ -657,12 +740,14 @@ Pure function style — takes `GameState`, returns `GameState`.
 
 | Method | Purpose |
 |--------|---------|
-| `generateResearchPoints(state, onShiftAnalysts)` | Add points from on-shift analysts to pool |
-| `conductResearch(state, upgradeId)` | Spend points to discover upgrade. Guards: enough points, prerequisites met, gate check passes |
+| `distributeInsightPoints(state, baseEventPoints, onShiftAnalysts)` | Route points to assigned topics / consulting cash. Groups by assignment, applies sqrt scaling per topic |
+| `checkCompletions(state)` | Scan `researchProgress` for any topic that hit its cost. Move to `researchedUpgrades`, idle those analysts |
+| `assignAnalyst(state, entityId, assignment)` | Set analyst assignment (Research/Consulting/null=idle). Guards: analyst exists, topic is visible+unresearched |
 | `isResearchVisible(state, upgradeId)` | Check if research option should appear in UI (prereqs + gate) |
 | `isUpgradeResearched(state, upgradeId)` | Check if upgrade has been discovered |
-| `getAvailableResearch(state)` | Return list of upgrades the player can currently see and research |
-| `getResearchRate(state)` | Calculate current points/hour based on on-shift analysts |
+| `getAvailableResearch(state)` | Return list of upgrades the player can currently see and assign analysts to |
+| `getTopicRate(state, upgradeId)` | Calculate current points/hour for a specific topic based on assigned on-shift analysts |
+| `getAnalystStatus(state, entityId)` | Return current assignment for an analyst (Research/Consulting/Idle) |
 
 ---
 
@@ -672,8 +757,8 @@ Pure function style — takes `GameState`, returns `GameState`.
 sealed interface GameEvent {
     // ... existing events ...
     
-    // Research System
-    data class ConductResearch(val upgradeId: String) : GameEvent
+    // Research System — analyst assignment
+    data class AssignAnalyst(val entityId: Int, val assignment: AnalystAssignment?) : GameEvent  // null = idle
     data class HireStaff(val entityDef: EntityDef) : GameEvent  // existing — now includes MARKET_ANALYST
     
     // Tutorial System
@@ -701,21 +786,33 @@ data class GameState(
 
 ```kotlin
 data class ResearchUIState(
-    val researchPoints: Int = 0,                   // floor of float pool
     val totalPointsEarned: Int = 0,
-    val pointsPerHour: Float = 0f,                 // current generation rate
-    val analystsOnShift: Int = 0,
-    val availableResearch: List<ResearchOptionUI> = emptyList(),
-    val completedResearch: List<ResearchOptionUI> = emptyList(),
+    val analysts: List<AnalystUIState> = emptyList(),
+    val activeResearch: List<ResearchTopicUI> = emptyList(),    // topics with progress > 0 or analysts assigned
+    val availableResearch: List<ResearchTopicUI> = emptyList(), // topics player can assign analysts to
+    val completedResearch: List<ResearchTopicUI> = emptyList(),
 )
 
-data class ResearchOptionUI(
+data class AnalystUIState(
+    val entityId: Int,
+    val name: String,
+    val tier: Tier,
+    val level: Int,
+    val isOnShift: Boolean,
+    val assignment: String,       // "Idle", "Consulting", or upgrade displayName
+    val assignmentId: String?,    // upgradeId, "consulting", or null
+)
+
+data class ResearchTopicUI(
     val id: String,
     val displayName: String,
     val description: String,
     val category: ResearchCategory,
     val cost: Int,
-    val canAfford: Boolean,
+    val progress: Float,              // 0..cost
+    val progressPercent: Float,       // 0..1
+    val assignedAnalystCount: Int,
+    val pointsPerHour: Float,         // current rate for this topic
 )
 ```
 
@@ -745,7 +842,7 @@ No manual serialization code needed for new types.
 
 ### What to do
 
-1. **Annotate `ResearchState` with `@Serializable`** — all fields are primitives, `Money` (value class → flat Long), or `Set<String>`. No custom serializer needed. Remove `activeResearch` and `activeResearchProgress` from the data class (spend-from-pool model doesn't use them).
+1. **Annotate `ResearchState` with `@Serializable`** — fields include `Map<String, Float>`, `Set<String>`, `Map<Int, AnalystAssignment>`, and primitives. `AnalystAssignment` sealed interface needs `@Serializable` on itself and both subtypes (`Research`, `Consulting`). kotlinx.serialization handles sealed interfaces with a `type` discriminator automatically.
 
 2. **Annotate `TutorialState` with `@Serializable`** — `TutorialStep` enum needs `@Serializable` too (serializes by name). `Set<TutorialStep>` and `Set<String>` handled automatically.
 
@@ -766,7 +863,13 @@ No manual serialization code needed for new types.
 
 ### `ResearchableUpgrade` is NOT serialized
 
-The upgrade registry (24 product + ~16 feature entries) is defined in code, not saved. Only `researchedUpgrades: Set<String>` (the IDs of completed research) is persisted. This means research costs, prerequisites, and gate checks can be rebalanced without save migration.
+The upgrade registry (24 product + ~16 feature entries) is defined in code, not saved. What IS persisted in `ResearchState`:
+- `researchProgress: Map<String, Float>` — per-topic accumulated points
+- `researchedUpgrades: Set<String>` — completed research IDs
+- `analystAssignments: Map<Int, AnalystAssignment>` — per-analyst assignment (entityId → Research/Consulting)
+- `totalPointsEarned: Float` — lifetime metric
+
+This means research costs, prerequisites, and gate checks can be rebalanced without save migration. Analyst assignments reference upgrade IDs — if an ID is renamed, a migration would be needed (avoid renaming IDs).
 
 ### Migration for Existing Saves
 
@@ -825,16 +928,18 @@ Existing saves have no research state. On load:
 22. Write Room migration for schema change (tier column → researchGate column)
 
 ### Phase 4: Research System — Core Data Model & Market Analyst
-23. Create `ResearchCategory` enum
-24. Create `ResearchableUpgrade` data class with full upgrade registry (~40 entries: 24 product + 16 feature)
-25. Create `ResearchState` data class
-26. Add `researchState` to `GameState`
-27. Create `MARKET_ANALYST` in `EntityDef` companion, add to `allEntities`
-28. Create `ResearchManager` with `generateResearchPoints()`, `conductResearch()`, `isUpgradeResearched()`, `getAvailableResearch()`
-29. Wire research point generation into store events: `TransactionEngine.completeTransaction()`, stocker/fresh handler actions, `SpoilageManager`, truck delivery arrival, lost customer events
-30. Add `ConductResearch` to `GameEvent`, route through `GameEngine`
-31. Annotate `ResearchState` and `ResearchCategory` with `@Serializable` (kotlinx handles the rest)
-32. Write unit tests: point generation, research spending, prerequisite checks, gate checks, item accessibility
+23. Create `AnalystAssignment` sealed interface (`Research(upgradeId)`, `Consulting`)
+24. Create `ResearchCategory` enum
+25. Create `ResearchableUpgrade` data class with full upgrade registry (~40 entries: 24 product + 16 feature)
+26. Create `ResearchState` data class (with `researchProgress`, `analystAssignments`, `researchedUpgrades`)
+27. Add `researchState` to `GameState`
+28. Create `MARKET_ANALYST` in `EntityDef` companion, add to `allEntities`
+29. Create `ResearchManager` with `distributeInsightPoints()`, `checkCompletions()`, `assignAnalyst()`, `getAvailableResearch()`
+30. Wire insight distribution into store events: `TransactionEngine.completeTransaction()`, stocker/fresh handler actions, `SpoilageManager`, truck delivery arrival, lost customer events
+31. Add `AssignAnalyst` to `GameEvent`, route through `GameEngine`
+32. Handle analyst removal: when firing an analyst, clean up their assignment from `analystAssignments`
+33. Annotate `ResearchState`, `AnalystAssignment`, and `ResearchCategory` with `@Serializable`
+34. Write unit tests: point distribution per-assignment, consulting cash, auto-completion, assignment guards, sqrt scaling
 
 ### Phase 5: Research Visibility Gating
 33. Add `ResearchUIState` to `GameUiState`
@@ -850,19 +955,19 @@ Existing saves have no research state. On load:
 
 ### Phase 6: Research Screen UI
 35. Build `ResearchScreen` composable:
-    - Research points balance header
-    - Analyst status (count, points earned today)
-    - Available research grouped by category (Product Lines section is the largest)
-    - Completed research section
+    - **Analyst Roster** section: each analyst with assignment dropdown (Idle / Consulting / available topics)
+    - **Active Research** section: topics with progress bars, assigned analyst count, ETA
+    - **Available Research** grouped by category (Product Lines section is the largest)
+    - **Completed Research** section
     - Product research shows which items will be unlocked (names + count)
 36. Add Research tab to main navigation (visible only after tutorial complete)
-37. Toast/notification when research is conducted, listing newly unlocked items
+37. Toast/notification when research auto-completes, listing newly unlocked items
 
 ### Phase 7: Migration & Polish
 38. Implement save migration: scan existing inventory/tiers → auto-populate `researchedUpgrades` + set `tutorialComplete = true`
 39. Add research points to end-of-day report (`DailyMetrics`)
 40. Tune research costs and insight point values through playtesting
-41. Test edge cases: no analysts hired, analyst fired mid-shift, all research completed, save/load round-trip, tutorial skip at various stages, item accessibility filtering correctness
+41. Test edge cases: no analysts hired, analyst fired mid-shift (assignment cleanup), all research completed (all analysts go idle), reassigning analyst mid-research (progress preserved), save/load round-trip, tutorial skip at various stages, item accessibility filtering correctness
 
 ---
 
@@ -872,11 +977,12 @@ Existing saves have no research state. On load:
 - Follows existing pattern: `PricingManager`, `ProgressionManager`, `StaffManager` — one manager per domain
 - `ResearchManager` doesn't own state; it transforms `GameState.researchState` via `.copy()`
 
-### Why spend-from-pool instead of queue-based research?
-- Simpler UI: no "currently researching" progress bar, no queue management
-- Simpler domain: no per-tick deduction from pool into active research
-- Player still makes meaningful choices about *what* to research with limited points
-- Matches the "research reveals, money buys" two-step model cleanly
+### Why assignment-based instead of a global pool?
+- Player makes ongoing allocation decisions: which analyst works on what? Consulting for cash or research for progression?
+- Multiple topics can progress simultaneously with multiple analysts
+- Idle analysts cost wages but produce nothing — creates pressure to manage workforce
+- Consulting assignment replaces the old "cash out" mechanic more naturally (it's a staffing decision, not a currency exchange)
+- Progress bars per-topic give visible feedback on research advancement
 
 ### Why flat list with prerequisites instead of a skill tree?
 - The upgrade space is small (~20 items). A visual tree would be overkill
@@ -919,18 +1025,21 @@ Existing saves have no research state. On load:
 | `ANALYST_HIRE_COST` | $30.00 | One-time hiring cost |
 | `ANALYST_HOURLY_WAGE` | $9.00/hr | Operating cost |
 | Research costs | 8–100 | See research tree tables above |
+| `CONSULTING_CASH_PER_POINT` | $5.00 | Cash per research-point-equivalent when consulting |
 
-### Earning Rate Analysis
+### Earning Rate Analysis (Per Assigned Analyst)
 
 Early game (~20 txns/day, ~50 stocks, ~5 spoilage, ~0.3 deliveries/day, ~2 lost):
-- ~10.25 pts/day with 1 base analyst
+- ~10.25 pts/day per topic with 1 base analyst assigned
 - Small research (8 pts): ~1 day
+- Consulting: ~$50/day (vs $72 wage = -$22 net)
 
 Late game (~100 txns/day, ~200 stocks, ~20 spoilage, ~0.7 deliveries/day, ~10 lost):
-- ~46.55 pts/day with 1 base analyst (before tier/level multipliers)
+- ~46.55 pts/day per topic with 1 base analyst (before tier/level multipliers)
 - Large research (100 pts): ~2-3 days
+- Consulting late game: ~$235/day (vs $72 wage = +$163 net)
 
-Research scales naturally with store activity — busier stores generate more analyst data. Multiple analysts use sqrt scaling (2 analysts ≈ 1.41x, not 2x).
+Research scales with store activity. Same-topic analysts use sqrt scaling (2 = ~1.41x). Different-topic analysts run at full speed independently. Idle analysts produce nothing but still cost wages.
 
 ---
 
@@ -941,6 +1050,8 @@ Research scales naturally with store activity — busier stores generate more an
 - **Money precision**: Research points are `Float`, not `Money`. No cents involved.
 - **Test pattern**: Use `FakeItemDao` boilerplate. No Mockito. No trivial tests.
 - **EntityDef immutability**: `MARKET_ANALYST` is a companion object constant like `CASHIER`, `STOCKER`, etc.
+- **Assignment cleanup**: When an analyst is fired, their entry in `analystAssignments` must be removed. When a topic completes, all analysts assigned to it must be set to idle.
+- **Assignment storage**: Analyst assignments live in `ResearchState.analystAssignments`, NOT on `HiredEntity` (which uses a custom serializer and shouldn't be modified for research concerns).
 
 ---
 
@@ -991,21 +1102,20 @@ Test file: `app/src/test/java/com/example/superstoresimulator/domain/tutorial/Tu
 
 Test file: `app/src/test/java/com/example/superstoresimulator/domain/research/ResearchManagerTest.kt`
 
-### 1. Point Generation (Event-Driven)
+### 1. Point Generation (Assignment-Based)
 
 | Test | Setup | Assert |
 |------|-------|--------|
-| **Transaction generates insight** | 1 analyst on shift, complete 1 transaction | researchPoints ≈ 0.3 |
-| **Stocking generates insight** | 1 analyst on shift, stock 1 case | researchPoints ≈ 0.05 |
-| **Spoilage generates insight** | 1 analyst on shift, 1 item spoils | researchPoints ≈ 0.2 |
-| **Delivery generates insight** | 1 analyst on shift, 1 truck arrives | researchPoints ≈ 1.5 |
-| **No analyst on shift → no points** | 0 analysts on shift, complete transaction | researchPoints = 0 |
-| **Off-shift analyst ignored** | 1 analyst shift 6-14, event at hour 16 | researchPoints = 0 |
-| **FAST tier boosts insight** | FAST tier analyst (1.5x), 1 transaction | researchPoints ≈ 0.45 |
-| **Level multiplier applies** | Level 5 analyst (1.4x), 1 transaction | researchPoints ≈ 0.42 |
-| **Multiple analysts sqrt scaling** | 4 base analysts on shift, 1 transaction | researchPoints ≈ 0.6 (2.0x, not 4.0x) |
-| **HARDWORKER trait stacks** | HARDWORKER analyst (1.1x throughput), 1 transaction | researchPoints ≈ 0.33 |
-| **Points accumulate across events** | 1 analyst, 10 transactions + 20 stocks | researchPoints ≈ 4.0 |
+| **Assigned analyst generates topic points** | 1 analyst assigned to prod_breakfast, 1 transaction | researchProgress["prod_breakfast"] ≈ 0.3 |
+| **Idle analyst generates nothing** | 1 analyst, no assignment, 1 transaction | researchProgress empty, money unchanged |
+| **Consulting analyst generates cash** | 1 analyst on consulting, 1 transaction | money += $1.50 (0.3 × $5), no research progress |
+| **Off-shift analyst ignored** | 1 analyst shift 6-14, event at hour 16 | No points regardless of assignment |
+| **FAST tier boosts topic points** | FAST tier analyst (1.5x) assigned to topic, 1 transaction | researchProgress ≈ 0.45 |
+| **Level multiplier applies** | Level 5 analyst (1.4x) assigned to topic, 1 transaction | researchProgress ≈ 0.42 |
+| **2 analysts same topic → sqrt scaling** | 2 base analysts assigned to same topic, 1 transaction | researchProgress ≈ 0.42 (√2 × 0.3), not 0.6 |
+| **2 analysts different topics → full speed** | 1 on topic A, 1 on topic B, 1 transaction | progress A ≈ 0.3, progress B ≈ 0.3 |
+| **Consulting has no diminishing returns** | 2 analysts on consulting, 1 transaction | money += $3.00 (2 × 0.3 × $5) |
+| **Points accumulate across events** | 1 analyst on topic, 10 transactions + 20 stocks | researchProgress ≈ 4.0 |
 
 ### 2. Item Accessibility
 
@@ -1019,35 +1129,45 @@ Test file: `app/src/test/java/com/example/superstoresimulator/domain/research/Re
 | **Bulk order skips gated items** | prod_condiments not researched | Peanut Butter excluded from bulk |
 | **All items accessible when all researched** | All prod_* researched | All 136 items accessible |
 
-### 3. Conducting Research (Spending Points)
+### 3. Analyst Assignment
 
 | Test | Setup | Assert |
 |------|-------|--------|
-| **Spend points to research** | 20 points in pool, research costs 15 | Points = 5, upgrade in researchedUpgrades |
-| **Insufficient points rejected** | 5 points in pool, research costs 15 | State unchanged |
-| **Already researched rejected** | Upgrade already in researchedUpgrades | State unchanged |
-| **Prerequisites not met rejected** | prod_baking without prod_breakfast researched | State unchanged |
-| **Gate check not met rejected** | prod_dairy_basics with totalRevenue < $2,500 | State unchanged |
-| **Prerequisites met succeeds** | prod_breakfast researched, enough points for prod_baking | prod_baking added |
-| **Product research unlocks items** | Conduct prod_condiments | PB, Jam, Ketchup, etc. now accessible |
+| **Assign to research topic** | Analyst exists, topic is visible | analystAssignments[entityId] = Research("prod_breakfast") |
+| **Assign to consulting** | Analyst exists | analystAssignments[entityId] = Consulting |
+| **Set to idle (null)** | Analyst currently assigned | analystAssignments removes entityId |
+| **Reject assignment to unresearchable topic** | prod_baking without prereq prod_breakfast | State unchanged |
+| **Reject assignment to completed topic** | prod_breakfast already researched | State unchanged |
+| **Reject assignment for non-analyst** | entityId is a Cashier | State unchanged |
+| **Fired analyst auto-removed from assignments** | Fire analyst with active assignment | analystAssignments no longer contains entityId |
 
-### 4. Available Research List
+### 4. Auto-Completion
 
 | Test | Setup | Assert |
 |------|-------|--------|
-| **Initial available list** | Fresh game state, enough points | Only gate-free, no-prereq items visible (prod_breakfast, prod_condiments, prod_canned, etc.) |
-| **Completing prereq reveals next** | Research prod_breakfast | prod_baking appears in available list |
+| **Topic completes at cost threshold** | researchProgress["prod_breakfast"] = 5.0, cost = 5 | prod_breakfast in researchedUpgrades, progress removed |
+| **Analysts idled on completion** | 2 analysts assigned to topic, topic completes | Both analysts removed from analystAssignments |
+| **Completion unlocks items** | prod_condiments completes | PB, Jam, Ketchup, etc. now accessible |
+| **Partial overshoot consumed** | Progress hits 5.3 on a cost-5 topic | Completes, excess lost (not transferred) |
+| **Prerequisites met reveals next** | prod_breakfast completes | prod_baking appears in available list |
+
+### 5. Available Research List
+
+| Test | Setup | Assert |
+|------|-------|--------|
+| **Initial available list** | Fresh game state | Only gate-free, no-prereq items visible (prod_breakfast, prod_condiments, prod_canned, etc.) |
+| **Completing prereq reveals next** | prod_breakfast completed | prod_baking appears in available list |
 | **Gate blocks visibility** | totalRevenue < $2,500 | prod_dairy_basics not in available list |
 | **Completed items not in available** | prod_breakfast already researched | Not in available, in completed |
 
-### 5. Upgrade Visibility
+### 6. Upgrade Visibility
 
 | Test | Setup | Assert |
 |------|-------|--------|
 | **Unresearched upgrade is hidden** | No research done | `isUpgradeResearched("prod_dairy_basics")` = false |
 | **Researched upgrade is visible** | prod_dairy_basics in researchedUpgrades | `isUpgradeResearched("prod_dairy_basics")` = true |
 
-### 6. Save Migration
+### 7. Save Migration
 
 | Test | Setup | Assert |
 |------|-------|--------|

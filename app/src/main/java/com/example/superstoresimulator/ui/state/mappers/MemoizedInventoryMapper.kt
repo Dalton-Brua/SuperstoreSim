@@ -149,6 +149,8 @@ class MemoizedInventoryMapper(
                 priceModifierPercent = resolved?.modifierPercent ?: 0,
                 hasActiveMarkdown = currentPricing?.activeMarkdowns?.containsKey(itemId) == true,
                 soldByWeight = meta.soldByWeight,
+                description = metadataCache.getItem(itemId)?.description ?: "",
+                tierLabel = meta.tier.name,
             )
         }
         

@@ -78,6 +78,9 @@ data class HiredEntity(
     val isDeptManager: Boolean get() = entityDefinition != EntityDef.MANAGER && tier == Tier.MANAGER
     val canPromote: Boolean get() = tier != Tier.MANAGER && level >= PROMOTE_UNLOCK_LEVEL
 
+    /** FAST tier and above unlocks day-rollover auto-reorder for stockers. */
+    val canAutoReorder: Boolean get() = tier.ordinal >= Tier.FAST.ordinal
+
     fun upgrade(): HiredEntity {
         require(tier != Tier.MANAGER) { "Already at max tier" }
         return copy(tier = tier.next(), level = 1, xp = 0)

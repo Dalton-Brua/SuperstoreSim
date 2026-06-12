@@ -53,7 +53,6 @@ import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.ItemCategory
-import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.ui.components.cards.InventoryItemCard
@@ -79,7 +78,6 @@ import kotlinx.coroutines.launch
 fun InventoryScreen(
     state: InventoryUIState,
     money: Money,
-    itemMetadataCache: ItemMetadataCache,
     currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
     metricsData: List<DailyMetrics> = emptyList(),
     resetTrigger: Int = 0,
@@ -95,36 +93,26 @@ fun InventoryScreen(
     onItemClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // State to hold item names from cache
-    val itemNames = remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
-    
+    // Item names derived from UIState items (no cache access needed)
+    val itemNames = remember(state.items) { state.items.associate { it.id to it.name } }
+
     // State to hold search query (preserved across navigation)
     val searchQuery = remember { mutableStateOf("") }
-    
+
     // State for debounced search query
     val debouncedSearchQuery = remember { mutableStateOf("") }
-    
+
     // Dialog state
     var showBulkOrderDialog by remember { mutableStateOf(false) }
     var showAutoOrderConfigDialog by remember { mutableStateOf(false) }
-    
+
     // Debounce search query with 200ms delay
     LaunchedEffect(searchQuery.value) {
         if (searchQuery.value.isEmpty()) {
             debouncedSearchQuery.value = ""
         } else {
-            delay(200)  // Wait 200ms before applying search
+            delay(200)
             debouncedSearchQuery.value = searchQuery.value
-        }
-    }
-    
-    // Load item names from cache instead of database query
-    LaunchedEffect(Unit) {
-        try {
-            // Get cached item names (no database access)
-            itemNames.value = itemMetadataCache.getAllItemNames()
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
     
@@ -138,7 +126,7 @@ fun InventoryScreen(
     val listState = rememberLazyListState()
     
     // Recompute filtered items whenever category, focused item, or debounced search query changes
-    val filteredItems = remember(state.items, state.selectedCategory, state.focusedItemId, debouncedSearchQuery.value, itemNames.value) {
+    val filteredItems = remember(state.items, state.selectedCategory, state.focusedItemId, debouncedSearchQuery.value) {
         var filtered = if (state.focusedItemId != null) {
             // If an item is focused, show only that item
             state.items.filter { item -> item.id == state.focusedItemId }
@@ -155,8 +143,7 @@ fun InventoryScreen(
         // Apply search filter if debounced search query is not empty
         if (debouncedSearchQuery.value.isNotEmpty()) {
             filtered = filtered.filter { item ->
-                val itemName = itemNames.value[item.id] ?: item.name
-                itemName.contains(debouncedSearchQuery.value, ignoreCase = true)
+                item.name.contains(debouncedSearchQuery.value, ignoreCase = true)
             }
         }
         
@@ -235,7 +222,7 @@ private fun InventoryListScreen(
     currentTier: ItemUnlockTier,
     searchQuery: MutableState<String>,
     debouncedSearchQuery: MutableState<String>,
-    itemNames: MutableState<Map<Int, String>>,
+    itemNames: Map<Int, String>,
     filteredItems: List<InventoryItemUI>,
     listState: androidx.compose.foundation.lazy.LazyListState,
     hasFastStocker: Boolean = false,
@@ -381,7 +368,7 @@ private fun InventoryListScreen(
         ) {
             items(filteredItems) { item ->
                 InventoryItemCard(
-                    item = item.copy(name = itemNames.value[item.id] ?: item.name),
+                    item = item.copy(name = itemNames[item.id] ?: item.name),
                     canAffordBuy = money >= item.casePackCost,
                     onBuy = { onBuyItem(item.id) },
                     onClick = { onItemClick(item.id) }
@@ -457,7 +444,6 @@ fun CategoryChip(
 internal fun InventoryItemDetailScreen(
     item: InventoryItemUI,
     money: Money,
-    itemMetadataCache: ItemMetadataCache,
     currentTier: ItemUnlockTier,
     currentDay: Int,
     metricsData: List<DailyMetrics>,
@@ -473,7 +459,6 @@ internal fun InventoryItemDetailScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val fullItem = remember(item.id) { itemMetadataCache.getItem(item.id) }
 
     Column(
         modifier = modifier
@@ -502,7 +487,7 @@ internal fun InventoryItemDetailScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.weight(1f)
         ) {
-            item { ItemHeaderCard(item = item, fullItem = fullItem, currentTier = currentTier) }
+            item { ItemHeaderCard(item = item, currentTier = currentTier) }
 
             item { StockLevelsCard(item = item) }
 
@@ -530,7 +515,7 @@ internal fun InventoryItemDetailScreen(
                 )
             }
 
-            item { CasePackDetailsCard(item = item, fullItem = fullItem) }
+            item { CasePackDetailsCard(item = item) }
 
             item { SalesAnalysisCard(itemId = item.id, metricsData = metricsData) }
 
@@ -554,18 +539,17 @@ internal fun InventoryItemDetailScreen(
                         containerColor = PrimaryDark,
                         disabledContainerColor = ChipSurface
                     ),
-                    enabled = money >= item.casePackCost && !item.backroomFull,
+                    enabled = money >= item.casePackCost,
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
                         text = when {
-                            item.backroomFull -> "Backroom Full"
                             money < item.casePackCost -> "Insufficient Funds"
                             else -> "Order Case Pack (${item.casePackCost})"
                         },
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (money >= item.casePackCost && !item.backroomFull) TextWhite else TextMuted
+                        color = if (money >= item.casePackCost) TextWhite else TextMuted
                     )
                 }
             }
@@ -598,7 +582,6 @@ internal fun InventoryItemDetailScreen(
 fun InventoryAndFreshScreen(
     state: InventoryUIState,
     money: Money,
-    itemMetadataCache: ItemMetadataCache,
     currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
     currentDay: Int,
     metricsData: List<DailyMetrics> = emptyList(),
@@ -708,7 +691,6 @@ fun InventoryAndFreshScreen(
                 page == 0 -> InventoryScreen(
                     state = state,
                     money = money,
-                    itemMetadataCache = itemMetadataCache,
                     currentTier = currentTier,
                     metricsData = metricsData,
                     resetTrigger = resetTrigger,

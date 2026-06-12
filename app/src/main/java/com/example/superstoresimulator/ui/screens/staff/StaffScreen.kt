@@ -86,7 +86,6 @@ fun StaffScreen(
     state: StaffUIState,
     money: Money,
     onSelectStaffDef: (EntityDef?) -> Unit,
-    onSetAutoHireBudget: (Money) -> Unit = {},
     onUpdateStoreManagerConfig: (StoreManagerConfig) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -126,15 +125,6 @@ fun StaffScreen(
                 }
             }
 
-            // Auto-hire budget — visible when any manager is on staff
-            if (state.hasManagerOnStaff) {
-                item {
-                    AutoHireBudgetInput(
-                        currentBudget = state.autoHireBudget,
-                        onSetBudget = onSetAutoHireBudget,
-                    )
-                }
-            }
 
             if (state.hasStoreManager) {
                 item {
@@ -321,7 +311,7 @@ fun EntityTypeDetailScreen(
 
         Button(
             onClick = { onHire(def) },
-            enabled = money >= def.cost && (!isFreshHandlers || canHireFreshHandlers) && (!isManager || canHireManagers),
+            enabled = (!isFreshHandlers || canHireFreshHandlers) && (!isManager || canHireManagers),
             colors = GameButtonStyles.primaryBlueColor(),
             shape = GameButtonStyles.Shape,
             border = GameButtonStyles.PrimaryBorder,
@@ -496,27 +486,16 @@ fun HiredEntityCard(
 
 @Composable
 private fun ActivityChip(activity: EmployeeActivity) {
-    val (label, chipColor, textColor) = when (activity) {
-        EmployeeActivity.CASHIERING -> Triple("Cashiering", SuccessChipSurface, SuccessTextDark)
-        EmployeeActivity.WAITING_FOR_CUSTOMER -> Triple("Waiting for customer", WarningChipSurface, WarningTextDark)
-        EmployeeActivity.STOCKING -> Triple("Stocking", SuccessChipSurface, SuccessTextDark)
-        EmployeeActivity.ZONING -> Triple("Zoning shelves", InfoChipSurface, PrimaryDark)
-        EmployeeActivity.HANDLING_FRESH -> Triple("Handling fresh", SuccessChipSurface, SuccessTextDark)
-        EmployeeActivity.IDLE -> Triple("Idle", ErrorSurface, CriticalRed)
-        EmployeeActivity.OFF_SHIFT -> Triple("Off shift", PlaceholderSurface, TextSecondary)
+    val label = when (activity) {
+        EmployeeActivity.CASHIERING -> "Cashiering"
+        EmployeeActivity.WAITING_FOR_CUSTOMER -> "Waiting for customer"
+        EmployeeActivity.STOCKING -> "Stocking"
+        EmployeeActivity.ZONING -> "Zoning shelves"
+        EmployeeActivity.HANDLING_FRESH -> "Handling fresh"
+        EmployeeActivity.IDLE -> "Idle"
+        EmployeeActivity.OFF_SHIFT -> "Off shift"
     }
-    androidx.compose.material3.Surface(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
-        color = chipColor,
-    ) {
-        Text(
-            text = label,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = textColor,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-        )
-    }
+    com.example.superstoresimulator.ui.components.common.ActivityChip(label, activity)
 }
 
 @Composable
@@ -570,60 +549,6 @@ private fun UtilizationBar(label: String, utilization: Float) {
     }
 }
 
-@Composable
-fun AutoHireBudgetInput(
-    currentBudget: Money,
-    onSetBudget: (Money) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var text by remember(currentBudget) {
-        mutableStateOf(if (currentBudget <= Money.ZERO) "" else currentBudget.toDouble().toLong().toString())
-    }
-
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = CardWhite),
-        elevation = CardDefaults.cardElevation(2.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text("Auto-Hire Budget", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ChipTextDark)
-            Text(
-                "Managers won't auto-hire if cash would drop below this amount. Set to 0 to disable.",
-                fontSize = 11.sp,
-                color = TextSecondary,
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text("$", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ChipTextDark)
-                androidx.compose.material3.OutlinedTextField(
-                    value = text,
-                    onValueChange = { newVal: String ->
-                        val filtered = newVal.filter { c -> c.isDigit() }
-                        text = filtered
-                    },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp),
-                )
-                Button(
-                    onClick = {
-                        val dollars = text.toLongOrNull() ?: 0L
-                        onSetBudget(Money(dollars * 100))
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                ) {
-                    Text("Set", color = TextWhite, fontSize = 12.sp)
-                }
-            }
-        }
-    }
-}
 
 /**
  * Container that hosts the Staff, Schedule, and Unlocks tabs together so the bottom
@@ -640,7 +565,6 @@ fun StaffAndUnlocksScreen(
     onSelectStaffDef: (EntityDef?) -> Unit,
     onUnlockNextTier: () -> Unit,
     onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int) -> Unit = { _, _, _ -> },
-    onSetAutoHireBudget: (Money) -> Unit = {},
     onUpdateStoreManagerConfig: (StoreManagerConfig) -> Unit = {},
 ) {    val tabs = listOf("Staff", "Schedule", "Unlocks")
 
@@ -716,7 +640,6 @@ fun StaffAndUnlocksScreen(
                     state = staffState,
                     money = money,
                     onSelectStaffDef = onSelectStaffDef,
-                    onSetAutoHireBudget = onSetAutoHireBudget,
                     onUpdateStoreManagerConfig = onUpdateStoreManagerConfig,
                 )
                 1 -> ScheduleScreen(

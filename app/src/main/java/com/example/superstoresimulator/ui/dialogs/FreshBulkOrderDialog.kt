@@ -80,7 +80,7 @@ fun FreshBulkOrderDialog(
         allItems.filter { item ->
             val totalQty = item.shelfStock + item.backroomStock
             // Only include fresh items (those with shelfLifeDays) and those below the threshold
-            item.shelfLifeDays != null && totalQty <= maxTotalQuantity && !item.backroomFull
+            item.shelfLifeDays != null && totalQty <= maxTotalQuantity
         }
     }
 

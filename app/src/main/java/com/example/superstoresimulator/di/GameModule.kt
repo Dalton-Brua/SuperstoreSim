@@ -5,6 +5,7 @@ import com.example.superstoresimulator.domain.inventory.InventoryManager
 import com.example.superstoresimulator.domain.delivery.TruckManager
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.pricing.PricingManager
+import com.example.superstoresimulator.domain.vendor.VendorManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -17,8 +18,8 @@ object GameModule {
 
     @Provides
     @Singleton
-    fun provideTransactionEngine(cache: ItemMetadataCache, pricingManager: PricingManager): TransactionEngine =
-        TransactionEngine(cache = cache, pricingManager = pricingManager)
+    fun provideTransactionEngine(cache: ItemMetadataCache, pricingManager: PricingManager, vendorManager: VendorManager): TransactionEngine =
+        TransactionEngine(cache = cache, pricingManager = pricingManager, vendorManager = vendorManager)
 
     @Provides
     @Singleton

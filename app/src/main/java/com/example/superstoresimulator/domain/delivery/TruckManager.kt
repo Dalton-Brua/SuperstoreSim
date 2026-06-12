@@ -13,6 +13,7 @@ import com.example.superstoresimulator.domain.metrics.AutoHireAction
 import com.example.superstoresimulator.domain.metrics.AutoHireEvent
 import com.example.superstoresimulator.domain.metrics.DeliveredItemLine
 import com.example.superstoresimulator.domain.metrics.DeliveredTruckRecord
+import com.example.superstoresimulator.domain.time.GameTime
 
 /**
  * Pure manager for the truck-based delivery system.
@@ -33,7 +34,6 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
 
     companion object {
         const val OOS_BUY_SLOT_THRESHOLD = 10
-        private val DAY_NAMES = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
     }
 
     // ── Scheduling ────────────────────────────────────────────────────────────
@@ -168,7 +168,9 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
 
         var newInventory = state.inventory
         var newMetrics = state.currentDayMetrics
-        val remainingTrucks = state.scheduledTrucks.filter { it.scheduledArrivalDay > currentDay }
+        val remainingTrucks = state.scheduledTrucks.filter { it.scheduledArrivalDay > currentDay }.toMutableList()
+        val overflowLines = mutableListOf<PendingOrderLine>()
+        val capInCasePacks = state.storeConfig.backroomCapPerItem
 
         for (truck in arriving) {
             val deliveredLines = mutableListOf<DeliveredItemLine>()
@@ -176,26 +178,46 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
             for (line in truck.orders) {
                 val inv = newInventory[line.itemId] ?: InventoryState()
                 val meta = cache.getItem(line.itemId)
-                val expirationDay = if (meta?.shelfLifeDays != null) {
-                    truck.scheduledArrivalDay + meta.shelfLifeDays
-                } else {
-                    Int.MAX_VALUE
+                val casePack = meta?.casePack ?: 1
+                val currentBackroomCasePacks = inv.backroomStock / casePack
+                val roomLeft = (capInCasePacks - currentBackroomCasePacks).coerceAtLeast(0)
+                val deliverableCasePacks = minOf(line.casePacksCount, roomLeft)
+                val deferredCasePacks = line.casePacksCount - deliverableCasePacks
+
+                if (deliverableCasePacks > 0) {
+                    val deliverableQuantity = casePack * deliverableCasePacks
+                    val expirationDay = if (meta?.shelfLifeDays != null) {
+                        truck.scheduledArrivalDay + meta.shelfLifeDays
+                    } else {
+                        Int.MAX_VALUE
+                    }
+                    val batch = ItemBatch(
+                        receivedDay = truck.scheduledArrivalDay,
+                        quantity = deliverableQuantity,
+                        expirationDay = expirationDay,
+                    )
+                    val updatedBackroom = inv.mergeBatches(inv.backroomBatches + batch)
+                    newInventory = newInventory + (line.itemId to inv.copy(backroomBatches = updatedBackroom))
                 }
-                val batch = ItemBatch(
-                    receivedDay = truck.scheduledArrivalDay,
-                    quantity = line.quantity,
-                    expirationDay = expirationDay,
-                )
-                val updatedBackroom = inv.mergeBatches(inv.backroomBatches + batch)
-                newInventory = newInventory + (line.itemId to inv.copy(backroomBatches = updatedBackroom))
+
+                if (deferredCasePacks > 0) {
+                    overflowLines.add(
+                        line.copy(
+                            casePacksCount = deferredCasePacks,
+                            quantity = casePack * deferredCasePacks,
+                        )
+                    )
+                }
 
                 val itemName = cache.get(line.itemId)?.name ?: "Item ${line.itemId}"
                 deliveredLines.add(
                     DeliveredItemLine(
                         itemId = line.itemId,
                         itemName = itemName,
-                        casePacks = line.casePacksCount,
-                        quantity = line.quantity,
+                        casePacks = deliverableCasePacks,
+                        quantity = casePack * deliverableCasePacks,
+                        deferredCasePacks = deferredCasePacks,
+                        deferredQuantity = casePack * deferredCasePacks,
                     )
                 )
             }
@@ -206,18 +228,31 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
                     arrivalDay = truck.scheduledArrivalDay,
                     isFreshTruck = truck.isFreshTruck,
                     isEarlyTruck = truck.isEarlyTruck,
-                    totalCasePacks = truck.orders.sumOf { it.casePacksCount },
+                    totalCasePacks = deliveredLines.sumOf { it.casePacks },
                     lines = deliveredLines,
                 )
                 newMetrics = newMetrics.copy(deliveredTrucks = newMetrics.deliveredTrucks + record)
             }
         }
 
-        return state.copy(
+        var resultState = state.copy(
             inventory = newInventory,
             scheduledTrucks = remainingTrucks,
             currentDayMetrics = newMetrics,
         )
+
+        if (overflowLines.isNotEmpty()) {
+            val freshOverflow = overflowLines.filter { it.isFresh }
+            val regularOverflow = overflowLines.filter { !it.isFresh }
+            if (regularOverflow.isNotEmpty()) {
+                resultState = scheduleRegularOrderLines(resultState, regularOverflow, currentDay)
+            }
+            if (freshOverflow.isNotEmpty()) {
+                resultState = scheduleFreshOrderLines(resultState, freshOverflow, currentDay)
+            }
+        }
+
+        return resultState
     }
 
     // ── Configuration ─────────────────────────────────────────────────────────
@@ -450,7 +485,7 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
                 result = updateConfig(result, result.truckConfig.copy(deliveryDays = newDays))
                 events += AutoHireEvent(
                     "Truck", "Delivery day added",
-                    detail = "Store Manager added ${DAY_NAMES[bestDay]} delivery — filling available slot",
+                    detail = "Store Manager added ${GameTime.shortDayName(bestDay)} delivery — filling available slot",
                     action = AutoHireAction.PURCHASED,
                 )
             }
@@ -503,7 +538,7 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
                     }
                     events += AutoHireEvent(
                         "Truck", "Extra slot purchased",
-                        detail = "Store Manager bought extra truck slot${if (bestDay != null) " and added ${DAY_NAMES[bestDay!!]}" else ""} — $oosCount items OOS",
+                        detail = "Store Manager bought extra truck slot${if (bestDay != null) " and added ${GameTime.shortDayName(bestDay!!)}" else ""} — $oosCount items OOS",
                         action = AutoHireAction.PURCHASED,
                     )
                 }
@@ -554,35 +589,21 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
 
     /**
      * Fill [truck] with as many lines as truck capacity allows.
-     * When [perItemCapCasePacks] is set, each item is also limited to that many case packs
-     * per truck — overflow lines are returned as leftover so the caller can place them on
-     * a subsequent truck (enabling multi-truck splitting for large per-item orders).
-     *
-     * Fresh truck calls omit [perItemCapCasePacks] (default = no per-item limit).
+     * Overflow lines are returned as leftover so the caller can place them on a
+     * subsequent truck. Per-item ordering caps are enforced upstream in InventoryManager.
      */
     private fun fillTruck(
         truck: ScheduledTruck,
         lines: List<PendingOrderLine>,
-        perItemCapCasePacks: Int = Int.MAX_VALUE,
     ): Pair<ScheduledTruck, List<PendingOrderLine>> {
         var remaining = truck.remainingCapacityCasePacks
         val placed = mutableListOf<PendingOrderLine>()
         val leftover = mutableListOf<PendingOrderLine>()
 
-        // Track per-item case packs already committed to this truck (existing + newly placed).
-        val itemCapUsed = truck.orders
-            .groupBy { it.itemId }
-            .mapValues { (_, ls) -> ls.sumOf { it.casePacksCount } }
-            .toMutableMap()
-
         for (line in lines) {
-            val alreadyForItem = itemCapUsed.getOrDefault(line.itemId, 0)
-            val fitsInTruck = line.casePacksCount <= remaining
-            val fitsPerItem = alreadyForItem + line.casePacksCount <= perItemCapCasePacks
-            if (fitsInTruck && fitsPerItem) {
+            if (line.casePacksCount <= remaining) {
                 placed.add(line)
                 remaining -= line.casePacksCount
-                itemCapUsed[line.itemId] = alreadyForItem + line.casePacksCount
             } else {
                 leftover.add(line)
             }

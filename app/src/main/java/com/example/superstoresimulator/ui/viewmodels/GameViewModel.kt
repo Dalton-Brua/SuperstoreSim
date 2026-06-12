@@ -42,7 +42,11 @@ import com.example.superstoresimulator.domain.persistence.GameStateRepository
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Transactions.Transaction
+import com.example.superstoresimulator.domain.offline.OfflineCatchUpRunner
+import com.example.superstoresimulator.domain.offline.OfflineProgress
+import com.example.superstoresimulator.domain.offline.OfflineState
 import com.example.superstoresimulator.domain.store.StaffWageCalculator.calculateTotalWages
+import com.example.superstoresimulator.domain.time.GameTime
 
 @HiltViewModel
 class GameViewModel @Inject constructor(
@@ -51,7 +55,7 @@ class GameViewModel @Inject constructor(
     @param:TickDelta private val tickDelta: Long = 16,
     private val gameStateRepository: GameStateRepository,
     private val gameEngine: GameEngine,
-    val itemMetadataCache: ItemMetadataCache,
+    private val itemMetadataCache: ItemMetadataCache,
 ) : ViewModel() {
 
     private var gameEngineInitialized = false
@@ -71,12 +75,23 @@ class GameViewModel @Inject constructor(
 
     private val inventoryMapper = MemoizedInventoryMapper(itemMetadataCache)
 
+    private val _offlineState = MutableStateFlow<OfflineState>(OfflineState.Idle)
+    val offlineState = _offlineState.asStateFlow()
+
+    private var pausedWallClock: Long = 0L
+    private var tickLoopActive = true
+
+    companion object {
+        private const val MIN_OFFLINE_THRESHOLD_MS = 5L * 1000 // TEMP: 5 seconds for testing
+    }
+
     init {
         viewModelScope.launch {
             ItemDataLoader.loadItemsIfNeeded(context, itemDao)
             itemMetadataCache.initialize()
 
             val savedState = gameStateRepository.loadGameState()
+            val lastSaveTime = gameStateRepository.getLastSaveTime()
             if (savedState != null) {
                 gameEngine.loadState(savedState)
             } else {
@@ -86,19 +101,19 @@ class GameViewModel @Inject constructor(
             gameEngineInitialized = true
 
             val initialState = gameEngine.currentState()
-            _uiState.value = initialUiState(initialState)
+            _uiState.value = toUiState(initialState, null)
+
+            // Cold-start catch-up: compute gap from last save time
+            if (savedState != null && lastSaveTime != null) {
+                maybeCatchUp(System.currentTimeMillis() - lastSaveTime, savedState)
+            }
         }
         viewModelScope.launch {
             gameEngine.engineEvents.collect { event ->
                 when (event) {
                     is GameEngine.EngineEvent.OrderScheduled -> {
                         val day = event.arrivalDay
-                        val dayOfWeekName = when (day % 7) {
-                            0 -> "Monday"; 1 -> "Tuesday"; 2 -> "Wednesday"; 3 -> "Thursday"
-                            4 -> "Friday"; 5 -> "Saturday"; 6 -> "Sunday"
-                            else -> "Day $day"
-                        }
-                        _snackbarMessage.tryEmit("Order placed — arriving $dayOfWeekName, Day ${day + 1}")
+                        _snackbarMessage.tryEmit("Order placed — arriving ${GameTime.fullDayName(day)}, Day ${day + 1}")
                     }
                 }
             }
@@ -114,19 +129,15 @@ class GameViewModel @Inject constructor(
         return gameEngine.currentState().inventory[itemId]
     }
     
-    /**
-     * Get the current GameState from the engine.
-     * Used by UI components that need fresh auto-order configuration and other domain state.
-     */
-    fun currentState(): GameState {
+    private fun currentState(): GameState {
         if (!gameEngineInitialized) return GameState()
         return gameEngine.currentState()
     }
 
     fun onEvent(event: GameEvent) {
-        // Only process events if gameEngine is initialized
         if (!gameEngineInitialized) return
-        
+        if (_offlineState.value !is OfflineState.Idle) return
+
         when (event) {
             GameEvent.RingUp -> gameEngine.ringUpItem()
             is GameEvent.RingUpItem -> gameEngine.ringUpItem(event.itemId)
@@ -353,86 +364,38 @@ class GameViewModel @Inject constructor(
 
         }
         
-        if (gameEngineInitialized) {
-            val newDomainState = gameEngine.currentState()
-            
-            if (shouldRebuildUiState(newDomainState)) {
-                val newUiState = toUiState(newDomainState, _uiState.value)
-                _uiState.value = newUiState
-                lastUiState = newUiState
-                lastDomainState = newDomainState
-            }
-        }
+        refreshUiState()
+    }
 
+    /** Rebuild the UI state from the engine if the domain state changed since the last rebuild. */
+    private fun refreshUiState() {
+        if (!gameEngineInitialized) return
+        val newDomainState = gameEngine.currentState()
+        if (!shouldRebuildUiState(newDomainState)) return
+        val newUiState = toUiState(newDomainState, _uiState.value)
+        _uiState.value = newUiState
+        lastUiState = newUiState
+        lastDomainState = newDomainState
+    }
+
+    /** Run offline catch-up when the away gap is large enough and the player didn't pause intentionally. */
+    private fun maybeCatchUp(elapsedMs: Long, state: GameState) {
+        val shouldSkip = state.playerPausedTime && !state.pausedByEndOfDay
+        if (elapsedMs >= MIN_OFFLINE_THRESHOLD_MS && !shouldSkip) {
+            viewModelScope.launch { performOfflineCatchUp(elapsedMs) }
+        }
     }
 
     init {
         viewModelScope.launch {
             while (true) {
-                kotlinx.coroutines.delay((tickDelta))
-                onEvent(GameEvent.Tick)
+                kotlinx.coroutines.delay(tickDelta)
+                if (tickLoopActive) {
+                    onEvent(GameEvent.Tick)
+                }
             }
         }
     }
-    private fun initialUiState(domain: GameState): GameUiState {
-        val scheduleEntries = buildStaffScheduleEntries(domain)
-        return GameUiState(
-            app = AppUIState(
-                storeName = domain.storeName,
-                pendingRefunds = domain.pendingRefunds.size,
-                transactionActive = domain.registers.firstOrNull()?.transactionActive ?: false,
-                money = domain.money
-            ),
-            dashboard = DashboardUIState(
-                money = domain.money,
-                totalStaff = domain.hiredEntityRegistry.totalCount(),
-                activeStaff = countActiveStaff(domain),
-                avgZoneScore = domain.avgZoneScore,
-            ),
-            transactions = TransactionUIState(
-                current = domain.registers.firstOrNull()?.currentTransaction ?: Transaction(),
-                totalCompleted = domain.totalTransactionsCompleted,
-                isActive = domain.registers.firstOrNull()?.transactionActive ?: false,
-                isDialogOpen = false,
-                pendingRefunds = domain.pendingRefunds,
-                pendingCustomers = domain.pendingCustomers,
-                completedToday = domain.currentDayMetrics.transactionsCompleted,
-            ),
-            inventory = inventoryMapper.map(
-                domain.inventory, domain.currentTier, domain.storeConfig.backroomCapPerItem,
-                priceResolver = if (gameEngineInitialized) gameEngine::resolvePrice else null,
-                gameState = domain,
-            ).copy(
-                selectedCategory = null,
-            ),
-            staff = StaffUIState(
-                registry = domain.hiredEntityRegistry,
-                selectedDef = null,
-                scheduleEntries = scheduleEntries,
-                currentHour = domain.currentTime.hour,
-                employeeActivities = if (gameEngineInitialized) gameEngine.employeeActivities() else emptyMap(),
-                cashierUtilization = if (gameEngineInitialized) gameEngine.cashierUtilization() else 0f,
-                stockerUtilization = if (gameEngineInitialized) gameEngine.stockerUtilization() else 0f,
-                freshUtilization = if (gameEngineInitialized) gameEngine.freshUtilization() else 0f,
-                hasManagerOnStaff = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).isNotEmpty(),
-                hasSeniorManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.tier != Tier.BASE },
-                hasStoreManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.isStoreManager },
-                autoHireBudget = domain.autoHireBudget,
-                storeManagerConfig = domain.storeManagerConfig,
-            ),
-            history = HistoryUIState(
-                salesHistory = domain.salesHistory,
-                totalTaxCollected = domain.totalTaxCollected
-            ),
-            time = buildTimeUiState(domain),
-            metrics = buildMetricsUiState(domain),
-            progression = buildProgressionUiState(domain, null),
-            delivery = buildDeliveryUiState(domain, itemMetadataCache),
-            registers = buildRegistersUiState(domain),
-            pricing = buildPricingUiState(domain),
-        )
-    }
-
     private fun toUiState(domain: GameState, oldUi: GameUiState?): GameUiState {
         val scheduleEntries = buildStaffScheduleEntries(domain)
         return GameUiState(
@@ -465,7 +428,7 @@ class GameViewModel @Inject constructor(
             ).copy(
                 selectedCategory = oldUi?.inventory?.selectedCategory,
                 focusedItemId = oldUi?.inventory?.focusedItemId,
-            ),
+            ).withDomainInventoryFields(domain),
             staff = (oldUi?.staff?.copy(
                 registry = domain.hiredEntityRegistry,
                 scheduleEntries = scheduleEntries,
@@ -507,6 +470,34 @@ class GameViewModel @Inject constructor(
         )
     }
 
+    private fun com.example.superstoresimulator.ui.state.InventoryUIState.withDomainInventoryFields(
+        domain: GameState
+    ): com.example.superstoresimulator.ui.state.InventoryUIState = copy(
+        hasFastStocker = domain.hiredEntityRegistry.getByDef(EntityDef.STOCKER)
+            .any { it.canAutoReorder },
+        hasStockingManager = domain.hiredEntityRegistry.getByDef(EntityDef.STOCKER)
+            .any { it.isDeptManager },
+        hasFreshHandler = domain.hiredEntityRegistry.countByDef(EntityDef.FRESH_HANDLER) > 0,
+        freshAutoOrderConfig = domain.freshAutoOrderConfig,
+        normalAutoOrderConfig = domain.normalAutoOrderConfig,
+        incompleteFreshOrders = domain.incompleteFreshOrders,
+        incompleteNormalOrders = domain.incompleteNormalOrders,
+        incompleteFreshItemNames = domain.incompleteFreshOrders.associate { order ->
+            order.itemId to (itemMetadataCache.getItem(order.itemId)?.name ?: "Item ${order.itemId}")
+        },
+        incompleteFreshItemCosts = domain.incompleteFreshOrders.associate { order ->
+            order.itemId to (itemMetadataCache.getItem(order.itemId)?.getCasePackCostAsMoney()
+                ?: com.example.superstoresimulator.domain.Money.ZERO)
+        },
+        incompleteNormalItemNames = domain.incompleteNormalOrders.associate { order ->
+            order.itemId to (itemMetadataCache.getItem(order.itemId)?.name ?: "Item ${order.itemId}")
+        },
+        incompleteNormalItemCosts = domain.incompleteNormalOrders.associate { order ->
+            order.itemId to (itemMetadataCache.getItem(order.itemId)?.getCasePackCostAsMoney()
+                ?: com.example.superstoresimulator.domain.Money.ZERO)
+        },
+    )
+
     private fun shouldRebuildUiState(newDomainState: GameState): Boolean {
         return newDomainState != lastDomainState
     }
@@ -531,39 +522,49 @@ class GameViewModel @Inject constructor(
         lastReport = domain.lastEndOfDayReport,
     )
 
-    // ── Pricing Controls ─────────────────────────────────────────────────────
-
-    fun setCategoryMarkup(category: com.example.superstoresimulator.domain.items.ItemCategory, percent: Int) {
-        if (!gameEngineInitialized) return
-        gameEngine.setCategoryMarkup(category, percent)
+    fun onAppPaused() {
+        tickLoopActive = false
+        pausedWallClock = System.currentTimeMillis()
+        saveGameState()
     }
 
-    fun setDefaultMarkup(percent: Int) {
-        if (!gameEngineInitialized) return
-        gameEngine.setDefaultMarkup(percent)
+    fun onAppResumed() {
+        tickLoopActive = true
+        if (!gameEngineInitialized || pausedWallClock == 0L) return
+
+        val elapsedMs = System.currentTimeMillis() - pausedWallClock
+        pausedWallClock = 0L
+        maybeCatchUp(elapsedMs, gameEngine.currentState())
     }
 
-    fun setItemPriceOverride(itemId: Int, percent: Int) {
-        if (!gameEngineInitialized) return
-        gameEngine.setItemPriceOverride(itemId, percent)
+    fun dismissOfflineSummary() {
+        _offlineState.value = OfflineState.Idle
+        refreshUiState()
     }
 
-    fun clearItemMarkdown(itemId: Int) {
-        if (!gameEngineInitialized) return
-        gameEngine.clearItemMarkdown(itemId)
+    private suspend fun performOfflineCatchUp(elapsedRealMs: Long) {
+        _offlineState.value = OfflineState.CatchingUp(
+            OfflineProgress(0, 1, gameEngine.state.currentTime.dayNumber, 0f)
+        )
+
+        val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            val runner = OfflineCatchUpRunner(gameEngine)
+            runner.simulate(elapsedRealMs) { progress ->
+                _offlineState.value = OfflineState.CatchingUp(progress)
+            }
+        }
+
+        // Save post-catch-up state
+        gameStateRepository.saveGameState(gameEngine.currentState())
+        refreshUiState()
+
+        _offlineState.value = OfflineState.Summary(result)
     }
 
-    /**
-     * Saves the current game state to persistent storage.
-     * Called automatically when the ViewModel is cleared (app closed/backgrounded).
-     * Can also be called manually via GameEvent.SaveGame.
-     */
     fun saveGameState() {
         if (!gameEngineInitialized) return
-        viewModelScope.launch {
-            val currentState = gameEngine.currentState()
-            gameStateRepository.saveGameState(currentState)
-        }
+        val currentState = gameEngine.currentState()
+        gameStateRepository.saveGameState(currentState)
     }
 
     /**
@@ -581,7 +582,7 @@ class GameViewModel @Inject constructor(
                 lastUiState = null
 
                 val freshState = gameEngine.currentState()
-                _uiState.value = initialUiState(freshState)
+                _uiState.value = toUiState(freshState, null)
             }
         }
     }

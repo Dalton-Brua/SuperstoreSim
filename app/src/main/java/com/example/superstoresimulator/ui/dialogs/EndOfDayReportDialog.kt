@@ -116,6 +116,9 @@ fun EndOfDayReportDialog(
                 SectionHeader("💸 Operating Costs")
                 StatRow(Icons.Default.Home, "Daily Rent", "-${report.rentPaid}", tint = ClosedRed)
                 StatRow(Icons.Default.People, "Staff Wages", "-${report.wagesPaid}", tint = ClosedRed)
+                if (report.vendorCommissionPaid.cents > 0) {
+                    StatRow(Icons.Default.LocalShipping, "Vendor Commission", "-${report.vendorCommissionPaid}", tint = ClosedRed)
+                }
                 
                 // Net revenue calculation
                 val netAfterCosts = report.netRevenue
@@ -434,11 +437,20 @@ fun EndOfDayReportDialog(
                                         modifier = Modifier.padding(vertical = 2.dp)
                                     )
                                     truck.lines.forEach { line ->
-                                        Text(
-                                            "  ${line.itemName}: ${line.casePacks} packs (${line.quantity} units)",
-                                            fontSize = 11.sp,
-                                            color = TextNeutralMedium
-                                        )
+                                        if (line.casePacks > 0) {
+                                            Text(
+                                                "  ${line.itemName}: ${line.casePacks} packs (${line.quantity} units)",
+                                                fontSize = 11.sp,
+                                                color = TextNeutralMedium
+                                            )
+                                        }
+                                        if (line.deferredCasePacks > 0) {
+                                            Text(
+                                                "  ${line.itemName}: ${line.deferredCasePacks} packs deferred — backroom full",
+                                                fontSize = 11.sp,
+                                                color = Amber
+                                            )
+                                        }
                                     }
                                     Spacer(Modifier.height(4.dp))
                                 }
@@ -527,6 +539,8 @@ private fun AutoHireRow(event: AutoHireEvent) {
         AutoHireAction.SKIPPED -> Triple(Icons.Default.Block, Amber, "Skipped")
         AutoHireAction.REBALANCED -> Triple(Icons.Default.SwapHoriz, Primary, "Rebalanced")
         AutoHireAction.PURCHASED -> Triple(Icons.Default.ShoppingCart, Violet, "Purchased")
+        AutoHireAction.PROMOTED -> Triple(Icons.AutoMirrored.Filled.TrendingUp, Secondary, "Promoted")
+        AutoHireAction.TERMINATED -> Triple(Icons.Default.PersonOff, Destructive, "Terminated")
     }
     val displayReason = if (event.blocked) event.blockReason else event.reason
     val detail = event.detail

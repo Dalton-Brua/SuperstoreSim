@@ -70,7 +70,7 @@ class RegisterManager @Inject constructor() {
                 registers.none { reg -> reg.assignedCashierId == entity.id }
         }
         for (cashier in unassigned) {
-            val free = registers.firstOrNull { it.assignedCashierId == null } ?: break
+            val free = registers.firstOrNull { it.assignedCashierId == null && state.playerAssignedRegisterId != it.registerId } ?: break
             registers = registers.updateRegister(free.copy(assignedCashierId = cashier.id))
         }
         return if (registers != state.registers) state.copy(registers = registers) else state
@@ -102,7 +102,7 @@ class RegisterManager @Inject constructor() {
                 state.staffSchedules.firstOrNull { it.entityId == cashier.id }?.isOnShift(currentHour) != false
         }
         for (cashier in unassignedOnShiftCashiers) {
-            val freeRegister = registers.firstOrNull { it.assignedCashierId == null }
+            val freeRegister = registers.firstOrNull { it.assignedCashierId == null && state.playerAssignedRegisterId != it.registerId }
             if (freeRegister != null) {
                 registers = registers.updateRegister(freeRegister.copy(assignedCashierId = cashier.id))
             }

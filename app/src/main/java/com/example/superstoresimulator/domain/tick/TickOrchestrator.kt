@@ -15,8 +15,6 @@ import com.example.superstoresimulator.domain.traffic.TrafficManager
 import javax.inject.Inject
 import javax.inject.Singleton
 
-data class TickResult(val state: GameState)
-
 @Singleton
 class TickOrchestrator @Inject constructor(
     private val timeManager: TimeManager,
@@ -34,8 +32,13 @@ class TickOrchestrator @Inject constructor(
     private val staffManager: StaffManager,
     private val dayManager: DayManager,
 ) {
-    fun tick(state: GameState, deltaMilliseconds: Long): TickResult {
-        if (state.playerPausedTime) return TickResult(state)
+    fun tick(
+        state: GameState,
+        deltaMilliseconds: Long,
+        offlineMode: Boolean = false,
+        sampleUtilization: Boolean = true,
+    ): GameState {
+        if (state.playerPausedTime) return state
 
         var s = advanceTime(state, deltaMilliseconds)
         s = processSpoilage(s)
@@ -50,11 +53,14 @@ class TickOrchestrator @Inject constructor(
         s = registerManager.performShiftCheckAndReassignment(s, currentHour)
         s = trafficProcessor.process(s, delta, currentHour)
         s = staffTickProcessor.process(s, delta, speedMultiplier, currentHour)
-        s = playerTickProcessor.process(s, delta, currentHour)
-        utilizationTracker.sample(s, currentHour)
+        if (!offlineMode) {
+            s = playerTickProcessor.process(s, delta)
+        }
+        if (sampleUtilization) {
+            utilizationTracker.sample(s, currentHour)
+        }
 
-        s = s.copy(simAccumulators = snapshotAccumulators())
-        return TickResult(s)
+        return s.copy(simAccumulators = snapshotAccumulators())
     }
 
     private fun snapshotAccumulators(): SimAccumulators = SimAccumulators(

@@ -47,7 +47,8 @@ class SpoilageManager @javax.inject.Inject constructor(
 
         val hasAnyExpired = state.inventory.any { (itemId, inv) ->
             val meta = itemMetadataCache.get(itemId) ?: return@any false
-            meta.isPerishable && (inv.shelfBatches + inv.backroomBatches).any { it.expirationDay <= currentDay }
+            meta.isPerishable && (inv.shelfBatches.any { it.expirationDay <= currentDay } ||
+                inv.backroomBatches.any { it.expirationDay <= currentDay })
         }
         if (!hasAnyExpired) return SpoilageResult(state, emptySet())
 

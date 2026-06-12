@@ -56,8 +56,7 @@ import com.example.superstoresimulator.ui.theme.TextSecondary
 import com.example.superstoresimulator.ui.theme.TextTertiary
 import com.example.superstoresimulator.ui.theme.TextWhite
 import com.example.superstoresimulator.ui.dialogs.ResetGameConfirmationDialog
-
-private val DAY_LABELS = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+import com.example.superstoresimulator.domain.time.GameTime
 
 @Composable
 fun SettingsPanel(
@@ -169,7 +168,7 @@ fun SettingsPanel(
                     )
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    DAY_LABELS.forEachIndexed { index, label ->
+                    GameTime.SHORT_DAY_NAMES.forEachIndexed { index, label ->
                         val isSelected = index in selectedDays
                         val isLastSelected = selectedDays.size == 1 && isSelected
                         // Disable unselected days when at the max truck limit

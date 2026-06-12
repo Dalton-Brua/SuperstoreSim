@@ -40,7 +40,7 @@ fun EntityRow(
             onClick = onBuy,
             enabled = canAfford
         ) {
-            Text(entityDef.cost.toString())
+            Text("Hire")
         }
     }
 }

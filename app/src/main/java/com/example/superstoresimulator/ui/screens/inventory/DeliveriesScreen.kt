@@ -48,12 +48,11 @@ import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
 import com.example.superstoresimulator.ui.theme.ProgressBarTrack
 import com.example.superstoresimulator.ui.theme.SuccessAccent
+import com.example.superstoresimulator.ui.theme.Violet
 import com.example.superstoresimulator.ui.theme.TextMuted
 import com.example.superstoresimulator.ui.theme.TextSecondary
 import com.example.superstoresimulator.ui.theme.TextWhite
-
-private val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-private fun dayOfWeekName(dow: Int) = dayNames.getOrElse(dow % 7) { "Day" }
+import com.example.superstoresimulator.domain.time.GameTime
 
 @Composable
 fun DeliveriesScreen(
@@ -84,7 +83,7 @@ fun DeliveriesScreen(
         Spacer(Modifier.height(16.dp))
 
         // Empty state
-        if (deliveries.regularTrucks.isEmpty() && deliveries.freshTruck == null) {
+        if (deliveries.regularTrucks.isEmpty() && deliveries.freshTruck == null && deliveries.vendorTrucks.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -119,12 +118,38 @@ fun DeliveriesScreen(
                 item(key = "fresh_truck") {
                     TruckCard(
                         truck = fresh,
-                        expanded = expandedTrucks[fresh.truckId] ?: true,
+                        expanded = expandedTrucks[fresh.truckId] ?: false,
                         onToggleExpand = {
-                            expandedTrucks[fresh.truckId] = !(expandedTrucks[fresh.truckId] ?: true)
+                            expandedTrucks[fresh.truckId] = !(expandedTrucks[fresh.truckId] ?: false)
                         },
                         onCancelOrderLine = onCancelOrderLine,
                         onDecrementOrderLine = onDecrementOrderLine,
+                    )
+                }
+            }
+
+            // ── Vendor Trucks ────────────────────────────────────────────
+            if (deliveries.vendorTrucks.isNotEmpty()) {
+                item(key = "vendor_header") {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "📦 Vendor Deliveries",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Violet,
+                    )
+                }
+                items(deliveries.vendorTrucks, key = { "vendor_${it.vendorName}" }) { truck ->
+                    val vendorKey = "vendor_${truck.vendorName}"
+                    TruckCard(
+                        truck = truck,
+                        expanded = expandedTrucks[vendorKey.hashCode()] ?: false,
+                        onToggleExpand = {
+                            val k = vendorKey.hashCode()
+                            expandedTrucks[k] = !(expandedTrucks[k] ?: false)
+                        },
+                        onCancelOrderLine = { _, _ -> },
+                        onDecrementOrderLine = { _, _ -> },
                     )
                 }
             }
@@ -216,7 +241,7 @@ private fun TruckCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "${dayOfWeekName(truck.arrivalDayOfWeek)} · Day ${truck.arrivalDay + 1}",
+                        text = "${GameTime.shortDayName(truck.arrivalDayOfWeek)} · Day ${truck.arrivalDay + 1}",
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 15.sp,
                         color = PrimaryDark,
@@ -249,6 +274,20 @@ private fun TruckCard(
                             )
                         }
                     }
+                    if (truck.isVendorTruck) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Violet,
+                        ) {
+                            Text(
+                                text = truck.vendorName ?: "VENDOR",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextWhite,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
                 }
                 Text(
                     text = if (expanded) "▲" else "▼",
@@ -257,22 +296,24 @@ private fun TruckCard(
                 )
             }
 
-            // Capacity fill bar
-            val fillFraction = if (truck.capacityTotal > 0)
-                truck.capacityUsed.toFloat() / truck.capacityTotal else 0f
-            LinearProgressIndicator(
-                progress = { fillFraction },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp),
-                color = Primary,
-                trackColor = ProgressBarTrack,
-            )
-            Text(
-                text = "${truck.capacityUsed} / ${truck.capacityTotal} case packs",
-                fontSize = 12.sp,
-                color = TextSecondary,
-            )
+            // Capacity fill bar (hidden for vendor trucks)
+            if (!truck.isVendorTruck) {
+                val fillFraction = if (truck.capacityTotal > 0)
+                    truck.capacityUsed.toFloat() / truck.capacityTotal else 0f
+                LinearProgressIndicator(
+                    progress = { fillFraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp),
+                    color = Primary,
+                    trackColor = ProgressBarTrack,
+                )
+                Text(
+                    text = "${truck.capacityUsed} / ${truck.capacityTotal} case packs",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                )
+            }
 
             // Collapsible order lines
             if (expanded) {

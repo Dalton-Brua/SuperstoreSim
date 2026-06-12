@@ -18,7 +18,7 @@ class PlayerTickProcessor @Inject constructor(
     private val inventoryManager: InventoryManager,
     private val itemMetadataCache: ItemMetadataCache,
 ) {
-    fun process(state: GameState, delta: Double, currentHour: Int): GameState {
+    fun process(state: GameState, delta: Double): GameState {
         var s = state
         if (s.playerRole == PlayerRole.CASHIER && s.playerAssignedRegisterId == null) {
             val freeReg = s.registers.firstOrNull { it.assignedCashierId == null }
@@ -41,7 +41,7 @@ class PlayerTickProcessor @Inject constructor(
         val registerId = state.playerAssignedRegisterId ?: return state
         val register = state.registers.findRegisterById(registerId) ?: return state
 
-        if (state.playerAssignedRegisterId != null && register.assignedCashierId != null) {
+        if (register.assignedCashierId != null) {
             return state.copy(playerCashierProgress = 0f)
         }
 

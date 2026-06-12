@@ -23,6 +23,7 @@ import com.example.superstoresimulator.domain.registers.RegisterManager
 import com.example.superstoresimulator.domain.staff.StaffManager
 import com.example.superstoresimulator.domain.store.StoreController
 import com.example.superstoresimulator.domain.traffic.TrafficManager
+import com.example.superstoresimulator.domain.vendor.VendorManager
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
@@ -57,7 +58,7 @@ class TickOrchestratorTest {
         val inventoryManager = InventoryManager(cache, truckManager)
         val spoilageManager = SpoilageManager(cache)
         val registerManager = RegisterManager()
-        val dayRolloverProcessor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager, FakeTransactionDao())
+        val dayRolloverProcessor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager, FakeTransactionDao(), VendorManager(cache))
         val trafficProcessor = TrafficProcessor(trafficManager, transactionEngine, registerManager)
         val staffTickProcessor = StaffTickProcessor(
             staffManager, inventoryManager, transactionEngine, registerManager, pricingManager, cache,
@@ -79,21 +80,21 @@ class TickOrchestratorTest {
     fun `tick returns unchanged state when player paused`() {
         val state = GameState(playerPausedTime = true, money = Money(1000))
         val result = orchestrator.tick(state, 16L)
-        assertEquals(state, result.state)
+        assertEquals(state, result)
     }
 
     @Test
     fun `tick advances time`() {
         val state = GameState(money = Money(1000))
         val result = orchestrator.tick(state, 1000L)
-        assertTrue(result.state.currentTime.totalMinutesElapsed > state.currentTime.totalMinutesElapsed)
+        assertTrue(result.currentTime.totalMinutesElapsed > state.currentTime.totalMinutesElapsed)
     }
 
     @Test
     fun `tick preserves money when no transactions active`() {
         val state = GameState(money = Money(5000))
         val result = orchestrator.tick(state, 16L)
-        assertEquals(Money(5000), result.state.money)
+        assertEquals(Money(5000), result.money)
     }
 
     @Test
@@ -105,7 +106,7 @@ class TickOrchestratorTest {
             storeState = StoreState.CLOSED,
         )
         val result = orchestrator.tick(state, 16L)
-        assertEquals(StoreState.OPEN, result.state.storeState)
+        assertEquals(StoreState.OPEN, result.storeState)
     }
 
     @Test
@@ -114,7 +115,7 @@ class TickOrchestratorTest {
         var lastMinutes = state.currentTime.totalMinutesElapsed
         repeat(10) {
             val result = orchestrator.tick(state, 100L)
-            state = result.state
+            state = result
             assertTrue(state.currentTime.totalMinutesElapsed >= lastMinutes)
             lastMinutes = state.currentTime.totalMinutesElapsed
         }

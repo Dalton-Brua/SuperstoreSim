@@ -43,9 +43,8 @@ import org.junit.Test
  * Covers:
  *  [hireEntity]
  *   - Registry grows by one after a successful hire
- *   - Cost is deducted from money
- *   - Returns state unchanged when money is insufficient
- *   - Money is not touched when hire is blocked
+ *   - Hiring is free (no money deducted)
+ *   - Works with zero money
  *
  *  [upgradeEntity]
  *   - Entity definition advances to nextUpgrade after successful upgrade
@@ -100,25 +99,16 @@ class StaffManagerTest {
     }
 
     @Test
-    fun `hireEntity deducts the hire cost from money`() {
+    fun `hireEntity does not deduct money`() {
         val startMoney = Money(50_000L)
         val state = GameState(money = startMoney)
         val result = staffManager.hireEntity(state, EntityDef.CASHIER)
-        assertEquals(startMoney - EntityDef.CASHIER.cost, result.money)
+        assertEquals(startMoney, result.money)
     }
 
     @Test
-    fun `hireEntity returns state unchanged when money is insufficient`() {
-        // CASHIER costs 1_500 ¢; player has 1_499 ¢
-        val state = GameState(money = Money(1_499L))
-        val result = staffManager.hireEntity(state, EntityDef.CASHIER)
-        assertEquals(0, result.hiredEntityRegistry.totalCount())
-        assertEquals(Money(1_499L), result.money)
-    }
-
-    @Test
-    fun `hireEntity money guard uses strict less-than — exact cost succeeds`() {
-        val state = GameState(money = EntityDef.CASHIER.cost)
+    fun `hireEntity works with zero money`() {
+        val state = GameState(money = Money.ZERO)
         val result = staffManager.hireEntity(state, EntityDef.CASHIER)
         assertEquals(1, result.hiredEntityRegistry.totalCount())
         assertEquals(Money.ZERO, result.money)
@@ -342,7 +332,7 @@ class StaffManagerTest {
     }
 
     @Test
-    fun `hireEntity deducts money when successful (via GameEngine)`() {
+    fun `hireEntity does not deduct money (via GameEngine)`() {
         val engine = newGameEngine()
         setEngineMoneyTo(engine, 10_000L)
         val initialMoney = engine.currentState().money
@@ -350,19 +340,18 @@ class StaffManagerTest {
         engine.hireEntity(EntityDef.CASHIER)
 
         val finalMoney = engine.currentState().money
-        assertTrue("Money should decrease after hiring", finalMoney < initialMoney)
+        assertEquals("Money should not change after hiring", initialMoney, finalMoney)
     }
 
     @Test
-    fun `hireEntity is rejected when insufficient funds (via GameEngine)`() {
+    fun `hireEntity succeeds with zero funds (via GameEngine)`() {
         val engine = newGameEngine()
-        // Engine starts with 0 money
         val initialCount = engine.currentState().hiredEntityRegistry.totalCount()
 
         engine.hireEntity(EntityDef.CASHIER)
 
         val finalCount = engine.currentState().hiredEntityRegistry.totalCount()
-        assertEquals("Registry count should not change", initialCount, finalCount)
+        assertEquals("Registry count should increase by 1", initialCount + 1, finalCount)
     }
 
     @Test

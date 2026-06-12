@@ -44,6 +44,8 @@ fun StoreManagerConfigDialog(
     var earlyPercent by remember { mutableFloatStateOf(config.earlyTruckOosPercent.toFloat()) }
     var buySlot by remember { mutableStateOf(config.autoBuyTruckSlotEnabled) }
     var buyThreshold by remember { mutableFloatStateOf(config.buySlotOosThreshold.toFloat()) }
+    var autoPromote by remember { mutableStateOf(config.autoPromoteEnabled) }
+    var autoTerminate by remember { mutableStateOf(config.autoTerminateEnabled) }
     var buyRegisters by remember { mutableStateOf(config.autoBuyRegistersEnabled) }
     var rebalance by remember { mutableStateOf(config.autoRebalanceShiftsEnabled) }
 
@@ -93,19 +95,24 @@ fun StoreManagerConfigDialog(
                             ToggleRow("    Backroom Full", hireOnBackroom) { hireOnBackroom = it }
                             ToggleRow("    Low Zone Score", hireOnZone) { hireOnZone = it }
                             if (hireOnZone) {
-                                PercentSlider(
+                                ConfigSlider(
                                     label = "Zone Score Threshold",
                                     value = zoneThreshold,
                                     range = 50f..95f,
                                     steps = 8,
                                     onValueChange = { zoneThreshold = it },
-                                    suffix = "zone score",
+                                    valueSuffix = "% zone score",
                                 )
                             }
                         }
                         ToggleRow("  Hire Fresh Handlers", hireFresh) { hireFresh = it }
                     }
                 }
+
+                Spacer(Modifier.height(8.dp))
+                ToggleRow("Auto-Promote (Lv5)", autoPromote) { autoPromote = it }
+                Spacer(Modifier.height(8.dp))
+                ToggleRow("Terminate Idle Staff", autoTerminate) { autoTerminate = it }
 
                 Spacer(Modifier.height(8.dp))
                 HorizontalDivider(color = TextSecondary.copy(alpha = 0.2f))
@@ -118,24 +125,26 @@ fun StoreManagerConfigDialog(
                 Spacer(Modifier.height(8.dp))
                 ToggleRow("Order Early Truck", earlyTruck) { earlyTruck = it }
                 if (earlyTruck) {
-                    PercentSlider(
+                    ConfigSlider(
                         label = "OOS Threshold",
                         value = earlyPercent,
                         range = 1f..25f,
                         steps = 23,
                         onValueChange = { earlyPercent = it },
+                        valueSuffix = "% items OOS",
                     )
                 }
 
                 Spacer(Modifier.height(8.dp))
                 ToggleRow("Buy Extra Truck Slot", buySlot) { buySlot = it }
                 if (buySlot) {
-                    ThresholdSlider(
+                    ConfigSlider(
                         label = "OOS Threshold",
                         value = buyThreshold,
                         range = 1f..30f,
                         steps = 28,
                         onValueChange = { buyThreshold = it },
+                        valueSuffix = " items OOS",
                     )
                 }
 
@@ -178,6 +187,8 @@ fun StoreManagerConfigDialog(
                                     buySlotOosThreshold = buyThreshold.toInt(),
                                     autoBuyRegistersEnabled = buyRegisters,
                                     autoRebalanceShiftsEnabled = rebalance,
+                                    autoPromoteEnabled = autoPromote,
+                                    autoTerminateEnabled = autoTerminate,
                                 )
                             )
                             onDismiss()
@@ -262,40 +273,16 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
 }
 
 @Composable
-private fun ThresholdSlider(
+private fun ConfigSlider(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     steps: Int,
     onValueChange: (Float) -> Unit,
+    valueSuffix: String,
 ) {
     Text(
-        "$label: ${value.toInt()} items OOS",
-        fontSize = 11.sp,
-        color = TextSecondary,
-        modifier = Modifier.padding(start = 8.dp)
-    )
-    Slider(
-        value = value,
-        onValueChange = onValueChange,
-        valueRange = range,
-        steps = steps,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        colors = SliderDefaults.colors(thumbColor = PrimaryDark, activeTrackColor = PrimaryDark),
-    )
-}
-
-@Composable
-private fun PercentSlider(
-    label: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    steps: Int,
-    onValueChange: (Float) -> Unit,
-    suffix: String = "items OOS",
-) {
-    Text(
-        "$label: ${value.toInt()}% $suffix",
+        "$label: ${value.toInt()}$valueSuffix",
         fontSize = 11.sp,
         color = TextSecondary,
         modifier = Modifier.padding(start = 8.dp)

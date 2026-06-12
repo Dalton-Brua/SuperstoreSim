@@ -3,8 +3,12 @@ package com.example.superstoresimulator.ui.state
 import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
+import com.example.superstoresimulator.domain.FreshAutoOrderConfig
+import com.example.superstoresimulator.domain.IncompleteOrderRequest
+import com.example.superstoresimulator.domain.NormalAutoOrderConfig
 import com.example.superstoresimulator.domain.RefundRequest
 import com.example.superstoresimulator.domain.StoreManagerConfig
+import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
@@ -66,7 +70,18 @@ data class TransactionUIState(
 data class InventoryUIState(
     val items: List<InventoryItemUI>,
     val selectedCategory: ItemCategory? = null,
-    val focusedItemId: Int? = null
+    val focusedItemId: Int? = null,
+    val hasFastStocker: Boolean = false,
+    val hasStockingManager: Boolean = false,
+    val hasFreshHandler: Boolean = false,
+    val freshAutoOrderConfig: FreshAutoOrderConfig = FreshAutoOrderConfig(),
+    val normalAutoOrderConfig: NormalAutoOrderConfig = NormalAutoOrderConfig(),
+    val incompleteFreshOrders: List<IncompleteOrderRequest> = emptyList(),
+    val incompleteNormalOrders: List<IncompleteOrderRequest> = emptyList(),
+    val incompleteFreshItemNames: Map<Int, String> = emptyMap(),
+    val incompleteFreshItemCosts: Map<Int, Money> = emptyMap(),
+    val incompleteNormalItemNames: Map<Int, String> = emptyMap(),
+    val incompleteNormalItemCosts: Map<Int, Money> = emptyMap(),
 )
 
 data class InventoryItemUI(
@@ -79,6 +94,8 @@ data class InventoryItemUI(
     val category: ItemCategory,
     val casePack: Int,
     val casePackCost: Money,
+    val description: String = "",
+    val tierLabel: String = "",
     /**
      * True when the backroom holds so many units that even one more full case pack
      * would exceed the per-item backroom cap. The "Order" button is disabled when this is true.
@@ -192,6 +209,8 @@ data class TruckUIState(
     val capacityTotal: Int,       // max case packs
     val isFreshTruck: Boolean,
     val isEarlyTruck: Boolean,
+    val isVendorTruck: Boolean = false,
+    val vendorName: String? = null,
     val orderLines: List<TruckOrderLineUI>,
 )
 
@@ -208,6 +227,8 @@ data class DeliveryUIState(
     val extraTruckSlotsUnlocked: Int = 0,
     /** Cost to purchase one additional weekly delivery slot. */
     val extraTruckSlotCost: Money = Money(10_000L),       // always $100
+    val truckConfig: TruckConfig = TruckConfig(),
+    val vendorTrucks: List<TruckUIState> = emptyList(),
 )
 
 // ── Register System UI State ─────────────────────────────────────────────────

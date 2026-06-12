@@ -21,6 +21,7 @@ import com.example.superstoresimulator.domain.tick.TrafficProcessor
 import com.example.superstoresimulator.domain.tick.UtilizationTracker
 import com.example.superstoresimulator.domain.time.TimeManager
 import com.example.superstoresimulator.domain.traffic.TrafficManager
+import com.example.superstoresimulator.domain.vendor.VendorManager
 
 fun createTestGameEngine(cache: ItemMetadataCache): GameEngine {
     val pricingManager = PricingManager(cache)
@@ -36,7 +37,8 @@ fun createTestGameEngine(cache: ItemMetadataCache): GameEngine {
     val inventoryManager = InventoryManager(cache, truckManager)
     val spoilageManager = SpoilageManager(cache)
     val registerManager = RegisterManager()
-    val dayRolloverProcessor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager, FakeTransactionDao())
+    val vendorManager = VendorManager(cache)
+    val dayRolloverProcessor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager, FakeTransactionDao(), vendorManager)
     val trafficProcessor = TrafficProcessor(trafficManager, transactionEngine, registerManager)
     val staffTickProcessor = StaffTickProcessor(
         staffManager, inventoryManager, transactionEngine, registerManager, pricingManager, cache,
@@ -67,6 +69,7 @@ fun createTestGameEngine(cache: ItemMetadataCache): GameEngine {
         timeManager = timeManager,
         trafficManager = trafficManager,
         truckManager = truckManager,
+        vendorManager = vendorManager,
     )
     engine.seedNewGame()
     return engine

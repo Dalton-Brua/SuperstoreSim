@@ -42,18 +42,18 @@ data class GameTime(
     fun getFormattedTime(): String {
         val hourStr = hour.toString().padStart(2, '0')
         val minStr = minute.toString().padStart(2, '0')
-        val dayStr = when (dayOfWeek) {
-            0 -> "Mon"; 1 -> "Tue"; 2 -> "Wed"; 3 -> "Thu"
-            4 -> "Fri"; 5 -> "Sat"; 6 -> "Sun"
-            else -> "???"
-        }
-        return "$dayStr $hourStr:$minStr"
+        return "${shortDayName(dayOfWeek)} $hourStr:$minStr"
     }
-    
-    fun getDayOfWeekName(): String = when (dayOfWeek) {
-        0 -> "Monday"; 1 -> "Tuesday"; 2 -> "Wednesday"; 3 -> "Thursday"
-        4 -> "Friday"; 5 -> "Saturday"; 6 -> "Sunday"
-        else -> "Unknown"
+
+    fun getDayOfWeekName(): String = fullDayName(dayOfWeek)
+
+    companion object {
+        // 0 = Monday … 6 = Sunday; index with any day number, absolute or day-of-week
+        val SHORT_DAY_NAMES = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+        val FULL_DAY_NAMES = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+        fun shortDayName(day: Int): String = SHORT_DAY_NAMES[day % 7]
+        fun fullDayName(day: Int): String = FULL_DAY_NAMES[day % 7]
     }
 }
 

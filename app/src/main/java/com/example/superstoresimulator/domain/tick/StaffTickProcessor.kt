@@ -56,23 +56,20 @@ class StaffTickProcessor @Inject constructor(
             EntityDef.STOCKER, currentHour, s.staffSchedules, s.hiredEntityRegistry
         )
 
-        val managerIds = fullStockerResult.onShiftIds.filter { id ->
-            s.hiredEntityRegistry.getById(id).tier == Tier.MANAGER
-        }.toSet()
-        val regularResult = ActiveWeightResult(
-            weight = fullStockerResult.onShiftIds.zip(fullStockerResult.perEntityWeights)
-                .filter { (id, _) -> id !in managerIds }.sumOf { (_, w) -> w.toDouble() }.toFloat(),
-            onShiftIds = fullStockerResult.onShiftIds.filter { it !in managerIds },
-            perEntityWeights = fullStockerResult.onShiftIds.zip(fullStockerResult.perEntityWeights)
-                .filter { (id, _) -> id !in managerIds }.map { (_, w) -> w },
-        )
-        val managerResult = ActiveWeightResult(
-            weight = fullStockerResult.onShiftIds.zip(fullStockerResult.perEntityWeights)
-                .filter { (id, _) -> id in managerIds }.sumOf { (_, w) -> w.toDouble() }.toFloat(),
-            onShiftIds = fullStockerResult.onShiftIds.filter { it in managerIds },
-            perEntityWeights = fullStockerResult.onShiftIds.zip(fullStockerResult.perEntityWeights)
-                .filter { (id, _) -> id in managerIds }.map { (_, w) -> w },
-        )
+        val regularIds = mutableListOf<Int>()
+        val regularWeights = mutableListOf<Float>()
+        val managerIdList = mutableListOf<Int>()
+        val managerWeights = mutableListOf<Float>()
+        fullStockerResult.onShiftIds.forEachIndexed { i, id ->
+            val w = fullStockerResult.perEntityWeights[i]
+            if (s.hiredEntityRegistry.getById(id).tier == Tier.MANAGER) {
+                managerIdList.add(id); managerWeights.add(w)
+            } else {
+                regularIds.add(id); regularWeights.add(w)
+            }
+        }
+        val regularResult = ActiveWeightResult(regularWeights.sum(), regularIds, regularWeights)
+        val managerResult = ActiveWeightResult(managerWeights.sum(), managerIdList, managerWeights)
 
         // Stocking Manager work: Order → Stock → Zone
         if (managerResult.weight > 0f) {
@@ -90,21 +87,14 @@ class StaffTickProcessor @Inject constructor(
                     while (remainingManagerActions > 0 && hasFreshBackroomStock) {
                         s = inventoryManager.stockRandomFreshItemFromBackroom(s)
                         remainingManagerActions--
-                        hasFreshBackroomStock = s.inventory.any { (itemId, _) ->
-                            s.inventory[itemId]?.backroomStock?.let { it > 0 } == true &&
-                                itemMetadataCache.get(itemId)?.isPerishable == true
-                        }
+                        hasFreshBackroomStock = hasFreshBackroomStock(s)
                     }
                     repeat(remainingManagerActions) { s = inventoryManager.stockRandomItemFromBackroom(s) }
                 }
             }
 
             if (managerActions.isNotEmpty()) {
-                var registry = s.hiredEntityRegistry
-                for (entityId in managerActions) {
-                    registry = registry.grantXp(entityId, StaffManager.XP_PER_STOCK_ACTION)
-                }
-                s = s.copy(hiredEntityRegistry = registry)
+                s = grantXpAll(s, managerActions, StaffManager.XP_PER_STOCK_ACTION)
                 totalEmployeeActions += managerActions.size
             }
         }
@@ -118,18 +108,11 @@ class StaffTickProcessor @Inject constructor(
             while (remainingStockerActions > 0 && hasFreshBackroomStock) {
                 s = inventoryManager.stockRandomFreshItemFromBackroom(s)
                 remainingStockerActions--
-                hasFreshBackroomStock = s.inventory.any { (itemId, _) ->
-                    s.inventory[itemId]?.backroomStock?.let { it > 0 } == true &&
-                        itemMetadataCache.get(itemId)?.isPerishable == true
-                }
+                hasFreshBackroomStock = hasFreshBackroomStock(s)
             }
             repeat(remainingStockerActions) { s = inventoryManager.stockRandomItemFromBackroom(s) }
             if (assignedStockers.isNotEmpty()) {
-                var registry = s.hiredEntityRegistry
-                for (entityId in assignedStockers) {
-                    registry = registry.grantXp(entityId, StaffManager.XP_PER_STOCK_ACTION)
-                }
-                s = s.copy(hiredEntityRegistry = registry)
+                s = grantXpAll(s, assignedStockers, StaffManager.XP_PER_STOCK_ACTION)
                 totalEmployeeActions += assignedStockers.size
             }
         } else if (scan.hasUnzonedItems && (activeStockers > 0f || managerResult.weight > 0f)) {
@@ -163,11 +146,7 @@ class StaffTickProcessor @Inject constructor(
 
         repeat(remainingFreshActions) { s = inventoryManager.stockRandomFreshItemFromBackroom(s) }
         if (assignedFreshHandlers.isNotEmpty()) {
-            var registry = s.hiredEntityRegistry
-            for (entityId in assignedFreshHandlers) {
-                registry = registry.grantXp(entityId, StaffManager.XP_PER_STOCK_ACTION)
-            }
-            s = s.copy(hiredEntityRegistry = registry)
+            s = grantXpAll(s, assignedFreshHandlers, StaffManager.XP_PER_STOCK_ACTION)
             totalEmployeeActions += assignedFreshHandlers.size
         }
 
@@ -175,11 +154,7 @@ class StaffTickProcessor @Inject constructor(
         if (totalEmployeeActions > 0 && bonuses.onShiftManagerIds.isNotEmpty()) {
             val managerXp = totalEmployeeActions * StaffManager.MANAGER_XP_PER_SUPERVISED_ACTION
             val xpEach = (managerXp / bonuses.onShiftManagerIds.size).coerceAtLeast(1)
-            var registry = s.hiredEntityRegistry
-            for (mgrId in bonuses.onShiftManagerIds) {
-                registry = registry.grantXp(mgrId, xpEach)
-            }
-            s = s.copy(hiredEntityRegistry = registry)
+            s = grantXpAll(s, bonuses.onShiftManagerIds, xpEach)
         }
 
         // Fresh auto-ordering when handlers idle
@@ -188,6 +163,17 @@ class StaffTickProcessor @Inject constructor(
         }
 
         return s
+    }
+
+    private fun hasFreshBackroomStock(state: GameState): Boolean =
+        state.inventory.any { (itemId, inv) ->
+            inv.backroomStock > 0 && itemMetadataCache.get(itemId)?.isPerishable == true
+        }
+
+    private fun grantXpAll(state: GameState, ids: Collection<Int>, xp: Int): GameState {
+        var registry = state.hiredEntityRegistry
+        for (id in ids) registry = registry.grantXp(id, xp)
+        return state.copy(hiredEntityRegistry = registry)
     }
 
     private fun advanceStockerZoning(state: GameState, currentHour: Int, delta: Double, multiplier: Float): GameState {

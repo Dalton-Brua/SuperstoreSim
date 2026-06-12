@@ -15,9 +15,8 @@ class TimeManager @Inject constructor() {
     internal var accumulatedMilliseconds = 0L
 
     fun update(deltaMilliseconds: Long) {
-        // Base speed: 60.0f = 1 real second = 1 game minute
-        // gameSpeedMultiplier is the control multiplier (1x, 2x, 4x, etc.)
-        val baseSpeed = 120.0f
+        // At 1x multiplier: 1 real second = 2 game minutes
+        val baseSpeed = BASE_SPEED
         val acceleratedMilliseconds = deltaMilliseconds * baseSpeed * config.gameSpeedMultiplier
         accumulatedMilliseconds += acceleratedMilliseconds.toLong()
         
@@ -64,6 +63,10 @@ class TimeManager @Inject constructor() {
      */
     fun setSpeedMultiplier(multiplier: Float) {
         config = config.copy(gameSpeedMultiplier = multiplier)
+    }
+
+    companion object {
+        const val BASE_SPEED = 120.0f
     }
 }
 

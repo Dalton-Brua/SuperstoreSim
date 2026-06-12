@@ -155,7 +155,7 @@ fun MetricsScreen(
                 }
 
                 // ── Completed days ───────────────────────────────────────
-                items(filtered, key = { it.dayNumber }) { day ->
+                items(filtered, key = { "day_${it.dayNumber}" }) { day ->
                     DayReportCard(
                         day = day,
                         onClick = { selectedDay = day },
@@ -163,7 +163,7 @@ fun MetricsScreen(
                         onSoldItemsClick = { soldItemsDay = day },
                     )
                 }
-                item { Spacer(Modifier.height(16.dp)) }
+                item(key = "bottom_spacer") { Spacer(Modifier.height(16.dp)) }
             }
         }
     }

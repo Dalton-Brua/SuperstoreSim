@@ -12,6 +12,7 @@ import com.example.superstoresimulator.domain.delivery.TruckManager
 import com.example.superstoresimulator.domain.inventory.InventoryManager
 import com.example.superstoresimulator.domain.metrics.DayManager
 import com.example.superstoresimulator.domain.staff.StaffManager
+import com.example.superstoresimulator.domain.vendor.VendorManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,6 +27,7 @@ class DayRolloverProcessor @Inject constructor(
     private val truckManager: TruckManager,
     private val inventoryManager: InventoryManager,
     private val transactionDao: TransactionDao,
+    private val vendorManager: VendorManager,
 ) {
     private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -35,7 +37,16 @@ class DayRolloverProcessor @Inject constructor(
 
         val transactionsToSync = state.salesHistory
 
-        var s = staffManager.evaluateStoreManagerActions(state)
+        val staffMetrics = staffManager.snapshotDailyMetrics()
+        var s = state.copy(
+            currentDayMetrics = state.currentDayMetrics.copy(
+                avgCashierUtilization = staffMetrics.avgCashierUtilization,
+                avgStockerUtilization = staffMetrics.avgStockerUtilization,
+                avgFreshUtilization = staffMetrics.avgFreshUtilization,
+                avgZoneScore = state.avgZoneScore,
+            ),
+        )
+        s = staffManager.evaluateStoreManagerActions(s)
         s = truckManager.evaluateStoreManagerTruckActions(s, newDayNumber)
         s = staffManager.evaluateAutoHire(s)
         s = dayManager.rollOverDay(s, dayManager.lastKnownDayNumber)
@@ -54,9 +65,10 @@ class DayRolloverProcessor @Inject constructor(
         )
         staffManager.reset()
         s = truckManager.processArrivals(s, newDayNumber)
+        s = vendorManager.processVendorArrivals(s, newDayNumber)
 
         val stockers = s.hiredEntityRegistry.getByDef(EntityDef.STOCKER)
-        val hasFastStocker = stockers.any { it.tier.ordinal >= Tier.FAST.ordinal }
+        val hasFastStocker = stockers.any { it.canAutoReorder }
         val hasStockingManager = stockers.any { it.tier == Tier.MANAGER }
         if (hasFastStocker && !hasStockingManager) {
             s = inventoryManager.attemptDayRolloverAutoOrder(s)

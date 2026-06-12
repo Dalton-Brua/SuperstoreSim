@@ -64,17 +64,16 @@ class UpgradeEntityTest {
 
     @Test
     fun testCashierUpgradesToFastTier() {
-        // 20_000 → hire −1_500 → 18_500 → upgrade −10_000 → 8_500
         setMoney(20_000L)
         val id = hire(EntityDef.CASHIER)
         assertEquals(Tier.BASE, tierOf(id))
-        assertEquals(Money(18_500), gameEngine.currentState().money)
+        assertEquals(Money(20_000), gameEngine.currentState().money)
 
         gameEngine.promoteEntity(id)
 
         assertEquals(Tier.FAST, tierOf(id))
         assertEquals(EntityDef.CASHIER, gameEngine.currentState().hiredEntityRegistry.getById(id).entityDefinition)
-        assertEquals(Money(8_500), gameEngine.currentState().money)
+        assertEquals(Money(10_000), gameEngine.currentState().money)
     }
 
     @Test
@@ -87,21 +86,21 @@ class UpgradeEntityTest {
 
         assertEquals(Tier.FAST, tierOf(id))
         assertEquals(EntityDef.STOCKER, gameEngine.currentState().hiredEntityRegistry.getById(id).entityDefinition)
-        assertEquals(Money(8_500), gameEngine.currentState().money)
+        assertEquals(Money(10_000), gameEngine.currentState().money)
     }
 
     @Test
     fun testFastTierUpgradesToManagerTier() {
-        // 80_000 → hire −1_500 → 78_500 → BASE→FAST −10_000 → 68_500 → FAST→MANAGER −50_000 → 18_500
         setMoney(80_000L)
         val id = hire(EntityDef.CASHIER)
+        repeat(5) { hire(EntityDef.CASHIER) }
         gameEngine.promoteEntity(id) // BASE → FAST
         assertEquals(Tier.FAST, tierOf(id))
-        assertEquals(Money(68_500), gameEngine.currentState().money)
+        assertEquals(Money(70_000), gameEngine.currentState().money)
 
         gameEngine.promoteEntity(id) // FAST → MANAGER
         assertEquals(Tier.MANAGER, tierOf(id))
-        assertEquals(Money(18_500), gameEngine.currentState().money)
+        assertEquals(Money(20_000), gameEngine.currentState().money)
     }
 
     // ── 2. EXACT COST DEDUCTION ───────────────────────────────────────────────
@@ -111,18 +110,17 @@ class UpgradeEntityTest {
         val start = 20_000L
         setMoney(start)
         val id = hire(EntityDef.CASHIER)
-        val afterHire = start - EntityDef.CASHIER.cost.cents // 18_500
-        assertEquals(Money(afterHire), gameEngine.currentState().money)
+        assertEquals(Money(start), gameEngine.currentState().money)
 
         gameEngine.promoteEntity(id)
-        assertEquals(Money(afterHire - 10_000), gameEngine.currentState().money)
+        assertEquals(Money(start - 10_000), gameEngine.currentState().money)
     }
 
     // ── 3. INSUFFICIENT FUNDS — UPGRADE BLOCKED ───────────────────────────────
 
     @Test
     fun testUpgradeBlockedWhenBalanceIsZero() {
-        setMoney(EntityDef.CASHIER.cost.cents) // exactly 1_500¢
+        setMoney(0L)
         val id = hire(EntityDef.CASHIER)
         assertEquals(Money(0), gameEngine.currentState().money)
 
@@ -146,8 +144,7 @@ class UpgradeEntityTest {
 
     @Test
     fun testUpgradeSucceedsWithExactlyEnoughMoney() {
-        val exactStart = EntityDef.CASHIER.cost.cents + 10_000L // 11_500¢
-        setMoney(exactStart)
+        setMoney(10_000L)
         val id = hire(EntityDef.CASHIER)
         assertEquals(Money(10_000), gameEngine.currentState().money)
 
@@ -161,18 +158,18 @@ class UpgradeEntityTest {
 
     @Test
     fun testUpgradingMaxTierIsNoOp() {
-        // 100_000 → hire −1_500 → BASE→FAST −10_000 → FAST→MANAGER −50_000 → 38_500 → no-op
         setMoney(100_000L)
         val id = hire(EntityDef.CASHIER)
+        repeat(5) { hire(EntityDef.CASHIER) }
         gameEngine.promoteEntity(id) // BASE → FAST
         gameEngine.promoteEntity(id) // FAST → MANAGER
         assertEquals(Tier.MANAGER, tierOf(id))
-        assertEquals(Money(38_500), gameEngine.currentState().money)
+        assertEquals(Money(40_000), gameEngine.currentState().money)
 
-        gameEngine.promoteEntity(id) // should be no-op (error in upgradeCost, so upgradeEntity guard must fire)
+        gameEngine.promoteEntity(id) // should be no-op
 
         assertEquals(Tier.MANAGER, tierOf(id))
-        assertEquals(Money(38_500), gameEngine.currentState().money)
+        assertEquals(Money(40_000), gameEngine.currentState().money)
     }
 
     // ── 5. ENTITY PROPERTIES PRESERVED THROUGH UPGRADE ────────────────────────
@@ -222,13 +219,14 @@ class UpgradeEntityTest {
     @Test
     fun testUpgradeDoesNotChangeRegistryCount() {
         setMoney(50_000L)
+        val countBefore = gameEngine.currentState().hiredEntityRegistry.totalCount()
         val id1 = hire(EntityDef.CASHIER)
         hire(EntityDef.CASHIER)
-        assertEquals(2, gameEngine.currentState().hiredEntityRegistry.totalCount())
+        assertEquals(countBefore + 2, gameEngine.currentState().hiredEntityRegistry.totalCount())
 
         gameEngine.promoteEntity(id1)
 
-        assertEquals(2, gameEngine.currentState().hiredEntityRegistry.totalCount())
+        assertEquals(countBefore + 2, gameEngine.currentState().hiredEntityRegistry.totalCount())
     }
 
     @Test
@@ -247,15 +245,14 @@ class UpgradeEntityTest {
 
     @Test
     fun testUpgradingOneEntityDeductsBalanceForThatEntityOnly() {
-        // 100_000 − 1_500(id1) − 1_500(id2) − 1_500(id3) = 95_500 → upgrade id2 −10_000 = 85_500
         setMoney(100_000L)
         hire(EntityDef.CASHIER)
         val id2 = hire(EntityDef.CASHIER)
         hire(EntityDef.STOCKER)
-        assertEquals(Money(95_500), gameEngine.currentState().money)
+        assertEquals(Money(100_000), gameEngine.currentState().money)
 
         gameEngine.promoteEntity(id2)
-        assertEquals(Money(85_500), gameEngine.currentState().money)
+        assertEquals(Money(90_000), gameEngine.currentState().money)
     }
 
     // ── 7. INVALID / EDGE CASES ───────────────────────────────────────────────
@@ -277,24 +274,24 @@ class UpgradeEntityTest {
 
     @Test
     fun testFullCashierUpgradeSequence() {
-        // 100_000 → hire −1_500 → 98_500 → BASE→FAST −10_000 → 88_500 → FAST→MANAGER −50_000 → 38_500
         setMoney(100_000L)
         val id = hire(EntityDef.CASHIER)
+        repeat(5) { hire(EntityDef.CASHIER) }
         assertEquals(Tier.BASE, tierOf(id))
-        assertEquals(Money(98_500), gameEngine.currentState().money)
+        assertEquals(Money(100_000), gameEngine.currentState().money)
 
         gameEngine.promoteEntity(id)
         assertEquals(Tier.FAST, tierOf(id))
-        assertEquals(Money(88_500), gameEngine.currentState().money)
+        assertEquals(Money(90_000), gameEngine.currentState().money)
 
         gameEngine.promoteEntity(id)
         assertEquals(Tier.MANAGER, tierOf(id))
-        assertEquals(Money(38_500), gameEngine.currentState().money)
+        assertEquals(Money(40_000), gameEngine.currentState().money)
 
         // no-op at max
         gameEngine.promoteEntity(id)
         assertEquals(Tier.MANAGER, tierOf(id))
-        assertEquals(Money(38_500), gameEngine.currentState().money)
+        assertEquals(Money(40_000), gameEngine.currentState().money)
     }
 
     @Test
@@ -303,22 +300,19 @@ class UpgradeEntityTest {
         val id = hire(EntityDef.STOCKER)
         // Hire 5 more stockers to satisfy the 5:1 ratio for stocking manager promotion
         repeat(5) { hire(EntityDef.STOCKER) }
-        // 6 stockers hired = 6 × $15 = $90 → 200_000 - 9_000 = 191_000
         assertEquals(Tier.BASE, tierOf(id))
 
         gameEngine.promoteEntity(id)
         assertEquals(Tier.FAST, tierOf(id))
-        // 191_000 - 10_000 = 181_000
-        assertEquals(Money(181_000), gameEngine.currentState().money)
+        assertEquals(Money(190_000), gameEngine.currentState().money)
 
         gameEngine.promoteEntity(id)
         assertEquals(Tier.MANAGER, tierOf(id))
-        // 181_000 - 50_000 = 131_000
-        assertEquals(Money(131_000), gameEngine.currentState().money)
+        assertEquals(Money(140_000), gameEngine.currentState().money)
 
         // no-op at max
         gameEngine.promoteEntity(id)
         assertEquals(Tier.MANAGER, tierOf(id))
-        assertEquals(Money(131_000), gameEngine.currentState().money)
+        assertEquals(Money(140_000), gameEngine.currentState().money)
     }
 }

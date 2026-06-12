@@ -1,0 +1,2 @@
+Locked employees should have their entity type card locked with some symbol or hidden instead of letting you click it then blocking hiring.
+Should not allow truck slots to be purchased beyond 7 slots, 1/day.

@@ -12,6 +12,7 @@ import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.pricing.PricingState
 import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreState
+import com.example.superstoresimulator.domain.vendor.VendorSystemState
 import kotlinx.serialization.Serializable
 import java.util.Locale
 
@@ -138,6 +139,8 @@ data class StoreManagerConfig(
     val autoBuyRegistersEnabled: Boolean = true,
     // Shifts
     val autoRebalanceShiftsEnabled: Boolean = true,
+    val autoPromoteEnabled: Boolean = true,
+    val autoTerminateEnabled: Boolean = true,
 )
 
 @Serializable
@@ -264,6 +267,9 @@ data class GameState(
     // Pricing system
     val pricingState: PricingState = PricingState(),
 
+    // Vendor system
+    val vendorSystem: VendorSystemState = VendorSystemState(),
+
     // Simulation accumulators — fractional progress, traffic, day tracking
     val simAccumulators: SimAccumulators = SimAccumulators(),
 ) {
@@ -271,9 +277,15 @@ data class GameState(
 
     val avgZoneScore: Float
         get() {
-            val withShelf = inventory.values.filter { it.shelfStock > 0 }
-            if (withShelf.isEmpty()) return 1.0f
-            return withShelf.map { it.zoneScore.toDouble() }.average().toFloat()
+            var sum = 0.0
+            var count = 0
+            for (inv in inventory.values) {
+                if (inv.shelfStock > 0) {
+                    sum += inv.zoneScore
+                    count++
+                }
+            }
+            return if (count == 0) 1.0f else (sum / count).toFloat()
         }
 
     val currentTransaction: Transaction

@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.inventory.ItemBatch
-import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.ui.components.PriceSlider
@@ -118,12 +117,10 @@ fun calculateSalesStats(
 
 /**
  * Top card showing item name, category, tier badge, and optional description.
- * [fullItem] is the full Room [Item] entity (provides description and tier string).
  */
 @Composable
 fun ItemHeaderCard(
     item: InventoryItemUI,
-    fullItem: Item?,
     currentTier: ItemUnlockTier,
     modifier: Modifier = Modifier
 ) {
@@ -158,7 +155,7 @@ fun ItemHeaderCard(
                     color = InfoSurface
                 ) {
                     Text(
-                        text = fullItem?.tier ?: currentTier.name,
+                        text = item.tierLabel.ifEmpty { currentTier.name },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = PrimaryDark,
@@ -166,10 +163,9 @@ fun ItemHeaderCard(
                     )
                 }
             }
-            val desc = fullItem?.description
-            if (!desc.isNullOrBlank()) {
+            if (item.description.isNotBlank()) {
                 Text(
-                    text = desc,
+                    text = item.description,
                     fontSize = 14.sp,
                     color = ProgressBarIndicator,
                     lineHeight = 20.sp
@@ -475,14 +471,10 @@ fun PricingCard(
 
 // ─── Case Pack Details ────────────────────────────────────────────────────────
 
-/**
- * Card showing case pack size, cost, profit, and customer demand indicator.
- * [fullItem] is the full Room [Item] entity (provides purchaseWeight).
- */
+/** Card showing case pack size, cost, profit, and customer demand indicator. */
 @Composable
 fun CasePackDetailsCard(
     item: InventoryItemUI,
-    fullItem: Item?,
     modifier: Modifier = Modifier
 ) {
     val margin = item.price - item.unitCost
@@ -494,13 +486,11 @@ fun CasePackDetailsCard(
             DetailRow("Units per Case", "${item.casePack} units", ChipTextDark)
             DetailRow("Case Pack Cost", item.casePackCost.toString(), PrimaryDark)
             DetailRow("Case Pack Profit", casePackProfit.toString(), if (casePackProfit.cents >= 0) Secondary else Destructive)
-            if (fullItem != null) {
-                // Demand is currently always 100% (baseline); TODO: apply event modifiers when implemented
-                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = SuccessChipSurface) {
-                    Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Customer Demand", fontSize = 12.sp, color = SuccessTextDark)
-                        Text("100%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SuccessTextDark)
-                    }
+            // Demand is currently always 100% (baseline); TODO: apply event modifiers when implemented
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = SuccessChipSurface) {
+                Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Customer Demand", fontSize = 12.sp, color = SuccessTextDark)
+                    Text("100%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SuccessTextDark)
                 }
             }
         }

@@ -69,7 +69,7 @@ class PlayerTickProcessorTest {
             playerCashierProgress = 0.5f,
             playerStockerProgress = 0.3f,
         )
-        val result = processor.process(state, delta = 1.0, currentHour = 10)
+        val result = processor.process(state, delta = 1.0)
         assertEquals(0f, result.playerCashierProgress, 0.001f)
         assertEquals(0f, result.playerStockerProgress, 0.001f)
     }
@@ -82,7 +82,7 @@ class PlayerTickProcessorTest {
             playerCashierProgress = 0f,
             playerStockerProgress = 0f,
         )
-        val result = processor.process(state, delta = 1.0, currentHour = 10)
+        val result = processor.process(state, delta = 1.0)
         assertSame(state, result)
     }
 
@@ -94,7 +94,7 @@ class PlayerTickProcessorTest {
             playerAssignedRegisterId = null,
             registers = listOf(RegisterState(registerId = 0, assignedCashierId = null)),
         )
-        val result = processor.process(state, delta = 0.1, currentHour = 10)
+        val result = processor.process(state, delta = 0.1)
         assertEquals(0, result.playerAssignedRegisterId)
     }
 
@@ -106,7 +106,7 @@ class PlayerTickProcessorTest {
             playerAssignedRegisterId = null,
             registers = listOf(RegisterState(registerId = 0, assignedCashierId = 5)),
         )
-        val result = processor.process(state, delta = 0.1, currentHour = 10)
+        val result = processor.process(state, delta = 0.1)
         assertNull(result.playerAssignedRegisterId)
     }
 
@@ -117,7 +117,7 @@ class PlayerTickProcessorTest {
             playerRole = PlayerRole.STOCKER,
             inventory = inventoryWithBackroom(),
         )
-        val result = processor.process(state, delta = 10.0, currentHour = 10)
+        val result = processor.process(state, delta = 10.0)
         val totalBackroomAfter = result.inventory.values.sumOf { it.backroomStock }
         val totalBackroomBefore = state.inventory.values.sumOf { it.backroomStock }
         assertTrue(
@@ -143,7 +143,7 @@ class PlayerTickProcessorTest {
             playerRole = PlayerRole.STOCKER,
             inventory = inventory,
         )
-        val result = processor.process(state, delta = 10.0, currentHour = 10)
+        val result = processor.process(state, delta = 10.0)
         val avgZoneBefore = state.inventory.values.map { it.zoneScore }.average()
         val avgZoneAfter = result.inventory.values.map { it.zoneScore }.average()
         assertTrue("Zone scores should increase", avgZoneAfter >= avgZoneBefore)
@@ -162,7 +162,7 @@ class PlayerTickProcessorTest {
             playerRole = PlayerRole.STOCKER,
             inventory = inventory,
         )
-        val result = processor.process(state, delta = 10.0, currentHour = 10)
+        val result = processor.process(state, delta = 10.0)
         assertEquals(PlayerRole.MANAGE, result.playerRole)
     }
 }

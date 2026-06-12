@@ -42,6 +42,8 @@ class ItemMetadataCache @Inject constructor(private val itemDao: ItemDao) {
                 tier = runCatching { ItemUnlockTier.valueOf(item.tier) }.getOrDefault(ItemUnlockTier.TIER_1),
                 shelfLifeDays = item.shelfLifeDays,
                 soldByWeight = item.soldByWeight,
+                vendorId = item.vendorId,
+                vendorTier = item.vendorTier,
             )
             fullItems[itemId] = item
             names[itemId] = item.name
@@ -80,6 +82,12 @@ class ItemMetadataCache @Inject constructor(private val itemDao: ItemDao) {
     /**
      * Check if cache is initialized
      */
+    fun getVendorItems(vendorId: String): List<ItemMetadata> =
+        metadataCache.values.filter { it.vendorId == vendorId }
+
+    fun getVendorItemsByTier(vendorId: String, maxTier: Int): List<ItemMetadata> =
+        metadataCache.values.filter { it.vendorId == vendorId && it.vendorTier <= maxTier }
+
     fun isInitialized(): Boolean = initialized
 }
 

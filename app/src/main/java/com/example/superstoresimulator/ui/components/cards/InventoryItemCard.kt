@@ -36,6 +36,7 @@ import com.example.superstoresimulator.ui.theme.SuccessChipSurface
 import com.example.superstoresimulator.ui.theme.TextMuted
 import com.example.superstoresimulator.ui.theme.TextSecondary
 import com.example.superstoresimulator.ui.theme.TextWhite
+import com.example.superstoresimulator.domain.time.GameTime
 
 @Composable
 fun InventoryItemCard(
@@ -163,10 +164,7 @@ fun InventoryItemCard(
 
             // In-transit badge
             if (item.pendingCasePacks > 0) {
-                val arrivalDow = item.earliestArrivalDay?.let { day ->
-                    val names = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-                    names.getOrElse(day % 7) { "" }
-                } ?: ""
+                val arrivalDow = item.earliestArrivalDay?.let { GameTime.shortDayName(it) } ?: ""
                 val dayLabel = item.earliestArrivalDay?.let { " · Day ${it + 1} ($arrivalDow)" } ?: ""
                 Text(
                     text = "🚚 ${item.pendingCasePacks} cases in transit$dayLabel",
@@ -186,11 +184,11 @@ fun InventoryItemCard(
                     disabledContainerColor = ChipSurface,
                     disabledContentColor = TextMuted
                 ),
-                enabled = canAffordBuy && !item.backroomFull,
+                enabled = canAffordBuy,
                 shape = GameButtonStyles.Shape,
             ) {
                 Text(
-                    if (item.backroomFull) "Backroom Full" else "Order (${item.casePackCost})",
+                    "Order (${item.casePackCost})",
                     fontWeight = FontWeight.Bold
                 )
             }

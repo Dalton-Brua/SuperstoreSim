@@ -15,6 +15,7 @@ import com.example.superstoresimulator.domain.items.MoneyData
 import com.example.superstoresimulator.domain.metrics.DayManager
 import com.example.superstoresimulator.domain.staff.StaffManager
 import com.example.superstoresimulator.domain.time.GameTime
+import com.example.superstoresimulator.domain.vendor.VendorManager
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
@@ -41,7 +42,7 @@ class DayRolloverProcessorTest {
         runBlocking { cache.initialize() }
         val truckManager = TruckManager(cache)
         val inventoryManager = InventoryManager(cache, truckManager)
-        processor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager, FakeTransactionDao())
+        processor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager, FakeTransactionDao(), VendorManager(cache))
     }
 
     @Test

@@ -229,16 +229,16 @@ class InventoryManagerTest {
     }
 
     @Test
-    fun `buyItemToBackroom is no-op when adding a case-pack would exceed cap`() {
+    fun `buyItemToBackroom succeeds even when backroom is full — overflow handled at delivery`() {
         // Cap is measured in case-packs. backroom=12 with casePack=6 => 2 case-packs already.
-        // With cap=2, adding one more case-pack is rejected.
+        // With cap=2, ordering still succeeds — overflow is handled at delivery time.
         val state = stateWith(
             1 to inv(0, 12),
             backroomCap = 2,
         )
         val result = manager.buyItemToBackroom(state, itemId = 1)
-        assertTrue(result.orderLines.isEmpty())
-        assertEquals(state, result.state)
+        assertEquals(1, result.orderLines.size)
+        assertEquals(state.money - item1CasePackCost, result.state.money)
     }
 
     @Test
@@ -268,18 +268,16 @@ class InventoryManagerTest {
     }
 
     @Test
-    fun `buyItemCasePacks splits across trucks when order exceeds per-truck cap`() {
-        // cap=2, backroom 10 units (=1 case-pack of 6), transit=0, request 3.
-        // totalCommitted=1, maxPreOrder=MAX_TRUCKS_AHEAD(2)×2=4, remainingAllowable=3 → order all 3.
-        // Split: [cap=2, 1] → 2 lines for 2 separate trucks.
+    fun `buyItemCasePacks clamps to backroomCapPerItem regardless of current stock`() {
+        // cap=2, request 3 → clamped to 2 (the cap). Current backroom stock is irrelevant.
         val state = stateWith(
             1 to inv(0, 10),
             backroomCap = 2,
         )
         val result = manager.buyItemCasePacks(state, itemId = 1, numCasePacks = 3)
-        assertEquals(2, result.orderLines.size)  // split into 2 lines for 2 trucks
-        assertEquals(3, result.orderLines.sumOf { it.casePacksCount })  // 3 total case packs
-        assertEquals(state.money - item1CasePackCost * 3, result.state.money)
+        assertEquals(1, result.orderLines.size)
+        assertEquals(2, result.orderLines[0].casePacksCount)
+        assertEquals(state.money - item1CasePackCost * 2, result.state.money)
     }
 
     @Test
@@ -291,9 +289,8 @@ class InventoryManagerTest {
     }
 
     @Test
-    fun `buyItemCasePacks can pre-order when backroom is full if truck slots available`() {
-        // backroom at cap (12 units = 2 case packs, cap=2) but transit empty.
-        // Multi-truck: totalCommitted=2, maxPreOrder=4, remaining=2 → order 1 succeeds.
+    fun `buyItemCasePacks succeeds when backroom is full — overflow handled at delivery`() {
+        // backroom at cap (12 units = 2 case packs, cap=2). Ordering still works.
         val state = stateWith(
             1 to inv(0, 12),
             backroomCap = 2,

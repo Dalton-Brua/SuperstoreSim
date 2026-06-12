@@ -17,16 +17,18 @@ import com.example.superstoresimulator.domain.metrics.SoldItemEvent
 import com.example.superstoresimulator.domain.pricing.MarkdownReason
 import com.example.superstoresimulator.domain.pricing.PricingManager
 import com.example.superstoresimulator.domain.staff.StaffManager
+import com.example.superstoresimulator.domain.vendor.VendorManager
 import java.time.Instant
 import kotlin.math.roundToLong
 import kotlin.random.Random
 
 class TransactionEngine(
-    private val salesTaxRate: Double = 0.0825,
+    private val salesTaxRate: Double = DEFAULT_SALES_TAX_RATE,
     private val refundChance: Double = 0.00,
     private val random: Random = Random.Default,
     private val cache: ItemMetadataCache? = null,
     private val pricingManager: PricingManager? = null,
+    private val vendorManager: VendorManager? = null,
 ) {
 
     /** Default register id: the first register in the list (or 0 if empty). */
@@ -309,6 +311,16 @@ class TransactionEngine(
                 )
             ),
         )
+
+        if (vendorManager != null) {
+            for (line in lines) {
+                if (line.lostToOutOfStock || line.rungQty == 0) continue
+                vendorManager.getVendorForItem(line.itemId) ?: continue
+                newState = vendorManager.deductVendorCommission(
+                    newState, line.itemId, line.lineTotal, line.rungQty,
+                )
+            }
+        }
 
         newState = maybeGenerateRefund(newState, lines, inventory, historyEntry.id)
         return newState
@@ -629,6 +641,7 @@ class TransactionEngine(
 
     companion object {
         const val XP_PER_TRANSACTION = 5
+        const val DEFAULT_SALES_TAX_RATE = 0.0825
     }
 
     fun ringUpItemOnRegister(state: GameState, registerId: Int): GameState {

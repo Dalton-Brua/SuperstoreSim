@@ -365,13 +365,17 @@ class StaffManager @Inject constructor() {
         val stockerCount = registry.getByDef(EntityDef.STOCKER).size
         val freshCount = registry.getByDef(EntityDef.FRESH_HANDLER).size
 
-        fun bootstrapHireIfNeeded(def: EntityDef, reason: String) {
+        // Hire one entity of [def]; log an AutoHireEvent only if the hire succeeded.
+        fun hireAndLog(def: EntityDef, reason: String, detail: String) {
             val before = result.hiredEntityRegistry.totalCount()
             result = tryAutoHire(result, def)
             if (result.hiredEntityRegistry.totalCount() > before) {
-                events += AutoHireEvent(def.displayName, reason, detail = "Bootstrap hire — zero ${def.displayName.lowercase()}s on staff")
+                events += AutoHireEvent(def.displayName, reason, detail = detail)
             }
         }
+
+        fun bootstrapHireIfNeeded(def: EntityDef, reason: String) =
+            hireAndLog(def, reason, "Bootstrap hire — zero ${def.displayName.lowercase()}s on staff")
 
         val config = state.storeManagerConfig
 
@@ -395,12 +399,8 @@ class StaffManager @Inject constructor() {
             if (needMoreCheckout && allRegistersManned) {
                 // All registers staffed but still too many customers — need more registers (Store Manager handles that)
                 // Hire another cashier anyway so the new register has someone to man it
-                val before = result.hiredEntityRegistry.totalCount()
-                result = tryAutoHire(result, EntityDef.CASHIER)
-                if (result.hiredEntityRegistry.totalCount() > before) {
-                    events += AutoHireEvent(EntityDef.CASHIER.displayName, "Registers full",
-                        detail = "Avg ${avgInLine.toInt()} customers/hr in line, all $registerCount registers manned")
-                }
+                hireAndLog(EntityDef.CASHIER, "Registers full",
+                    "Avg ${avgInLine.toInt()} customers/hr in line, all $registerCount registers manned")
             } else if (hasSeniorManager && !hasUncoveredHours && !needMoreCheckout && metrics.avgCashierUtilization < 1.0f) {
                 events += AutoHireEvent(
                     EntityDef.CASHIER.displayName,
@@ -410,16 +410,12 @@ class StaffManager @Inject constructor() {
                     blockReason = "Util. ${(metrics.avgCashierUtilization * 100).toInt()}%",
                 )
             } else {
-                val before = result.hiredEntityRegistry.totalCount()
-                result = tryAutoHire(result, EntityDef.CASHIER)
-                if (result.hiredEntityRegistry.totalCount() > before) {
-                    val (reason, detail) = when {
-                        hasUncoveredHours -> "Coverage gap" to "Some hours have no cashier on shift"
-                        needMoreCheckout -> "Long lines" to "Avg ${avgInLine.toInt()} customers/hr in line (>${registerCount} registers)"
-                        else -> "Unmanned register" to "Registers without assigned cashiers during open hours"
-                    }
-                    events += AutoHireEvent(EntityDef.CASHIER.displayName, reason, detail = detail)
+                val (reason, detail) = when {
+                    hasUncoveredHours -> "Coverage gap" to "Some hours have no cashier on shift"
+                    needMoreCheckout -> "Long lines" to "Avg ${avgInLine.toInt()} customers/hr in line (>${registerCount} registers)"
+                    else -> "Unmanned register" to "Registers without assigned cashiers during open hours"
                 }
+                hireAndLog(EntityDef.CASHIER, reason, detail)
             }
         }
 
@@ -431,17 +427,9 @@ class StaffManager @Inject constructor() {
             val avgZone = result.avgZoneScore
             val zoneThreshold = config.zoneScoreHireThreshold / 100f
             if (config.hireStockerOnBackroomFull && hasBackroomStock) {
-                val before = result.hiredEntityRegistry.totalCount()
-                result = tryAutoHire(result, EntityDef.STOCKER)
-                if (result.hiredEntityRegistry.totalCount() > before) {
-                    events += AutoHireEvent(EntityDef.STOCKER.displayName, "Backroom full", detail = "Non-perishable cases still in backroom at end of day")
-                }
+                hireAndLog(EntityDef.STOCKER, "Backroom full", "Non-perishable cases still in backroom at end of day")
             } else if (config.hireStockerOnLowZoneScore && avgZone < zoneThreshold) {
-                val before = result.hiredEntityRegistry.totalCount()
-                result = tryAutoHire(result, EntityDef.STOCKER)
-                if (result.hiredEntityRegistry.totalCount() > before) {
-                    events += AutoHireEvent(EntityDef.STOCKER.displayName, "Low zone score", detail = "Zone score ${(avgZone * 100).toInt()}% — below ${config.zoneScoreHireThreshold}% target")
-                }
+                hireAndLog(EntityDef.STOCKER, "Low zone score", "Zone score ${(avgZone * 100).toInt()}% — below ${config.zoneScoreHireThreshold}% target")
             }
         }
 
@@ -461,11 +449,7 @@ class StaffManager @Inject constructor() {
                     blockReason = "Util. ${(metrics.avgFreshUtilization * 100).toInt()}%",
                 )
             } else {
-                val before = result.hiredEntityRegistry.totalCount()
-                result = tryAutoHire(result, EntityDef.FRESH_HANDLER)
-                if (result.hiredEntityRegistry.totalCount() > before) {
-                    events += AutoHireEvent(EntityDef.FRESH_HANDLER.displayName, "Fresh OOS", detail = "Fresh items out of stock with no pending order")
-                }
+                hireAndLog(EntityDef.FRESH_HANDLER, "Fresh OOS", "Fresh items out of stock with no pending order")
             }
         }
 
@@ -514,7 +498,29 @@ class StaffManager @Inject constructor() {
             }
         }
 
-        // 2. Rebalance shifts only when some hours have zero coverage
+        // 2. Auto-promote employees who reached max level
+        if (config.autoPromoteEnabled) {
+            val promotable = result.hiredEntityRegistry.hiredEntities.filter {
+                it.canPromote && it.level >= HiredEntity.MAX_LEVEL
+            }
+            for (entity in promotable) {
+                val cost = entity.upgradeCost
+                if (result.money - cost >= result.autoHireBudget) {
+                    val promoted = promoteEntity(result, entity.id)
+                    if (promoted !== result) {
+                        result = promoted
+                        events += AutoHireEvent(
+                            entity.entityDefinition.displayName,
+                            "Auto-promoted",
+                            detail = "Store Manager promoted ${entity.name} to ${entity.tier.next()}",
+                            action = com.example.superstoresimulator.domain.metrics.AutoHireAction.PROMOTED,
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3. Rebalance shifts only when some hours have zero coverage
         if (config.autoRebalanceShiftsEnabled) {
             for (def in listOf(EntityDef.CASHIER, EntityDef.STOCKER, EntityDef.FRESH_HANDLER)) {
                 val entityIds = result.hiredEntityRegistry.getByDef(def).map { it.id }.toSet()
@@ -552,6 +558,72 @@ class StaffManager @Inject constructor() {
             }
         }
 
+        // 4. Auto-terminate excess idle employees (based on 3-day average)
+        if (config.autoTerminateEnabled) {
+            val recentDays = result.completedDayMetrics.takeLast(TERMINATE_LOOKBACK_DAYS)
+            if (recentDays.size >= TERMINATE_LOOKBACK_DAYS) {
+                val avgCashierUtil = recentDays.map { it.avgCashierUtilization }.average().toFloat()
+                val avgStockerUtil = recentDays.map { it.avgStockerUtilization }.average().toFloat()
+                val avgFreshUtil = recentDays.map { it.avgFreshUtilization }.average().toFloat()
+                val avgZone = recentDays.map { it.avgZoneScore }.average().toFloat()
+
+                // Cashiers: fire if more cashiers than registers and utilization consistently low
+                val cashiers = result.hiredEntityRegistry.getByDef(EntityDef.CASHIER)
+                if (cashiers.size > 1 && cashiers.size > result.registers.size && avgCashierUtil < 0.5f) {
+                    val assignedIds = result.registers.mapNotNull { it.assignedCashierId }.toSet()
+                    val unassigned = cashiers.filter { it.id !in assignedIds }
+                    val victim = unassigned.minByOrNull { it.level * 100 + it.xp }
+                    if (victim != null) {
+                        result = fireEntity(result, victim.id)
+                        events += AutoHireEvent(
+                            EntityDef.CASHIER.displayName,
+                            "Overstaffed",
+                            detail = "Terminated ${victim.name} — ${cashiers.size} cashiers for ${result.registers.size} registers, ${TERMINATE_LOOKBACK_DAYS}-day avg util ${(avgCashierUtil * 100).toInt()}%",
+                            action = com.example.superstoresimulator.domain.metrics.AutoHireAction.TERMINATED,
+                        )
+                    }
+                }
+
+                // Stockers: fire if zone score consistently high and utilization consistently low
+                val stockers = result.hiredEntityRegistry.getByDef(EntityDef.STOCKER)
+                    .filter { !it.isDeptManager }
+                if (stockers.size > 1 && avgZone >= 0.95f && avgStockerUtil < 0.3f) {
+                    val victim = stockers.minByOrNull { it.level * 100 + it.xp }
+                    if (victim != null) {
+                        result = fireEntity(result, victim.id)
+                        events += AutoHireEvent(
+                            EntityDef.STOCKER.displayName,
+                            "Overstaffed",
+                            detail = "Terminated ${victim.name} — ${TERMINATE_LOOKBACK_DAYS}-day avg zone ${(avgZone * 100).toInt()}%, util ${(avgStockerUtil * 100).toInt()}%",
+                            action = com.example.superstoresimulator.domain.metrics.AutoHireAction.TERMINATED,
+                        )
+                    }
+                }
+
+                // Fresh handlers: fire if utilization consistently low and no recent fresh OOS
+                val freshHandlers = result.hiredEntityRegistry.getByDef(EntityDef.FRESH_HANDLER)
+                    .filter { !it.isDeptManager }
+                val recentFreshOos = recentDays.any { day ->
+                    day.outOfStockEvents.any { event ->
+                        val inv = result.inventory[event.itemId]
+                        inv != null && (inv.shelfBatches + inv.backroomBatches).any { it.expirationDay != Int.MAX_VALUE }
+                    }
+                }
+                if (freshHandlers.size > 1 && !recentFreshOos && avgFreshUtil < 0.3f) {
+                    val victim = freshHandlers.minByOrNull { it.level * 100 + it.xp }
+                    if (victim != null) {
+                        result = fireEntity(result, victim.id)
+                        events += AutoHireEvent(
+                            EntityDef.FRESH_HANDLER.displayName,
+                            "Overstaffed",
+                            detail = "Terminated ${victim.name} — no fresh OOS in ${TERMINATE_LOOKBACK_DAYS} days, avg util ${(avgFreshUtil * 100).toInt()}%",
+                            action = com.example.superstoresimulator.domain.metrics.AutoHireAction.TERMINATED,
+                        )
+                    }
+                }
+            }
+        }
+
         if (events.isNotEmpty()) {
             result = result.copy(
                 currentDayMetrics = result.currentDayMetrics.copy(
@@ -564,7 +636,6 @@ class StaffManager @Inject constructor() {
     }
 
     private fun tryAutoHire(state: GameState, def: EntityDef): GameState {
-        if (state.money - def.cost < state.autoHireBudget) return state
         return hireEntity(state, def)
     }
 
@@ -574,8 +645,6 @@ class StaffManager @Inject constructor() {
     // ── Pure state operations ─────────────────────────────────────────────────
 
     fun hireEntity(state: GameState, def: EntityDef): GameState {
-        if (state.money < def.cost) return state
-
         val newRegistry = state.hiredEntityRegistry.hireEntity(def)
         val newEntityId = newRegistry.hiredEntities.last().id
 
@@ -586,7 +655,6 @@ class StaffManager @Inject constructor() {
 
         return state.copy(
             hiredEntityRegistry = newRegistry,
-            money = state.money - def.cost,
             staffSchedules = state.staffSchedules + newShift,
         )
     }
@@ -627,12 +695,12 @@ class StaffManager @Inject constructor() {
             val hasStoreManager = state.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.isStoreManager }
             if (hasStoreManager) return state
         }
-        // Stocking Manager cap: 1 per 5 non-manager stockers
-        if (entity.entityDefinition == EntityDef.STOCKER && entity.tier == Tier.FAST) {
-            val stockers = state.hiredEntityRegistry.getByDef(EntityDef.STOCKER)
-            val currentManagers = stockers.count { it.isDeptManager }
-            val nonManagerCount = stockers.count { it.tier != Tier.MANAGER }
-            if (currentManagers >= nonManagerCount / STOCKERS_PER_STOCKING_MANAGER) return state
+        // Dept Manager cap: 1 per EMPLOYEES_PER_DEPT_MANAGER non-manager employees of same type
+        if (entity.entityDefinition != EntityDef.MANAGER && entity.tier == Tier.FAST) {
+            val peers = state.hiredEntityRegistry.getByDef(entity.entityDefinition)
+            val currentManagers = peers.count { it.isDeptManager }
+            val nonManagerCount = peers.count { it.tier != Tier.MANAGER }
+            if (currentManagers >= nonManagerCount / EMPLOYEES_PER_DEPT_MANAGER) return state
         }
         val cost = entity.upgradeCost
         if (state.money < cost) return state
@@ -719,8 +787,8 @@ class StaffManager @Inject constructor() {
         const val ZONE_PER_ACTION = 0.35f
         const val ZONE_FLOOR = 0.4f
 
-        // Stocking Manager: 1 allowed per this many non-manager stockers
-        const val STOCKERS_PER_STOCKING_MANAGER = 5
+        const val EMPLOYEES_PER_DEPT_MANAGER = 5
+        const val TERMINATE_LOOKBACK_DAYS = 3
 
         private const val TAG = "StaffManager"
 

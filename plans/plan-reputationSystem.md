@@ -43,7 +43,7 @@ A composite score computed daily at rollover from 4 weighted factors. 100% = neu
 dailyScore = (revenueScore × 0.40) + (stockScore × 0.25) + (appearanceScore × 0.20) + (serviceScore × 0.15)
 ```
 
-The composite is EMA-smoothed into a persistent `reputationScore`.
+The composite nudges the persistent `reputationScore` by 1–3 points per day (see Daily Nudge Smoothing below).
 
 ### Factor 1: Revenue Performance (40%)
 
@@ -117,14 +117,90 @@ serviceScore = clamp(serviceRate × 200, 0, 200)
 
 Data source: `DailyMetrics.customersServed` already tracked. Need to add `customersLost` tracking.
 
-### EMA Smoothing
+### Daily Nudge Smoothing (Rolling-Average Feel)
+
+Reputation is **hard to move**. A single perfect or horrific day shifts it by only 1–3 points. Sustained performance over ~30 days is what actually changes reputation.
+
+**Asymmetric nudge**: recovery is always faster than decline. Falling capped at -2 pts/day, rising goes up to +3.
 
 ```kotlin
-val alpha = if (daysTracked < 7) 0.4f else 0.2f
-smoothedScore = alpha * dailyScore + (1 - alpha) * previousSmoothedScore
+fun smoothReputation(
+    currentRep: Float,
+    dailyComposite: Float,
+    daysTracked: Int
+): Float {
+    if (daysTracked == 0) return NEUTRAL_REPUTATION // First day: start at 100
+
+    val delta = dailyComposite - currentRep
+    val absDelta = abs(delta)
+    val isRising = delta > 0
+
+    val nudgeMagnitude = when {
+        absDelta < 25f -> 1f
+        absDelta < 75f -> 2f
+        else -> if (isRising) 3f else 2f  // Asymmetric: max fall = 2, max rise = 3
+    }
+
+    val nudge = sign(delta) * nudgeMagnitude
+    return (currentRep + nudge).coerceIn(MIN_REPUTATION, MAX_REPUTATION)
+}
 ```
 
-Alpha 0.2 = ~5-day half-life. Consistent quality rewarded, single bad days forgiven. Alpha 0.4 for first 7 days to bootstrap faster.
+| Day Quality | Daily Composite | Delta | Nudge (rising) | Nudge (falling) |
+|---|---|---|---|---|
+| Horrific | 0–25% | -75+ | — | **-2 pts** (capped) |
+| Bad | 25–75% | -25 to -75 | — | -2 pts |
+| Slightly off | 75–100% | 0 to -25 | — | -1 pt |
+| Slightly good | 100–125% | 0 to +25 | +1 pt | — |
+| Good | 125–175% | +25 to +75 | +2 pts | — |
+| Perfect | 175–200% | +75+ | +3 pts | — |
+
+**Implications:**
+- Starting at 100%, 30 straight perfect days → ~190%. Never trivial to max out.
+- Single bad day at 100% → 99%. Barely noticeable.
+- Worst-case decline: -2 pts/day. From 100% → 50% takes **25 days** of consistently terrible play.
+- Recovery at +3 pts/day. From 50% → 100% takes **~17 days** of perfect play.
+- Asymmetry means recovery is always ~1.5x faster than decline. Player is never permanently stuck.
+- This gives the "rolling 30-day average" feel without storing 30 days of history.
+
+### Going Out of Business Sale (Death Spiral Safety Valve)
+
+When reputation drops below **30%**, the store triggers a "Going Out of Business Sale" event — a temporary traffic surge that gives the player a lifeline to restock revenue.
+
+```kotlin
+data class ReputationState(
+    ...
+    val lastSaleEventDay: Int = -7,  // game day of last GOOB sale (-7 = eligible immediately)
+)
+
+fun checkGoobSaleEligible(reputationState: ReputationState, currentDay: Int): Boolean {
+    return reputationState.reputationScore < GOOB_SALE_THRESHOLD
+        && (currentDay - reputationState.lastSaleEventDay) >= GOOB_SALE_COOLDOWN_DAYS
+}
+```
+
+**Mechanics:**
+- **Trigger**: reputation < 30% at day rollover, and ≥7 days since last sale event
+- **Effect**: next day gets **1.5x traffic multiplier** (stacks with reputation traffic mult) and **all items priced at cost** (0% markup forced)
+- **Duration**: 1 day
+- **Cooldown**: 7 days (max 1 per week)
+- **Purpose**: generates enough revenue to restock shelves and start climbing back. Selling at cost means no profit, but prevents bankruptcy and feeds the revenue score.
+- **UI**: banner notification "Desperate times! Going Out of Business Sale draws a crowd" at day start. End-of-day report shows "GOOB Sale: +50% traffic, items sold at cost."
+
+**Why selling at cost works**: player gets zero profit margin but moves volume → revenue score recovers → stock score stays healthy from the restock → composite nudges reputation upward. Combined with asymmetric nudge (+3 vs -2), the player can claw back ~3 pts on sale day.
+
+| Rep | Traffic (rep) | GOOB boost | Effective traffic | Revenue vs $800 target |
+|---|---|---|---|---|
+| 25% | 0.675x | 1.5x | 1.01x | Easily hit |
+| 15% | 0.58x | 1.5x | 0.87x | Likely hit |
+| 5% | 0.52x | 1.5x | 0.78x | Tight but possible |
+
+Constants:
+```kotlin
+const val GOOB_SALE_THRESHOLD = 30f       // triggers below this reputation
+const val GOOB_SALE_COOLDOWN_DAYS = 7     // max once per week
+const val GOOB_SALE_TRAFFIC_BOOST = 1.5f  // stacks with rep traffic mult
+```
 
 ---
 
@@ -227,6 +303,10 @@ data class ReputationState(
     val consecutiveTargetHits: Int = 0,
     val consecutiveTargetMisses: Int = 0,
 
+    // Going Out of Business Sale
+    val lastSaleEventDay: Int = -7,        // game day of last GOOB sale
+    val goobSaleActiveToday: Boolean = false,
+
     // Last day's breakdown (for End-of-Day report)
     val lastRevenueScore: Float = 0f,
     val lastStockScore: Float = 0f,
@@ -275,6 +355,8 @@ New class in `domain/reputation/ReputationManager.kt`. Pure functions:
 | `derivePriceToleranceMultiplier(score)` | Score → 0.7–1.4 (quadratic) |
 | `deriveSupplierBonus(score)` | Score → 0–0.10 (quadratic, above 100% only) |
 | `initializeTarget(storeSize)` | Set initial target from store size base |
+| `checkGoobSaleEligible(reputationState, currentDay)` | Returns true if rep < 30% and cooldown elapsed |
+| `applyGoobSale(reputationState, currentDay)` | Sets `goobSaleActiveToday = true`, updates `lastSaleEventDay` |
 
 Companion constants:
 ```kotlin
@@ -282,9 +364,15 @@ const val WEIGHT_REVENUE = 0.40f
 const val WEIGHT_STOCK = 0.25f
 const val WEIGHT_APPEARANCE = 0.20f
 const val WEIGHT_SERVICE = 0.15f
-const val EMA_ALPHA = 0.2f
-const val EMA_ALPHA_BOOTSTRAP = 0.4f
-const val BOOTSTRAP_DAYS = 7
+const val NUDGE_SMALL = 1f       // daily composite within 25 pts of current rep
+const val NUDGE_MEDIUM = 2f      // daily composite 25–75 pts away
+const val NUDGE_RISE_LARGE = 3f  // rising 75+ pts → max upward nudge
+const val NUDGE_FALL_MAX = 2f    // falling capped at 2 (asymmetric)
+const val NUDGE_THRESHOLD_SMALL = 25f
+const val NUDGE_THRESHOLD_LARGE = 75f
+const val GOOB_SALE_THRESHOLD = 30f
+const val GOOB_SALE_COOLDOWN_DAYS = 7
+const val GOOB_SALE_TRAFFIC_BOOST = 1.5f
 const val MIN_REPUTATION = 0f
 const val MAX_REPUTATION = 200f
 const val NEUTRAL_REPUTATION = 100f
@@ -299,12 +387,14 @@ const val NEUTRAL_REPUTATION = 100f
 Add `reputationState.trafficMultiplier`:
 
 ```kotlin
+val goobBoost = if (state.reputationState.goobSaleActiveToday) GOOB_SALE_TRAFFIC_BOOST else 1.0f
 val customerRatePerSecond =
     (pattern.baseCustomerRate / 60.0) *
     state.storeConfig.gameSpeedMultiplier *
     state.currentStoreSize.trafficMultiplier *
     state.pricingState.priceTrafficMultiplier *
-    state.reputationState.trafficMultiplier
+    state.reputationState.trafficMultiplier *
+    goobBoost
 ```
 
 ### PricingManager — price elasticity
@@ -330,13 +420,30 @@ In `processBulkOrder()`, add `state.reputationState.supplierDiscountBonus` to th
 After snapshot, before returning:
 
 ```kotlin
-val updatedReputation = ReputationManager.updateReputation(
+var updatedReputation = ReputationManager.updateReputation(
     reputationState = processedState.reputationState,
     snapshot = snapshot,
     avgZoneScore = processedState.avgZoneScore,
     storeSize = processedState.currentStoreSize,
 )
+
+// Check GOOB sale eligibility for next day
+if (ReputationManager.checkGoobSaleEligible(updatedReputation, nextDay)) {
+    updatedReputation = ReputationManager.applyGoobSale(updatedReputation, nextDay)
+} else {
+    updatedReputation = updatedReputation.copy(goobSaleActiveToday = false)
+}
 // Include in returned state.copy(reputationState = updatedReputation)
+```
+
+### PricingManager — GOOB Sale override
+
+During a GOOB sale, all items sell at base cost (0% effective markup):
+
+```kotlin
+if (state.reputationState.goobSaleActiveToday) {
+    return resolved.basePrice  // sell at cost during GOOB sale
+}
 ```
 
 ### GameEngine.tick() — customer lost tracking
@@ -443,7 +550,17 @@ No manual serialization code needed.
 | Appearance score: zone 1.0 = 200, 0.5 = 100, 0.0 = 0 | `computeAppearanceScore` scaling |
 | Service score: 100% served = 200, 50% = 100, 0% = 0 | `computeServiceScore` math |
 | Composite: weighted sum correct, clamped 0–200 | Factor weights sum to 1.0 |
-| EMA: converges toward daily score | Multi-day sequences |
+| Nudge: perfect day at 100% → 103% | +3 pt max rise nudge |
+| Nudge: bad day at 100% → 99% | -1 pt small nudge |
+| Nudge: horrific day at 100% → 98% | -2 pt max fall (asymmetric cap) |
+| Nudge: 30 perfect days from 100% → ~190% | Never trivially maxed |
+| Nudge: single horrific day at 150% → 148% | Resilient to one-offs, fall capped at 2 |
+| Asymmetry: recovery always faster than decline | +3 max rise vs -2 max fall |
+| GOOB sale triggers at rep < 30% | `checkGoobSaleEligible` returns true |
+| GOOB sale respects 7-day cooldown | Returns false if last sale < 7 days ago |
+| GOOB sale sets traffic boost + cost pricing | `goobSaleActiveToday` flag set |
+| GOOB sale resets after day rollover | Flag cleared when not eligible |
+| Death spiral recovery: 25% rep + GOOB sale → revenue target hit | End-to-end survival test |
 | Target hit: grows 1–2% | Hit with various overshoot levels |
 | Target miss: shrinks 0.5–1.5%, floored at base | Miss with various undershoot levels |
 | Target floor: never below store size base | Repeated misses → stays at base |
