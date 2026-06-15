@@ -29,6 +29,8 @@ fun activityChipColors(activity: EmployeeActivity): Pair<Color, Color> = when (a
     EmployeeActivity.STOCKING -> SuccessChipSurface to SuccessTextDark
     EmployeeActivity.ZONING -> InfoChipSurface to PrimaryDark
     EmployeeActivity.HANDLING_FRESH -> SuccessChipSurface to SuccessTextDark
+    EmployeeActivity.RESEARCHING -> InfoChipSurface to PrimaryDark
+    EmployeeActivity.CONSULTING -> InfoChipSurface to PrimaryDark
     EmployeeActivity.IDLE -> ErrorSurface to CriticalRed
     EmployeeActivity.OFF_SHIFT -> PlaceholderSurface to TextSecondary
 }

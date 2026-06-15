@@ -3,6 +3,7 @@ package com.example.superstoresimulator.domain.Entities
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.superstoresimulator.domain.Money
@@ -93,11 +94,27 @@ data class EntityDef(
             ),
         )
 
+        val MARKET_ANALYST = EntityDef(
+            key = "market_analyst",
+            displayName = "Market Analyst",
+            cost = Money(3_000),
+            description = "Generates research points while on shift. Research unlocks new upgrades and features.",
+            roleDescription = "Researches upgrades",
+            icon = Icons.Default.Search,
+            baseWage = Money(900),
+            tierPerks = mapOf(
+                Tier.BASE to "Observes store activity and generates research points",
+                Tier.FAST to "Faster insight generation (1.5x throughput)",
+                Tier.MANAGER to "Lead Analyst — 2.0x throughput",
+            ),
+        )
+
         val allEntities: List<EntityDef> = listOf(
             CASHIER,
             STOCKER,
             FRESH_HANDLER,
             MANAGER,
+            MARKET_ANALYST,
         )
 
         val managerEntities: List<EntityDef> = listOf(MANAGER)

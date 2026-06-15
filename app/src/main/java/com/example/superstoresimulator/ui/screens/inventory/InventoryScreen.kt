@@ -53,7 +53,6 @@ import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.ItemCategory
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.ui.components.cards.InventoryItemCard
 import com.example.superstoresimulator.ui.components.common.ScreenHeader
@@ -78,7 +77,7 @@ import kotlinx.coroutines.launch
 fun InventoryScreen(
     state: InventoryUIState,
     money: Money,
-    currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
+    researchedUpgrades: Set<String> = emptySet(),
     metricsData: List<DailyMetrics> = emptyList(),
     resetTrigger: Int = 0,
     hasFastStocker: Boolean = false,
@@ -196,7 +195,7 @@ fun InventoryScreen(
     InventoryListScreen(
         state = state,
         money = money,
-        currentTier = currentTier,
+        researchedUpgrades = researchedUpgrades,
         searchQuery = searchQuery,
         debouncedSearchQuery = debouncedSearchQuery,
         itemNames = itemNames,
@@ -219,7 +218,7 @@ fun InventoryScreen(
 private fun InventoryListScreen(
     state: InventoryUIState,
     money: Money,
-    currentTier: ItemUnlockTier,
+    researchedUpgrades: Set<String>,
     searchQuery: MutableState<String>,
     debouncedSearchQuery: MutableState<String>,
     itemNames: Map<Int, String>,
@@ -255,8 +254,7 @@ private fun InventoryListScreen(
                 modifier = Modifier.weight(1f)
             )
 
-            // Only show Bulk Order button if TIER_2 or above is unlocked
-            if (currentTier.unlockAmount >= ItemUnlockTier.TIER_2.unlockAmount) {
+            if (true) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = onShowBulkOrderDialog,
@@ -444,7 +442,6 @@ fun CategoryChip(
 internal fun InventoryItemDetailScreen(
     item: InventoryItemUI,
     money: Money,
-    currentTier: ItemUnlockTier,
     currentDay: Int,
     metricsData: List<DailyMetrics>,
     shelfBatches: List<ItemBatch> = emptyList(),
@@ -487,7 +484,7 @@ internal fun InventoryItemDetailScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.weight(1f)
         ) {
-            item { ItemHeaderCard(item = item, currentTier = currentTier) }
+            item { ItemHeaderCard(item = item) }
 
             item { StockLevelsCard(item = item) }
 
@@ -584,7 +581,7 @@ internal fun InventoryItemDetailScreen(
 fun InventoryAndFreshScreen(
     state: InventoryUIState,
     money: Money,
-    currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
+    researchedUpgrades: Set<String> = emptySet(),
     currentDay: Int,
     metricsData: List<DailyMetrics> = emptyList(),
     resetTrigger: Int = 0,
@@ -612,8 +609,7 @@ fun InventoryAndFreshScreen(
     onItemClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // Only show Fresh tab if TIER_2 or above (first perishables unlock)
-    val showFreshTab = currentTier.unlockAmount >= ItemUnlockTier.TIER_2.unlockAmount
+    val showFreshTab = "prod_fresh_basics" in researchedUpgrades
 
     // Deliveries tab is always visible (truck system replaces instant delivery for all tiers)
     val tabs = if (showFreshTab) listOf("Inventory", "Fresh", "Deliveries") else listOf("Inventory", "Deliveries")
@@ -693,7 +689,7 @@ fun InventoryAndFreshScreen(
                 page == 0 -> InventoryScreen(
                     state = state,
                     money = money,
-                    currentTier = currentTier,
+                    researchedUpgrades = researchedUpgrades,
                     metricsData = metricsData,
                     resetTrigger = resetTrigger,
                     hasFastStocker = hasFastStocker,

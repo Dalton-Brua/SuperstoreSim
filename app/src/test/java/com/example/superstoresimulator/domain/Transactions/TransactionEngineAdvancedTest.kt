@@ -3,7 +3,13 @@ package com.example.superstoresimulator.domain
 import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.Transactions.TransactionEngine
 import com.example.superstoresimulator.domain.Transactions.TransactionLine
+import com.example.superstoresimulator.domain.helpers.FakeItemDao
 import com.example.superstoresimulator.domain.inventory.InventoryState
+import com.example.superstoresimulator.domain.items.Item
+import com.example.superstoresimulator.domain.items.ItemCategory
+import com.example.superstoresimulator.domain.items.ItemMetadataCache
+import com.example.superstoresimulator.domain.items.MoneyData
+import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.Assert.*
 import org.junit.Before
@@ -18,6 +24,7 @@ class TransactionEngineAdvancedTest {
 
     private lateinit var engine: TransactionEngine
     private lateinit var baseState: GameState
+    private lateinit var cache: ItemMetadataCache
 
     /** Helper to create a batch with the given quantity (non-perishable for testing). */
     private fun batch(qty: Int, day: Int = 1): List<com.example.superstoresimulator.domain.inventory.ItemBatch> =
@@ -28,8 +35,26 @@ class TransactionEngineAdvancedTest {
     private fun inv(shelfStock: Int, backroomStock: Int): InventoryState =
         InventoryState(shelfBatches = batch(shelfStock), backroomBatches = batch(backroomStock))
 
+    /** Ten starter items (ids 1..10) so basket generation has accessible items to pick. */
+    private fun makeCatalog(): List<Item> = (1..10).map { id ->
+        Item(
+            id = "item_${String.format("%03d", id)}",
+            name = "Item $id",
+            price = MoneyData(cents = 1_000),
+            description = "Test item $id",
+            unitCost = MoneyData(cents = 500),
+            category = ItemCategory.GROCERY,
+            casePack = 6,
+        )
+    }
+
     @Before
     fun setUp() {
+        // TransactionEngine builds baskets from cached, research-accessible items, so a
+        // populated cache is required — without it startNewTransaction returns no lines.
+        cache = ItemMetadataCache(FakeItemDao(makeCatalog()))
+        runBlocking { cache.initialize() }
+
         // Base state with 10 items, $1000 money
         val inventory = mutableMapOf<Int, InventoryState>()
         for (i in 1..10) {
@@ -50,7 +75,8 @@ class TransactionEngineAdvancedTest {
         engine = TransactionEngine(
             salesTaxRate = 0.0825,
             refundChance = 1.0,  // 100% refund chance
-            random = Random(42)
+            random = Random(42),
+            cache = cache,
         )
 
         var state = engine.startNewTransaction(baseState)
@@ -73,7 +99,8 @@ class TransactionEngineAdvancedTest {
         engine = TransactionEngine(
             salesTaxRate = 0.0825,
             refundChance = 0.0,  // 0% refund chance
-            random = Random(42)
+            random = Random(42),
+            cache = cache,
         )
 
         var state = engine.startNewTransaction(baseState)
@@ -92,7 +119,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testRefundRequestStructureIsValid() {
-        engine = TransactionEngine(refundChance = 1.0, random = Random(42))
+        engine = TransactionEngine(refundChance = 1.0, random = Random(42), cache = cache)
 
         var state = engine.startNewTransaction(baseState)
         val lines = state.currentTransaction.lines
@@ -118,7 +145,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testRefundLinesHaveCorrectQuantities() {
-        engine = TransactionEngine(refundChance = 1.0, random = Random(42))
+        engine = TransactionEngine(refundChance = 1.0, random = Random(42), cache = cache)
 
         var state = engine.startNewTransaction(baseState)
         val lines = state.currentTransaction.lines
@@ -142,7 +169,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testMultipleRefundsCanGenerate() {
-        engine = TransactionEngine(refundChance = 1.0, random = Random(42))
+        engine = TransactionEngine(refundChance = 1.0, random = Random(42), cache = cache)
         var state = baseState
 
         // Generate multiple transactions with refunds
@@ -170,7 +197,7 @@ class TransactionEngineAdvancedTest {
         )
         val singleItemState = baseState.copy(inventory = singleItemInventory)
 
-        engine = TransactionEngine(random = Random(42))
+        engine = TransactionEngine(random = Random(42), cache = cache)
         val newState = engine.startNewTransaction(singleItemState)
 
         // Should only have item 1
@@ -184,7 +211,7 @@ class TransactionEngineAdvancedTest {
         largeStockInventory[1] = inv(100, 200)
         val largeStockState = baseState.copy(inventory = largeStockInventory)
 
-        engine = TransactionEngine(random = Random(42))
+        engine = TransactionEngine(random = Random(42), cache = cache)
         var state = engine.startNewTransaction(largeStockState)
         val itemId = state.currentTransaction.lines[0].itemId
 
@@ -200,7 +227,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testInventoryBackroomNotConsumed() {
-        engine = TransactionEngine(random = Random(42))
+        engine = TransactionEngine(random = Random(42), cache = cache)
         var state = engine.startNewTransaction(baseState)
         val itemId = state.currentTransaction.lines[0].itemId
         val initialBackroom = baseState.inventory[itemId]?.backroomStock ?: 0
@@ -215,7 +242,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testCompleteTransactionWithMultipleLines() {
-        engine = TransactionEngine(random = Random(42))
+        engine = TransactionEngine(random = Random(42), cache = cache)
         var state = engine.startNewTransaction(baseState)
 
         // Verify we have multiple lines
@@ -235,7 +262,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testRefundWithMultipleLines() {
-        engine = TransactionEngine(refundChance = 1.0, random = Random(42))
+        engine = TransactionEngine(refundChance = 1.0, random = Random(42), cache = cache)
         var state = engine.startNewTransaction(baseState)
 
         // Ensure we have multiple lines
@@ -264,7 +291,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testPartialRefundProcessing() {
-        engine = TransactionEngine(refundChance = 1.0, random = Random(42))
+        engine = TransactionEngine(refundChance = 1.0, random = Random(42), cache = cache)
         var state = engine.startNewTransaction(baseState)
         val lines = state.currentTransaction.lines
 
@@ -297,7 +324,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testFullRefundThenNewTransaction() {
-        engine = TransactionEngine(refundChance = 1.0, random = Random(42))
+        engine = TransactionEngine(refundChance = 1.0, random = Random(42), cache = cache)
         var state = engine.startNewTransaction(baseState)
         val lines = state.currentTransaction.lines
 
@@ -325,7 +352,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testInventoryReplenishmentAfterRefund() {
-        engine = TransactionEngine(refundChance = 1.0, random = Random(42))
+        engine = TransactionEngine(refundChance = 1.0, random = Random(42), cache = cache)
         var state = engine.startNewTransaction(baseState)
         val lines = state.currentTransaction.lines
         val firstItemId = lines[0].itemId
@@ -361,7 +388,7 @@ class TransactionEngineAdvancedTest {
     @Test
     fun testTaxCalculationWithCustomRate() {
         val customRate = 0.10  // 10% tax
-        engine = TransactionEngine(salesTaxRate = customRate)
+        engine = TransactionEngine(salesTaxRate = customRate, cache = cache)
 
         var state = engine.startNewTransaction(baseState)
         val expectedTax = Money.fromDollars(state.currentTransaction.subtotal.toDouble() * customRate)
@@ -372,7 +399,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testZeroTaxRate() {
-        engine = TransactionEngine(salesTaxRate = 0.0)
+        engine = TransactionEngine(salesTaxRate = 0.0, cache = cache)
 
         var state = engine.startNewTransaction(baseState)
 
@@ -386,7 +413,7 @@ class TransactionEngineAdvancedTest {
     @Test
     fun testHighTaxRate() {
         val highRate = 0.25  // 25% tax
-        engine = TransactionEngine(salesTaxRate = highRate)
+        engine = TransactionEngine(salesTaxRate = highRate, cache = cache)
 
         var state = engine.startNewTransaction(baseState)
         val expectedTax = Money.fromDollars(state.currentTransaction.subtotal.toDouble() * highRate)
@@ -399,7 +426,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testSalesHistoryAccumulatesCorrectly() {
-        engine = TransactionEngine(random = Random(42))
+        engine = TransactionEngine(random = Random(42), cache = cache)
         var state = baseState
 
         val transactionsToCreate = 5
@@ -425,7 +452,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testMoneyAccumulatesAcrossTransactions() {
-        engine = TransactionEngine(random = Random(42))
+        engine = TransactionEngine(random = Random(42), cache = cache)
         var state = baseState
         val initialMoney = state.money
         var accumulatedRevenue = Money(0)
@@ -453,7 +480,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testStateConsistencyAfterComplexSequence() {
-        engine = TransactionEngine(refundChance = 1.0, random = Random(42))
+        engine = TransactionEngine(refundChance = 1.0, random = Random(42), cache = cache)
         var state = baseState
 
         // Complex sequence: transaction → refund → new transaction → partial refund
@@ -488,7 +515,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testNoMoneyLeakage() {
-        engine = TransactionEngine(random = Random(42))
+        engine = TransactionEngine(random = Random(42), cache = cache)
         var state = baseState
         val initialMoney = state.money
 
@@ -514,7 +541,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testRefundHigherThanSale() {
-        engine = TransactionEngine(refundChance = 1.0, random = Random(42))
+        engine = TransactionEngine(refundChance = 1.0, random = Random(42), cache = cache)
         var state = engine.startNewTransaction(baseState)
         val lines = state.currentTransaction.lines
 
@@ -538,7 +565,7 @@ class TransactionEngineAdvancedTest {
 
     @Test
     fun testProcessRefundLineMultipleTimes() {
-        engine = TransactionEngine(refundChance = 1.0, random = Random(42))
+        engine = TransactionEngine(refundChance = 1.0, random = Random(42), cache = cache)
         var state = engine.startNewTransaction(baseState)
         val lines = state.currentTransaction.lines
 

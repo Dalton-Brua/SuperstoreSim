@@ -15,5 +15,13 @@ enum class ItemCategory(val displayName: String) {
     HOUSEHOLD("Household"),
     HEALTH("Health"),
     PHARMACY("Pharmacy"),
-    ELECTRONICS("Electronics")
+    ELECTRONICS("Electronics"),
+    DELI("Deli"),
+    PET("Pet"),
+    BABY("Baby"),
+    OFFICE("Office"),
+    TOYS("Toys"),
+    AUTO("Auto"),
+    GARDEN("Garden"),
+    SEASONAL("Seasonal"),
 }

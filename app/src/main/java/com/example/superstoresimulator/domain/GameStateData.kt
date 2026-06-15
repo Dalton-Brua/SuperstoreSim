@@ -1,8 +1,9 @@
 package com.example.superstoresimulator.domain
 
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
+import com.example.superstoresimulator.domain.research.ResearchState
+import com.example.superstoresimulator.domain.tutorial.TutorialState
 
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.domain.store.StoreSize
@@ -218,9 +219,14 @@ data class GameState(
 
     val pendingCustomers: Int = 0,
 
-    // Progression: cumulative revenue (never decreases) and the resolved unlock tier
+    // Progression: cumulative revenue (never decreases)
     val totalRevenue: Money = Money.ZERO,
-    val currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
+
+    // Research system
+    val researchState: ResearchState = ResearchState(),
+
+    // Tutorial system
+    val tutorialState: TutorialState = TutorialState(),
 
     val currentDayMetrics: DailyMetrics = DailyMetrics(),
     val completedDayMetrics: List<DailyMetrics> = emptyList(),

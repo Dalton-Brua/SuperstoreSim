@@ -41,7 +41,7 @@ class GameNavigationState(
 
     /** True when a full-screen overlay is open; gates nav bar clicks and pager swipes. */
     val isOverlayOpen: Boolean
-        get() = currentScreen == Screen.STAFF_ENTITY_LIST || selectedInventoryItemId != null
+        get() = selectedInventoryItemId != null
 
     fun navigateTo(screen: Screen) {
         val targetIndex = mainScreens.indexOf(screen)

@@ -192,6 +192,8 @@ private fun ActivityCountChip(activity: EmployeeActivity, count: Int) {
         EmployeeActivity.HANDLING_FRESH -> "Fresh"
         EmployeeActivity.CASHIERING -> "Cashiering"
         EmployeeActivity.WAITING_FOR_CUSTOMER -> "Waiting"
+        EmployeeActivity.RESEARCHING -> "Researching"
+        EmployeeActivity.CONSULTING -> "Consulting"
         EmployeeActivity.IDLE -> "Idle"
         EmployeeActivity.OFF_SHIFT -> "Off shift"
     }

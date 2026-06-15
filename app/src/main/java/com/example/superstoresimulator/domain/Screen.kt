@@ -6,6 +6,5 @@ enum class Screen {
     HISTORY,
     METRICS,
     STAFF,
-    STAFF_ENTITY_LIST,
 }
 

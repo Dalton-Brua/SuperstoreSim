@@ -1,2 +1,7 @@
 Locked employees should have their entity type card locked with some symbol or hidden instead of letting you click it then blocking hiring.
 Should not allow truck slots to be purchased beyond 7 slots, 1/day.
+Items ordered on the metrics screen should be cases ordered.
+If the store runs out of product, or is loses more money in a day than earns, offline simulation should stop.
+The disabled purchase truck slot button uses wrong theming.
+One truck should have a maximum of maximum backroom case packs. Any ordered after that should come on a different truck. Currently they all try to arrive on one truck then if they overflow, get put onto a second truck.
+Sales analysis card has a bug on the average daily weekly and monthly sales

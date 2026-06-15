@@ -5,6 +5,7 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.StoreManagerConfig
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.player.PlayerRole
+import com.example.superstoresimulator.domain.research.AnalystAssignment
 
 sealed interface GameEvent {
     data object Tick : GameEvent
@@ -21,7 +22,6 @@ sealed interface GameEvent {
     data class ChangeStoreName(val name: String) : GameEvent
     data class ProcessRefund(val refundId: Int) : GameEvent
     data class ProcessRefundLine(val refundId: Int, val itemId: Int, val quantity: Int) : GameEvent
-    data class SelectStaffDef(val staffDef: EntityDef?) : GameEvent
 
     data class SetGameSpeed(val multiplier: Float) : GameEvent
     data object ToggleStore : GameEvent
@@ -35,14 +35,14 @@ sealed interface GameEvent {
     // Phase 3: Metrics events
     data object DismissEndOfDayReport : GameEvent
 
-    // Progression: tier unlock notification dismiss
-    data object DismissTierUnlock : GameEvent
+    // Research system
+    data class AssignAnalyst(val entityId: Int, val assignment: AnalystAssignment?) : GameEvent
+
+    // Tutorial system
+    data object SkipTutorial : GameEvent
 
     // Skip Day: simulate the rest of the current day and show the end-of-day report
     data object SkipDay : GameEvent
-
-    // Progression: player purchases the next store tier (costs money, requires revenue gate)
-    data object UnlockNextTier : GameEvent
 
     // Bulk Order: purchase case packs for all items meeting a criteria, with volume discounts
     data class BulkOrder(

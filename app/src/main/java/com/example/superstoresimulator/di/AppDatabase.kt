@@ -10,7 +10,7 @@ import com.example.superstoresimulator.domain.items.ItemDao
 
 @Database(
     entities = [Item::class, TransactionEntity::class, TransactionLineEntity::class],
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {

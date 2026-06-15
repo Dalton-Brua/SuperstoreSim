@@ -54,8 +54,6 @@ fun MainScreenPager(
                 onSetPlayerRole = { role: PlayerRole -> onEvent(GameEvent.SetPlayerRole(role)) },
                 onSkipDay = { onEvent(GameEvent.SkipDay) },
                 onUpgradeStore = { onEvent(GameEvent.UpgradeStoreSize) },
-                onUnlockNextTier = { onEvent(GameEvent.UnlockNextTier) },
-                onNavigateToUnlocks = { navState.navigateToUnlocks() },
                 onSave = { onEvent(GameEvent.SaveGame) },
                 onReset = { onEvent(GameEvent.ResetGame) },
                 truckConfig = state.delivery.truckConfig,
@@ -86,7 +84,7 @@ fun MainScreenPager(
             Screen.INVENTORY -> InventoryAndFreshScreen(
                 state = state.inventory,
                 money = state.app.money,
-                currentTier = state.progression.currentTier,
+                researchedUpgrades = state.research.researchedUpgrades,
                 currentDay = state.time?.currentTime?.dayNumber ?: 0,
                 metricsData = state.metrics.completedDays,
                 resetTrigger = navState.inventoryResetTrigger,
@@ -127,16 +125,15 @@ fun MainScreenPager(
 
             Screen.STAFF -> StaffAndUnlocksScreen(
                 staffState = state.staff,
-                progression = state.progression,
+                research = state.research,
                 vendorState = state.vendors,
                 money = state.app.money,
                 initialTab = navState.selectedStaffTab,
                 onTabChanged = { tab -> navState.selectedStaffTab = tab },
-                onSelectStaffDef = { def ->
-                    onEvent(GameEvent.SelectStaffDef(def))
-                    navState.currentScreen = Screen.STAFF_ENTITY_LIST
-                },
-                onUnlockNextTier = { onEvent(GameEvent.UnlockNextTier) },
+                currentStoreSize = state.time?.currentStoreSize ?: StoreSize.MOM_AND_POP,
+                onHireStaff = { def -> onEvent(GameEvent.HireStaff(def)) },
+                onFireStaff = { id -> onEvent(GameEvent.FireStaff(id)) },
+                onPromoteStaff = { id -> onEvent(GameEvent.PromoteStaff(id)) },
                 onUnlockNextVendorTier = { onEvent(GameEvent.UnlockNextVendorTier) },
                 onInvestInVendor = { vendorId -> onEvent(GameEvent.InvestInVendor(vendorId)) },
                 onUpdateShift = { entityId, newStartHour, newDuration ->
@@ -144,6 +141,9 @@ fun MainScreenPager(
                 },
                 onUpdateStoreManagerConfig = { config ->
                     onEvent(GameEvent.UpdateStoreManagerConfig(config))
+                },
+                onAssignAnalyst = { entityId, assignment ->
+                    onEvent(GameEvent.AssignAnalyst(entityId, assignment))
                 },
                 modifier = Modifier.padding(paddingValues)
             )
@@ -162,8 +162,6 @@ fun MainScreenPager(
                     navState.navigateTo(Screen.INVENTORY)
                 }
             )
-
-            else -> {} // Should not reach here for main screens
         }
     }
 }

@@ -61,8 +61,13 @@ import com.example.superstoresimulator.ui.theme.TextSecondary
 import com.example.superstoresimulator.ui.theme.TextWhite
 import com.example.superstoresimulator.ui.theme.Violet
 
-private enum class ScheduleFilter(val label: String) {
-    ALL("All"), CASHIER("Cashiers"), STOCKER("Stockers"), FRESH_HANDLER("Fresh"), MANAGER("Managers")
+private enum class ScheduleFilter(val label: String, val defKey: String?) {
+    ALL("All", null),
+    CASHIER("Cashiers", "cashier"),
+    STOCKER("Stockers", "stocker"),
+    FRESH_HANDLER("Fresh", "fresh_handler"),
+    MANAGER("Managers", "manager"),
+    ANALYST("Analysts", "market_analyst"),
 }
 
 private val GANTT_HOURS = 6..20
@@ -72,6 +77,7 @@ private val ROLE_COLOR_CASHIER = Primary
 private val ROLE_COLOR_STOCKER = Amber
 private val ROLE_COLOR_FRESH = Emerald
 private val ROLE_COLOR_MANAGER = Violet
+private val ROLE_COLOR_ANALYST = Secondary
 
 private val COVERAGE_RED = Destructive
 private val COVERAGE_AMBER = Amber
@@ -118,13 +124,9 @@ fun ScheduleScreen(
         return
     }
 
-    val filtered = when (filter) {
-        ScheduleFilter.ALL -> scheduleEntries
-        ScheduleFilter.CASHIER -> scheduleEntries.filter { it.entityDefKey == "cashier" }
-        ScheduleFilter.STOCKER -> scheduleEntries.filter { it.entityDefKey == "stocker" }
-        ScheduleFilter.FRESH_HANDLER -> scheduleEntries.filter { it.entityDefKey == "fresh_handler" }
-        ScheduleFilter.MANAGER -> scheduleEntries.filter { it.entityDefKey == "manager" }
-    }
+    val filtered = filter.defKey?.let { key ->
+        scheduleEntries.filter { it.entityDefKey == key }
+    } ?: scheduleEntries
 
     val grouped = filtered.groupBy { it.entityDefKey }
 
@@ -157,8 +159,8 @@ fun ScheduleScreen(
         }
 
         // Role groups
-        val roleOrder = listOf("cashier", "stocker", "fresh_handler", "manager")
-        val rolesToShow = if (filter == ScheduleFilter.ALL) roleOrder else listOf(filter.name.lowercase())
+        val roleOrder = listOf("cashier", "stocker", "fresh_handler", "manager", "market_analyst")
+        val rolesToShow = if (filter == ScheduleFilter.ALL) roleOrder else listOf(filter.defKey!!)
 
         for (role in rolesToShow) {
             val entries = grouped[role] ?: continue
@@ -502,5 +504,6 @@ private fun roleColor(key: String): Color = when (key) {
     "stocker" -> ROLE_COLOR_STOCKER
     "fresh_handler" -> ROLE_COLOR_FRESH
     "manager" -> ROLE_COLOR_MANAGER
+    "market_analyst" -> ROLE_COLOR_ANALYST
     else -> ROLE_COLOR_CASHIER
 }

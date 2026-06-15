@@ -31,6 +31,8 @@ class TickOrchestrator @Inject constructor(
     private val utilizationTracker: UtilizationTracker,
     private val staffManager: StaffManager,
     private val dayManager: DayManager,
+    private val researchTickProcessor: ResearchTickProcessor,
+    private val tutorialTickProcessor: TutorialTickProcessor,
 ) {
     fun tick(
         state: GameState,
@@ -59,6 +61,8 @@ class TickOrchestrator @Inject constructor(
         if (sampleUtilization) {
             utilizationTracker.sample(s, currentHour)
         }
+        s = researchTickProcessor.process(s)
+        s = tutorialTickProcessor.process(s)
 
         return s.copy(simAccumulators = snapshotAccumulators())
     }

@@ -35,11 +35,12 @@ import com.example.superstoresimulator.ui.components.cards.StaffActivityCard
 import com.example.superstoresimulator.ui.components.cards.StoreSizeCard
 import com.example.superstoresimulator.ui.components.cards.StoreOverviewCard
 import com.example.superstoresimulator.ui.components.cards.StorePricingCard
-import com.example.superstoresimulator.ui.components.cards.TierProgressCard
 import com.example.superstoresimulator.ui.components.common.TimeDisplayBar
 import com.example.superstoresimulator.ui.dialogs.PendingRefundsDialog
 import com.example.superstoresimulator.ui.dialogs.RegisterDetailDialog
+import com.example.superstoresimulator.domain.tutorial.TutorialManager
 import com.example.superstoresimulator.ui.state.GameUiState
+import com.example.superstoresimulator.ui.state.isFeatureVisible
 import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.DisabledGrey
 import com.example.superstoresimulator.ui.theme.IconBlue
@@ -65,8 +66,6 @@ fun StoreHomeScreen (
     onSetPlayerRole: (PlayerRole) -> Unit = {},
     onSkipDay: () -> Unit = {},
     onUpgradeStore: () -> Unit = {},
-    onUnlockNextTier: () -> Unit = {},
-    onNavigateToUnlocks: () -> Unit = {},
     onSave: () -> Unit = {},
     onReset: () -> Unit = {},
     truckConfig: TruckConfig = TruckConfig(),
@@ -112,7 +111,9 @@ fun StoreHomeScreen (
 
             // Player role buttons (Cashier, Stocker) with progress bars
             item {
-                if (state.time != null) {
+                if (state.time != null &&
+                    state.tutorial.isFeatureVisible(TutorialManager.FEATURE_PLAYER_ROLES)
+                ) {
                     PlayerRoleButtons(
                         currentRole = state.time.playerRole,
                         onRoleChanged = onSetPlayerRole,
@@ -158,23 +159,7 @@ fun StoreHomeScreen (
                 )
             }
 
-            // Tier progress card — hidden once all tiers unlocked
-            if (state.progression.nextTier != null) {
-                item {
-                    TierProgressCard(
-                        currentTier = state.progression.currentTier,
-                        totalRevenue = state.progression.totalRevenue,
-                        nextTier = state.progression.nextTier,
-                        revenueToNextTier = state.progression.revenueToNextTier,
-                        tierProgressFraction = state.progression.tierProgressFraction,
-                        availableTier = state.progression.availableTier,
-                        playerMoney = state.app.money,
-                        onUnlockNextTier = onUnlockNextTier,
-                        onClick = onNavigateToUnlocks,
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    )
-                }
-            }
+
 
             // Store size card
             item {
@@ -190,15 +175,16 @@ fun StoreHomeScreen (
                 }
             }
 
-            // Store Pricing card
-            item {
-                StorePricingCard(
-                    pricingState = state.pricing,
-                    currentTier = state.progression.currentTier,
-                    onSetDefaultMarkup = onSetDefaultMarkup,
-                    onSetCategoryMarkup = onSetCategoryMarkup,
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
+            // Store Pricing card — gated behind the category-pricing research
+            if (state.tutorial.isFeatureVisible(TutorialManager.FEATURE_PRICING_UI)) {
+                item {
+                    StorePricingCard(
+                        pricingState = state.pricing,
+                        onSetDefaultMarkup = onSetDefaultMarkup,
+                        onSetCategoryMarkup = onSetCategoryMarkup,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
             }
 
             // Skip Day button — simulate the rest of the day instantly

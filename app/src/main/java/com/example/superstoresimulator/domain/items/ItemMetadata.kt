@@ -14,20 +14,18 @@ data class ItemMetadata(
     val category: ItemCategory,
     val casePack: Int,
     val casePackCost: Money,
-    /** Relative likelihood that a customer picks this item. Higher = chosen more often. */
     val purchaseWeight: Float = 1.0f,
-    /** Minimum tier required to see/buy this item in the store. */
-    val tier: ItemUnlockTier = ItemUnlockTier.TIER_1,
-    /** Number of days until item expires. Null = non-perishable (never expires). */
+    val researchGate: String? = null,
+    val affinityGroups: List<String> = emptyList(),
+    val substitutionGroup: String? = null,
     val shelfLifeDays: Int? = null,
     val soldByWeight: Boolean = false,
     val vendorId: String? = null,
     val vendorTier: Int = -1,
 ) {
-    /** Returns true if this item is perishable (has an expiration date). */
     val isPerishable: Boolean get() = shelfLifeDays != null
     val isVendorItem: Boolean get() = vendorId != null
-    
+
     companion object {
         fun default(itemId: Int): ItemMetadata {
             return ItemMetadata(
@@ -39,10 +37,9 @@ data class ItemMetadata(
                 casePack = 1,
                 casePackCost = Money.fromDollars(5.00),
                 purchaseWeight = 1.0f,
-                tier = ItemUnlockTier.TIER_1,
+                researchGate = null,
                 shelfLifeDays = null,
             )
         }
     }
 }
-

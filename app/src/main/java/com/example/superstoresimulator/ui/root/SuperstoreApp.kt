@@ -3,6 +3,7 @@ package com.example.superstoresimulator.ui.root
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -114,27 +115,35 @@ fun SuperstoreApp(
                             navState.navigateTo(screen)
                         }
                     },
-                    pendingRefundsCount = state.app.pendingRefunds
+                    pendingRefundsCount = state.app.pendingRefunds,
+                    hintScreen = state.tutorial.hintScreen,
                 )
             }
         ) { paddingValues ->
-            MainScreenPager(
-                state = state,
-                navState = navState,
-                itemDao = itemDao,
-                paddingValues = paddingValues,
-                onEvent = onEvent,
-                onFreshBulkOrder = { showFreshBulkOrderDialog = true },
-                onViewIncompleteOrders = { showIncompleteOrdersDialog = true },
-                onViewIncompleteNormalOrders = { showIncompleteNormalOrdersDialog = true },
-            )
-        }
+            Box(modifier = Modifier.fillMaxSize()) {
+                MainScreenPager(
+                    state = state,
+                    navState = navState,
+                    itemDao = itemDao,
+                    paddingValues = paddingValues,
+                    onEvent = onEvent,
+                    onFreshBulkOrder = { showFreshBulkOrderDialog = true },
+                    onViewIncompleteOrders = { showIncompleteOrdersDialog = true },
+                    onViewIncompleteNormalOrders = { showIncompleteNormalOrdersDialog = true },
+                )
 
-        StaffEntityOverlay(
-            state = state,
-            navState = navState,
-            onEvent = onEvent,
-        )
+                // Persistent tutorial guidance, pinned just above the bottom nav.
+                if (!state.tutorial.tutorialComplete && !navState.isOverlayOpen) {
+                    TutorialBanner(
+                        tutorial = state.tutorial,
+                        currentScreen = navState.currentScreen,
+                        onGoToScreen = { navState.navigateTo(it) },
+                        onSkip = { onEvent(GameEvent.SkipTutorial) },
+                        modifier = Modifier.padding(paddingValues),
+                    )
+                }
+            }
+        }
 
         InventoryItemDetailOverlay(
             state = state,

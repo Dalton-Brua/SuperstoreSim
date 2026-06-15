@@ -5,7 +5,6 @@ import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.items.MoneyData
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -33,13 +32,13 @@ import com.example.superstoresimulator.domain.helpers.FakeItemDao
  *   - placeBulkOrder:     excludes fully-capped items; clamps per-item delivery;
  *                         discount is based on actual (clamped) total cases
  *
- * Per-item tier gate:  an item is eligible only when
- *   itemMetadata.tier.unlockAmount <= state.currentTier.unlockAmount
+ * Per-item research gate:  an item is eligible only when
+ *   itemMetadata.researchGate == null || researchGate in state.researchState.researchedUpgrades
  *
  * Test item catalogue (all defined inline, casePack × unitCost = casePackCost):
- *   Item 1 — GROCERY,  casePack=6, unitCost=500 ¢  → casePackCost=3_000 ¢, tier=TIER_1
- *   Item 2 — SNACKS,   casePack=4, unitCost=400 ¢  → casePackCost=1_600 ¢, tier=TIER_1
- *   Item 3 — DAIRY,    casePack=6, unitCost=600 ¢  → casePackCost=3_600 ¢, tier=TIER_2
+ *   Item 1 — GROCERY,  casePack=6, unitCost=500 ¢  → casePackCost=3_000 ¢, starter (no gate)
+ *   Item 2 — SNACKS,   casePack=4, unitCost=400 ¢  → casePackCost=1_600 ¢, starter (no gate)
+ *   Item 3 — DAIRY,    casePack=6, unitCost=600 ¢  → casePackCost=3_600 ¢, gated on "research_dairy"
  *
  * GameEngine.init gives every item shelfStock=10, backroomStock=10 (total=20) by default.
  *
@@ -60,7 +59,7 @@ class BulkOrderTest {
         category: ItemCategory,
         casePack: Int,
         unitCostCents: Long,
-        tier: String = "TIER_1",
+        researchGate: String? = null,
     ): Item = Item(
         id = "item_${String.format("%03d", id)}",
         name = "Item $id",
@@ -69,7 +68,7 @@ class BulkOrderTest {
         unitCost = MoneyData(cents = unitCostCents),
         category = category,
         casePack = casePack,
-        tier = tier
+        researchGate = researchGate,
     )
 
     /** Helper to create a batch with the given quantity (non-perishable for testing). */
@@ -86,10 +85,8 @@ class BulkOrderTest {
         runBlocking { cache.initialize() }
         val engine = createTestGameEngine(cache)
         // Keep non-cap tests focused on pricing/filtering, not store-size cap limits.
-        // Also reset currentTier to TIER_1 — GameEngine init may override it for dev convenience.
         engine.state = engine.state.copy(
             storeConfig = engine.state.storeConfig.copy(backroomCapPerItem = 10_000),
-            currentTier = ItemUnlockTier.TIER_1,
         )
         return engine
     }
@@ -218,45 +215,46 @@ class BulkOrderTest {
         assertEquals("6 units scheduled for delivery", 6, scheduledQtyForItem(engine, 1))
     }
 
-    // ── Per-item tier gate ─────────────────────────────────────────────────────
+    // ── Per-item research gate ───────────────────────────────────────────────────
 
     @Test
-    fun `placeBulkOrder excludes items whose tier is above the current tier`() {
-        // Item 1 is TIER_1 (qualifies); Item 3 is TIER_2 (excluded at TIER_1)
-        // Tier-locked items are not seeded into inventory at all (no entry until unlock),
+    fun `placeBulkOrder excludes items whose research gate is not unlocked`() {
+        // Item 1 is a starter (qualifies); Item 3 is gated on "research_dairy" (locked).
+        // Research-gated items are not seeded into inventory at all (no entry until unlock),
         // so they cannot match the bulk-order filter.
         // 1 item × 1 case = 1 total case (<20 → no discount)
         // baseCost = 3_000×1 = 3_000 ¢;  money: 100_000 - 3_000 = 97_000
         val items = listOf(
-            makeItem(id = 1, category = ItemCategory.GROCERY, casePack = 6, unitCostCents = 500, tier = "TIER_1"),
-            makeItem(id = 3, category = ItemCategory.DAIRY,   casePack = 6, unitCostCents = 600, tier = "TIER_2"),
+            makeItem(id = 1, category = ItemCategory.GROCERY, casePack = 6, unitCostCents = 500),
+            makeItem(id = 3, category = ItemCategory.DAIRY,   casePack = 6, unitCostCents = 600, researchGate = "research_dairy"),
         )
-        val engine = newEngine(items)  // currentTier defaults to TIER_1
+        val engine = newEngine(items)  // no upgrades researched
         setMoney(engine, 100_000L)
 
         engine.placeBulkOrder(maxTotalQuantity = 20, casePacksPerItem = 1, categoryFilter = null)
 
         val state = engine.currentState()
-        assertEquals("Money reflects only TIER_1 item", Money(97_000L), state.money)
-        assertEquals("Item 1 (TIER_1) scheduled 6 units", 6, scheduledQtyForItem(engine, 1))
-        assertEquals("Item 3 (TIER_2) has no inventory entry at TIER_1", null, state.inventory[3])
-        assertEquals("Item 3 (TIER_2) nothing scheduled", 0, scheduledQtyForItem(engine, 3))
+        assertEquals("Money reflects only the starter item", Money(97_000L), state.money)
+        assertEquals("Item 1 (starter) scheduled 6 units", 6, scheduledQtyForItem(engine, 1))
+        assertEquals("Item 3 (gated) has no inventory entry while locked", null, state.inventory[3])
+        assertEquals("Item 3 (gated) nothing scheduled", 0, scheduledQtyForItem(engine, 3))
     }
 
     @Test
-    fun `placeBulkOrder includes TIER_2 items once the player has advanced to TIER_2`() {
-        // Same item set as above, but currentTier is advanced to TIER_2 via state injection.
-        // Mirrors ProgressionManager.unlockNextTier, which adds an empty inventory entry
-        // for each newly unlocked item so it becomes orderable.
+    fun `placeBulkOrder includes gated items once the research is unlocked`() {
+        // Same item set as above, but "research_dairy" is now researched and the unlocked
+        // item has been given an empty inventory entry so it becomes orderable.
         // Both items qualify; 2 items × 1 case = 2 total cases (<20 → no discount)
         // baseCost = 3_000×1 + 3_600×1 = 6_600 ¢;  money: 100_000 - 6_600 = 93_400
         val items = listOf(
-            makeItem(id = 1, category = ItemCategory.GROCERY, casePack = 6, unitCostCents = 500, tier = "TIER_1"),
-            makeItem(id = 3, category = ItemCategory.DAIRY,   casePack = 6, unitCostCents = 600, tier = "TIER_2"),
+            makeItem(id = 1, category = ItemCategory.GROCERY, casePack = 6, unitCostCents = 500),
+            makeItem(id = 3, category = ItemCategory.DAIRY,   casePack = 6, unitCostCents = 600, researchGate = "research_dairy"),
         )
         val engine = newEngine(items)
         engine.state = engine.state.copy(
-            currentTier = ItemUnlockTier.TIER_2,
+            researchState = engine.state.researchState.copy(
+                researchedUpgrades = engine.state.researchState.researchedUpgrades + "research_dairy",
+            ),
             inventory = engine.state.inventory + (3 to InventoryState()),
         )
         setMoney(engine, 100_000L)
@@ -265,8 +263,8 @@ class BulkOrderTest {
 
         val state = engine.currentState()
         assertEquals("Both items ordered: money after order", Money(93_400L), state.money)
-        assertEquals("Item 1 (TIER_1) scheduled 6 units", 6, scheduledQtyForItem(engine, 1))
-        assertEquals("Item 3 (TIER_2) scheduled 6 units", 6, scheduledQtyForItem(engine, 3))
+        assertEquals("Item 1 (starter) scheduled 6 units", 6, scheduledQtyForItem(engine, 1))
+        assertEquals("Item 3 (unlocked) scheduled 6 units", 6, scheduledQtyForItem(engine, 3))
     }
 
     // ── Discount boundary: 0% → 10% at 20 cases ──────────────────────────────

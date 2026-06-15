@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.ui.components.PriceSlider
 import com.example.superstoresimulator.domain.items.ItemCategory
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.ui.state.PricingUIState
 import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.CautionDark
@@ -36,7 +35,6 @@ import kotlin.math.roundToInt
 @Composable
 fun StorePricingCard(
     pricingState: PricingUIState,
-    currentTier: ItemUnlockTier,
     onSetDefaultMarkup: (Int) -> Unit,
     onSetCategoryMarkup: (ItemCategory, Int) -> Unit,
     modifier: Modifier = Modifier
@@ -165,7 +163,7 @@ fun StorePricingCard(
                     ) {
                         Column {
                             Spacer(Modifier.height(8.dp))
-                            val unlockedCategories = currentTier.unlockedSections.sortedBy { it.ordinal }
+                            val unlockedCategories = ItemCategory.entries.sortedBy { it.ordinal }
                             for (category in unlockedCategories) {
                                 PriceSlider(
                                     label = category.displayName,

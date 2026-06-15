@@ -25,7 +25,13 @@ data class Item(
     val casePack: Int = 1,
     /** Relative likelihood that a customer picks this item. Higher = chosen more often. */
     val purchaseWeight: Float = 1.0f,
-    /** Minimum tier required to see/buy this item in the store. Stored as the enum name string. */
+    /** Research gate ID — null means starter item (always accessible). */
+    val researchGate: String? = null,
+    /** Comma-separated affinity group tags for basket generation. */
+    val affinityGroups: String? = null,
+    /** Substitution group — items sharing this suppress each other's purchase weight. */
+    val substitutionGroup: String? = null,
+    @Deprecated("Replaced by researchGate. Kept for Room migration compat.")
     val tier: String = "TIER_1",
     /** Number of days until item expires. Null = non-perishable (never expires). */
     val shelfLifeDays: Int? = null,

@@ -46,7 +46,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.items.ItemCategory
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.ui.state.InventoryItemUI
 import com.example.superstoresimulator.ui.theme.*
 import kotlin.math.roundToInt

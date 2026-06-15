@@ -10,7 +10,6 @@ import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.items.MoneyData
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -110,77 +109,6 @@ class PricingIntegrationTest {
         val acc = engine.currentState().currentDayMetrics
         assertEquals(Money.ZERO, acc.markupExtraRevenue)
         assertEquals(Money.ZERO, acc.markdownsSaved)
-    }
-
-    // ── Phase 6: Tier Unlock Default Markup Inheritance ──────────────────────
-
-    @Test
-    fun `tier unlock does not add redundant categoryMarkup entries — defaultMarkup already applies globally`() {
-        engine.state = engine.state.copy(
-            currentTier = ItemUnlockTier.TIER_1,
-            totalRevenue = Money(600_000),
-            money = Money(200_000),
-            pricingState = PricingState(defaultMarkup = 10),
-        )
-
-        engine.unlockNextTier()
-
-        assertEquals(ItemUnlockTier.TIER_2, engine.currentState().currentTier)
-        val markups = engine.currentState().pricingState.categoryMarkups
-        // defaultMarkup applies to ALL items via resolvePrice baseMarkup — no per-category entry needed
-        assertFalse(markups.containsKey(ItemCategory.DAIRY))
-    }
-
-    @Test
-    fun `tier unlock does not overwrite existing category markup`() {
-        engine.state = engine.state.copy(
-            currentTier = ItemUnlockTier.TIER_1,
-            totalRevenue = Money(600_000),
-            money = Money(200_000),
-            pricingState = PricingState(
-                defaultMarkup = 10,
-                categoryMarkups = mapOf(ItemCategory.DAIRY to 25),
-            ),
-        )
-
-        engine.unlockNextTier()
-
-        val markups = engine.currentState().pricingState.categoryMarkups
-        assertEquals(25, markups[ItemCategory.DAIRY])
-    }
-
-    @Test
-    fun `tier unlock with zero defaultMarkup does not add entries`() {
-        engine.state = engine.state.copy(
-            currentTier = ItemUnlockTier.TIER_1,
-            totalRevenue = Money(600_000),
-            money = Money(200_000),
-            pricingState = PricingState(defaultMarkup = 0),
-        )
-
-        engine.unlockNextTier()
-
-        val markups = engine.currentState().pricingState.categoryMarkups
-        assertFalse(markups.containsKey(ItemCategory.DAIRY))
-    }
-
-    @Test
-    fun `tier 3 unlock does not add redundant categoryMarkup entries for new categories`() {
-        engine.state = engine.state.copy(
-            currentTier = ItemUnlockTier.TIER_2,
-            totalRevenue = Money(2_500_000),
-            money = Money(500_000),
-            pricingState = PricingState(defaultMarkup = 15),
-        )
-
-        engine.unlockNextTier()
-
-        assertEquals(ItemUnlockTier.TIER_3, engine.currentState().currentTier)
-        val markups = engine.currentState().pricingState.categoryMarkups
-        // defaultMarkup applies globally — no per-category duplication
-        assertFalse(markups.containsKey(ItemCategory.FROZEN))
-        assertFalse(markups.containsKey(ItemCategory.BAKERY))
-        assertFalse(markups.containsKey(ItemCategory.PRODUCE))
     }
 
     // ── Phase 5: Serialization of new DailyMetrics fields ────────────────────

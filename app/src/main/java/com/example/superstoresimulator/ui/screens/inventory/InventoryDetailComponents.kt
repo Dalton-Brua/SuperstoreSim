@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.inventory.ItemBatch
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.ui.components.PriceSlider
 import com.example.superstoresimulator.ui.state.InventoryItemUI
@@ -121,7 +120,6 @@ fun calculateSalesStats(
 @Composable
 fun ItemHeaderCard(
     item: InventoryItemUI,
-    currentTier: ItemUnlockTier,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -155,7 +153,7 @@ fun ItemHeaderCard(
                     color = InfoSurface
                 ) {
                     Text(
-                        text = item.tierLabel.ifEmpty { currentTier.name },
+                        text = item.tierLabel.ifEmpty { "Starter" },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = PrimaryDark,

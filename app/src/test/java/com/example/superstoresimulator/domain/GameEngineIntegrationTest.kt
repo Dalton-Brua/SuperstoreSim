@@ -90,7 +90,8 @@ class GameEngineIntegrationTest {
         assertNotNull("State should not be null", state)
         assertEquals("Grocery Store", state.storeName)
         assertTrue("Starting money should be positive", state.money > Money(0))
-        assertEquals(GameTime(0), state.currentTime)
+        // Seed starts at 5:00 AM (300 min) to give the player lead time before opening.
+        assertEquals(GameTime(300), state.currentTime)
         assertEquals(StoreState.CLOSED, state.storeState)
         assertTrue("Should have inventory items initialized", state.inventory.isNotEmpty())
     }

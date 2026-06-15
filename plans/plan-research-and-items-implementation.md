@@ -1,8 +1,25 @@
 # Implementation Plan: Research System + Future Items
 
 **Created**: 2026-06-12
+**Last updated**: 2026-06-12
 **Source plans**: `plan-researchSystem.md` (design), `plan-futureItems.md` (item data)
-**Branch**: create `feature/researchSystem` from `main`
+**Branch**: `feature/researchSystem` (already created)
+
+---
+
+## Progress Summary
+
+| Phase | Status |
+|-------|--------|
+| Phase 1: Item Data Pipeline | Steps 1.1–1.8 DONE · Step 1.9 (tests) PENDING |
+| Phase 2: Research System Domain | Steps 2.1–2.8 DONE · Step 2.9 (tests) PENDING |
+| Phase 3: Remove Tier System | ALL DONE — compiles and installs cleanly |
+| Phase 4: Tutorial System | Steps 4.1–4.5 DONE · Step 4.6 (tests) PENDING |
+| Phase 5: UI Changes | Steps 5.3–5.4, 5.6–5.8 DONE · Steps 5.1, 5.2, 5.5 PENDING |
+| Phase 6: Save Migration | Step 6.2 DONE · Steps 6.1, 6.3 PENDING |
+| Phase 7: ViewModel Slimming | SKIPPED (assessed: not needed) |
+
+**Next priority**: Step 5.1 (Research tab nav) → Step 5.2 (ResearchScreen) → Step 6.1 (save migration) → tests (Steps 1.9, 2.9, 4.6).
 
 ---
 
@@ -58,7 +75,7 @@ The tier system (`ItemUnlockTier`, `ProgressionManager`, `TierProgressCard`, `Un
 
 **Goal**: Replace the `tier` string/enum with `researchGate: String?` across the entire item pipeline. This is the foundation everything else builds on.
 
-### Step 1.1: Room Entity — `Item.kt`
+### Step 1.1 [DONE]: Room Entity — `Item.kt`
 
 **File**: `domain/items/Item.kt`
 
@@ -71,7 +88,9 @@ The tier system (`ItemUnlockTier`, `ProgressionManager`, `TierProgressCard`, `Un
 7. Add Room migration: `ALTER TABLE items ADD COLUMN affinityGroups TEXT DEFAULT NULL`
 8. Add Room migration: `ALTER TABLE items ADD COLUMN substitutionGroup TEXT DEFAULT NULL`
 
-### Step 1.2: ItemMetadata — `ItemMetadata.kt`
+> **Implementation note**: Used `fallbackToDestructiveMigration(dropAllTables = true)` (already configured in `DatabaseModule.kt`) instead of explicit ALTER TABLE migrations. DB version bumped to 10.
+
+### Step 1.2 [DONE]: ItemMetadata — `ItemMetadata.kt`
 
 **File**: `domain/items/ItemMetadata.kt`
 
@@ -81,7 +100,7 @@ The tier system (`ItemUnlockTier`, `ProgressionManager`, `TierProgressCard`, `Un
 4. Add `val isVendorItem: Boolean` — keep existing field
 5. Remove the `tier` field entirely (it was only used for filtering, which now uses `researchGate`)
 
-### Step 1.3: ItemMetadataCache — `ItemMetadataCache.kt`
+### Step 1.3 [DONE]: ItemMetadataCache — `ItemMetadataCache.kt`
 
 **File**: `domain/items/ItemMetadataCache.kt`
 
@@ -114,7 +133,7 @@ fun sharesSubstitutionGroup(id1: Int, id2: Int): Boolean {
 4. Build a precomputed `affinityIndex: Map<String, Set<Int>>` at init time for O(1) affinity lookups
 5. Build a precomputed `substitutionIndex: Map<String, Set<Int>>` at init time for O(1) substitution lookups
 
-### Step 1.4: ItemDataLoader — `ItemDataLoader.kt`
+### Step 1.4 [DONE]: ItemDataLoader — `ItemDataLoader.kt`
 
 **File**: `domain/items/ItemDataLoader.kt`
 
@@ -123,7 +142,7 @@ fun sharesSubstitutionGroup(id1: Int, id2: Int): Boolean {
 3. Parse `"substitutionGroup"` field from JSON (nullable): `substitutionGroup = obj.optString("substitutionGroup", null)`
 4. Keep parsing `"tier"` for now (backward compat) — it stays in the DB column but is unused
 
-### Step 1.5: TransactionEngine — Replace Tier Filtering
+### Step 1.5 [DONE]: TransactionEngine — Replace Tier Filtering
 
 **File**: `domain/Transactions/TransactionEngine.kt`
 
@@ -158,7 +177,7 @@ val availableItemIds = state.inventory.keys.filter { itemId ->
 - Substitution penalty overrides affinity boost when both apply (penalty wins)
 - Add `companion object { const val AFFINITY_BOOST = 2.0f; const val SUBSTITUTION_PENALTY = 0.1f }`
 
-### Step 1.6: Update items.json
+### Step 1.6 [DONE]: Update items.json
 
 **File**: `app/src/main/res/raw/items.json`
 
@@ -175,7 +194,9 @@ For every item in the file:
 
 **Gate assignments for existing 136 items**: Map from old tier to research gates per the tables in `plan-researchSystem.md` lines 526–586.
 
-### Step 1.7: Add All New Items to items.json
+> **Implementation note (DONE)**: All 154 existing items (`item_001`–`item_154`) updated. `researchGate` assigned per the `plan-researchSystem.md` tables; the 12 starter items omit it. The 18 vendor items (`item_137`–`item_154`) also omit `researchGate` — they unlock through the vendor-relationship system (`vendorTier`), not research — but still carry `affinityGroups`/`substitutionGroup` where the data plan lists them. `affinityGroups` is a comma-separated string (matches `Item.kt`); `substitutionGroup` is a single value, assigned by membership even when its sibling items were still future at the time (now filled in by Step 1.7). New fields inserted after `tier`; all original fields preserved.
+
+### Step 1.7 [DONE]: Add All New Items to items.json
 
 Add ~218 new items from `plan-futureItems.md`:
 - **Part 1**: ~44 items expanding existing gates
@@ -186,7 +207,9 @@ Each item needs: `id`, `name`, `price` (cents), `description`, `unitCost` (cents
 
 **ID scheme**: Continue from the last existing item ID. Check `items.json` for the current max ID.
 
-### Step 1.8: Add New ItemCategory Values
+> **Implementation note (DONE)**: Added `item_155`–`item_382` (228 new items; plan estimated ~218 — actual table rows totaled more). IDs continue from `item_154`. Backward-compat `tier` mapped as: existing-category items inherit their gate's sibling tier; new categories use DELI→`TIER_3`, all others→`TIER_GM` (per the Verification note in `plan-futureItems.md`). Every new item has a `researchGate` plus `affinityGroups`/`substitutionGroup` per `plan-futureItems.md` Parts 4 & 5. All affinity/substitution sibling links now resolve since both original and new members exist. New categories (DELI, PET, BABY, OFFICE, TOYS, AUTO, GARDEN, SEASONAL) require the matching enum values from Step 1.8 (already DONE).
+
+### Step 1.8 [DONE]: Add New ItemCategory Values
 
 **File**: `domain/items/ItemCategory.kt`
 
@@ -202,7 +225,7 @@ GARDEN("Garden"),
 SEASONAL("Seasonal"),
 ```
 
-### Step 1.9: Tests
+### Step 1.9 [PENDING]: Tests
 
 **File**: `app/src/test/.../domain/items/ItemMetadataCacheTest.kt` (new)
 
@@ -221,7 +244,7 @@ SEASONAL("Seasonal"),
 
 **Goal**: Build `ResearchState`, `ResearchManager`, `ResearchableUpgrade` registry, and `MARKET_ANALYST` role.
 
-### Step 2.1: Research Data Model
+### Step 2.1 [DONE]: Research Data Model
 
 **New file**: `domain/research/ResearchState.kt`
 
@@ -246,7 +269,7 @@ data class ResearchState(
 )
 ```
 
-### Step 2.2: Research Upgrade Registry
+### Step 2.2 [DONE]: Research Upgrade Registry
 
 **New file**: `domain/research/ResearchUpgradeRegistry.kt`
 
@@ -293,7 +316,7 @@ Define a singleton `object ResearchUpgradeRegistry` containing all ~55 product-l
 - DELI, PET, BABY gates: `requiredStoreSize = StoreSize.SUPERSTORE`
 - OFFICE, TOYS, AUTO, GARDEN, SEASONAL gates: `requiredStoreSize = StoreSize.SUPERCENTER`
 
-### Step 2.3: Market Analyst EntityDef
+### Step 2.3 [DONE]: Market Analyst EntityDef
 
 **File**: `domain/Entities/EntityDef.kt`
 
@@ -320,7 +343,7 @@ Add to `allEntities` list at line 96:
 val allEntities: List<EntityDef> = listOf(CASHIER, STOCKER, FRESH_HANDLER, MANAGER, MARKET_ANALYST)
 ```
 
-### Step 2.4: ResearchManager
+### Step 2.4 [DONE]: ResearchManager
 
 **New file**: `domain/research/ResearchManager.kt`
 
@@ -368,7 +391,7 @@ companion object {
 
 **Adding completed research items to inventory**: When `checkCompletions()` completes a product-line gate, query `ItemMetadataCache` for all items with matching `researchGate`, add them to `state.inventory` as `InventoryState()` (empty). This replaces the role of `ProgressionManager.unlockNextTier()`.
 
-### Step 2.5: Add ResearchState to GameState
+### Step 2.5 [DONE]: Add ResearchState to GameState
 
 **File**: `domain/GameStateData.kt`
 
@@ -379,7 +402,7 @@ val researchState: ResearchState = ResearchState(),
 
 This is safe for old saves — `ignoreUnknownKeys = true` + default value means old saves deserialize cleanly.
 
-### Step 2.6: Wire Insight Distribution into Store Events
+### Step 2.6 [DONE]: Wire Insight Distribution into Store Events
 
 Research points are generated when store events happen while an assigned analyst is on shift. Hook `ResearchManager.distributeInsightPoints()` into existing code:
 
@@ -395,6 +418,8 @@ Research points are generated when store events happen while an assigned analyst
 
 **Important**: `ResearchManager` needs to be injected into `TickOrchestrator` and `TransactionEngine`. Both are already `@Singleton @Inject constructor(...)` — add `private val researchManager: ResearchManager` parameter.
 
+> **Implementation note**: Used the `ResearchTickProcessor` approach (recommended path). `ResearchTickProcessor` and `TutorialTickProcessor` are both injected into `TickOrchestrator` and called at end of each tick after staff processing.
+
 Alternatively, add a `ResearchTickProcessor` to `TickOrchestrator` that runs after staff processing and handles insight accumulation from the tick's events. This is cleaner — batch all event counting per tick rather than hooking individual event sites.
 
 **Recommended approach**: Create `domain/tick/ResearchTickProcessor.kt` injected into `TickOrchestrator`:
@@ -404,7 +429,7 @@ Alternatively, add a `ResearchTickProcessor` to `TickOrchestrator` that runs aft
 
 This avoids modifying `TransactionEngine`, `SpoilageManager`, etc. — the processor reads state deltas.
 
-### Step 2.7: GameEngine Integration
+### Step 2.7 [DONE]: GameEngine Integration
 
 **File**: `domain/GameEngine.kt`
 
@@ -428,7 +453,7 @@ fun fireEntity(entityId: Int) {
 }
 ```
 
-### Step 2.8: GameEvent Additions
+### Step 2.8 [DONE]: GameEvent Additions
 
 **File**: `ui/GameEvent.kt`
 
@@ -442,7 +467,7 @@ Route in `GameViewModel` event handler (wherever `when (event)` dispatches):
 is GameEvent.AssignAnalyst -> engine.assignAnalyst(event.entityId, event.assignment)
 ```
 
-### Step 2.9: Tests
+### Step 2.9 [PENDING]: Tests
 
 **New file**: `app/src/test/.../domain/research/ResearchManagerTest.kt`
 
@@ -469,7 +494,7 @@ Test cases from plan lines 1105-1178:
 
 **Goal**: Delete `ItemUnlockTier`, `ProgressionManager`, and all tier UI. Research fully replaces tiers.
 
-### Step 3.1: Remove from GameState
+### Step 3.1 [DONE]: Remove from GameState
 
 **File**: `domain/GameStateData.kt`
 
@@ -477,7 +502,7 @@ Test cases from plan lines 1105-1178:
 - Keep `val totalRevenue: Money` (still needed for gate checks and display)
 - Remove `justUnlockedTier: ItemUnlockTier? = null` if it exists
 
-### Step 3.2: Remove ProgressionManager
+### Step 3.2 [DONE]: Remove ProgressionManager
 
 - Delete file `domain/progression/ProgressionManager.kt`
 - Remove injection from `GameEngine.kt` constructor
@@ -485,7 +510,7 @@ Test cases from plan lines 1105-1178:
 - Remove `UnlockNextTier` and `DismissTierUnlock` from `GameEvent.kt`
 - Remove event routing in `GameViewModel`
 
-### Step 3.3: Remove ItemUnlockTier
+### Step 3.3 [DONE]: Remove ItemUnlockTier
 
 - Delete file `domain/items/ItemUnlockTier.kt`
 - Remove `requiredTierForSection()` function
@@ -493,16 +518,16 @@ Test cases from plan lines 1105-1178:
 - Remove `ItemUnlockTier.valueOf(item.tier)` conversion in `ItemMetadataCache.kt:42`
 - Update all imports
 
-### Step 3.4: Remove Tier UI
+### Step 3.4 [DONE]: Remove Tier UI
 
 - Delete `ui/components/cards/TierProgressCard.kt`
-- Delete `ui/screens/staff/UnlocksScreen.kt`
+- ~~Delete `ui/screens/staff/UnlocksScreen.kt`~~ — repurposed: now shows research upgrades with progress bars (stub implementation, no analyst assignment UI yet)
 - Remove `TierProgressCard` call from `StoreHomeScreen.kt`
 - Remove "Unlocks" tab from `StaffScreen.kt` (the combined StaffAndUnlocksScreen)
 - Remove `ProgressionUIState` from `GameUiState.kt` (or simplify to just `totalRevenue` for display)
 - Clean up `ProgressionUiMapper.kt` — either repurpose for research or delete
 
-### Step 3.5: Update All Tier References
+### Step 3.5 [DONE]: Update All Tier References
 
 Search codebase for remaining `currentTier`, `ItemUnlockTier`, `unlockNextTier`, `TIER_1`, etc. and update or remove. Key locations:
 - `GameEngine.kt:112` — `placeFreshBulkOrder()` passes `state.currentTier`
@@ -523,14 +548,14 @@ private fun seedInventory(quantity: Int, currentDay: Int): Map<Int, InventorySta
 }
 ```
 
-### Step 3.6: Update InventoryManager Bulk Orders
+### Step 3.6 [DONE]: Update InventoryManager Bulk Orders
 
 Anywhere `InventoryManager` filters items by `currentTier`, replace with research-based filtering:
 ```kotlin
 val accessible = itemMetadataCache.getAccessibleItemIds(state.researchState.researchedUpgrades)
 ```
 
-### Step 3.7: Clean Up Item.kt
+### Step 3.7 [DONE]: Clean Up Item.kt
 
 The `tier: String` column in Room can remain for now (removing it requires a destructive migration or complex ALTER). Mark it `@Deprecated` and ignore it. `ItemDataLoader` can stop writing it on fresh loads — or keep writing it as `"TIER_1"` default.
 
@@ -540,7 +565,7 @@ The `tier: String` column in Room can remain for now (removing it requires a des
 
 **Goal**: Linear tutorial that guides new players through basics, ending with hiring a Market Analyst.
 
-### Step 4.1: Tutorial Data Model
+### Step 4.1 [DONE]: Tutorial Data Model
 
 **New file**: `domain/tutorial/TutorialState.kt`
 
@@ -568,7 +593,7 @@ data class TutorialState(
 
 Use exact step text from `plan-researchSystem.md` lines 69-118.
 
-### Step 4.2: TutorialManager
+### Step 4.2 [DONE]: TutorialManager
 
 **New file**: `domain/tutorial/TutorialManager.kt`
 
@@ -613,7 +638,7 @@ Pure-function manager:
 | `bulk_ordering` | `tutorialComplete && isUpgradeResearched("bulk_ordering")` |
 | `manager_hiring` | `tutorialComplete && isUpgradeResearched("manager_hiring")` |
 
-### Step 4.3: Add TutorialState to GameState
+### Step 4.3 [DONE]: Add TutorialState to GameState
 
 **File**: `domain/GameStateData.kt`
 
@@ -621,7 +646,7 @@ Pure-function manager:
 val tutorialState: TutorialState = TutorialState(),
 ```
 
-### Step 4.4: Wire into Tick
+### Step 4.4 [DONE]: Wire into Tick
 
 **New file**: `domain/tick/TutorialTickProcessor.kt`
 
@@ -635,7 +660,7 @@ fun process(state: GameState): GameState {
 
 Add to `TickOrchestrator.tick()` after `updatePricing()` and before traffic processing.
 
-### Step 4.5: GameEvent Additions
+### Step 4.5 [DONE]: GameEvent Additions
 
 **File**: `ui/GameEvent.kt`
 
@@ -655,7 +680,7 @@ fun skipTutorial() {
 }
 ```
 
-### Step 4.6: Tests
+### Step 4.6 [PENDING]: Tests
 
 **New file**: `app/src/test/.../domain/tutorial/TutorialManagerTest.kt`
 
@@ -671,7 +696,7 @@ Test cases from plan lines 1065-1097:
 
 ## Phase 5: UI Changes
 
-### Step 5.1: Add Research Tab to Navigation
+### Step 5.1 [PENDING]: Add Research Tab to Navigation
 
 **File**: `domain/Screen.kt`
 
@@ -691,7 +716,7 @@ Add 6th tab (Research) — only visible when `tutorialComplete == true`:
 
 Add `RESEARCH` to the pager screen list, conditionally included based on tutorial state.
 
-### Step 5.2: Research Screen
+### Step 5.2 [PENDING]: Research Screen
 
 **New file**: `ui/screens/research/ResearchScreen.kt`
 
@@ -715,7 +740,7 @@ Layout (from plan lines 654-668):
 4. **Completed Research** — Collapsible section:
    - Researched topics with descriptions and which items/features they unlocked
 
-### Step 5.3: Research UI State
+### Step 5.3 [DONE]: Research UI State
 
 **File**: `ui/state/GameUiState.kt`
 
@@ -724,6 +749,8 @@ Add to `GameUiState`:
 val research: ResearchUIState = ResearchUIState(),
 val tutorial: TutorialUIState = TutorialUIState(),
 ```
+
+> **Implementation note**: `ResearchUIState` and `TutorialUIState` defined in `GameUiState.kt`. Shape differs slightly from plan — uses `visibleUpgrades: List<ResearchableUpgrade>` instead of separate active/available/completed lists. `TutorialUIState` uses `currentStep: TutorialStep` (not `TutorialStep?`) with `displayTitle`/`instruction`/`hintText` fields.
 
 Define (from plan lines 788-833):
 ```kotlin
@@ -745,13 +772,15 @@ data class TutorialUIState(
 )
 ```
 
-### Step 5.4: Research UI Mapper
+### Step 5.4 [DONE]: Research UI Mapper
+
+> **Implementation note**: Implemented as `buildResearchUiState()` and `buildTutorialUiState()` functions in the existing `ui/state/mappers/ProgressionUiMapper.kt` (rewritten — the old progression mapper is gone). No separate `ResearchUiMapper.kt` created.
 
 **New file**: `ui/state/mappers/ResearchUiMapper.kt`
 
 Maps `GameState.researchState` → `ResearchUIState` using `ResearchUpgradeRegistry` for display data.
 
-### Step 5.5: Tutorial Banner
+### Step 5.5 [PENDING]: Tutorial Banner
 
 **New file**: `ui/components/TutorialBanner.kt`
 
@@ -765,7 +794,9 @@ Place conditionally on:
 - Inventory screen — for ORDER_FIRST_ITEM
 - Staff screen — for HIRE_STAFF, HIRE_ANALYST
 
-### Step 5.6: Feature Visibility Gating in UI
+### Step 5.6 [DONE]: Feature Visibility Gating in UI
+
+> **Implementation note (DONE)**: Added `TutorialManager.isFeatureVisible(state, feature)` + `featureVisibility(state)` map, with `FEATURE_*` key constants and `ALL_FEATURES`. The map is built in `buildTutorialUiState()` and exposed on `TutorialUIState.featureVisibility`, with a `TutorialUIState.isFeatureVisible(key)` extension (unknown keys default visible). Wired in `StoreHomeScreen`: `PlayerRoleButtons` gated by `player_roles`, `StorePricingCard` gated by `pricing_ui`. Other screens (`StaffScreen`, `InventoryScreen`) already gate via `researchedUpgrades` directly; the map is available to thread through if/when finer tutorial gating is wanted. **Deviation**: `player_roles` gates on `WAIT_FOR_DELIVERY` completed (when `STOCK_SHELVES` becomes active) rather than the plan's `OPEN_STORE` — the `STOCK_SHELVES` step instructs the player to use the Stocker role, so roles must already be visible. **Note**: aggressive gating assumes Step 6.1 save migration marks existing players `tutorialComplete`; until 6.1 lands, pre-existing saves will see pricing hidden.
 
 Throughout existing UI screens, wrap feature elements in visibility checks:
 
@@ -784,7 +815,9 @@ Or pass a `featureVisibility: Map<String, Boolean>` through UI state and check i
 - Register purchase — hide until `register_expansion` researched
 - Staff scheduling — hide until `staff_scheduling` researched
 
-### Step 5.7: Nav Tab Hint During Tutorial
+### Step 5.7 [DONE]: Nav Tab Hint During Tutorial
+
+> **Implementation note (DONE)**: `buildTutorialUiState()` computes `TutorialUIState.hintScreen: Screen?` from the current step (ORDER_FIRST_ITEM→INVENTORY, HIRE_STAFF/HIRE_ANALYST→STAFF, else GAME; null when complete). `BottomNavBar` takes `hintScreen` and renders a small `Primary`-blue `TutorialHintDot` on the matching tab (suppressed on the tab already showing, and yields to the refund badge on the Store tab). Passed from `SuperstoreApp` via `state.tutorial.hintScreen`.
 
 Add a dot/badge to the bottom nav tab that the current tutorial step wants the player to navigate to:
 
@@ -794,7 +827,9 @@ Add a dot/badge to the bottom nav tab that the current tutorial step wants the p
 | HIRE_STAFF, HIRE_ANALYST | Manage (index 2) |
 | All others | Store (index 0) |
 
-### Step 5.8: Research Completion Notification
+### Step 5.8 [DONE]: Research Completion Notification
+
+> **Implementation note (DONE)**: Reused the existing engine-event → snackbar pipeline instead of a `justCompletedResearch` UI field. Added `GameEngine.EngineEvent.ResearchCompleted(upgradeId, displayName, unlockedItemCount)`. `GameEngine.tick()` diffs `researchState.researchedUpgrades` before/after the tick and emits one event per newly-completed upgrade (item count = items whose `researchGate` matches). `GameViewModel` collects it and emits a snackbar: `"Research Complete: {name} — {n} new items unlocked!"` (the item suffix is omitted for feature gates with 0 items). `SuperstoreApp`'s existing `SnackbarHost` renders it.
 
 When `checkCompletions()` completes a topic, show a toast or snackbar:
 - "Research Complete: Dairy Section Study — 4 new items unlocked!"
@@ -806,7 +841,7 @@ When `checkCompletions()` completes a topic, show a toast or snackbar:
 
 **Goal**: Existing saves load cleanly. Players with progress get appropriate research auto-completed.
 
-### Step 6.1: Post-Load Migration
+### Step 6.1 [PENDING]: Post-Load Migration
 
 In `GameEngine.loadState()` (line 324), after `repairMetricsIfNeeded()`, add migration logic:
 
@@ -855,7 +890,7 @@ private fun addPrerequisites(gateId: String, into: MutableSet<String>) {
 }
 ```
 
-### Step 6.2: New Game Seeding
+### Step 6.2 [DONE]: New Game Seeding
 
 `GameEngine.buildSeededState()` — ensure new games start with:
 - Only starter items (12 items with `researchGate == null`) in inventory
@@ -863,7 +898,7 @@ private fun addPrerequisites(gateId: String, into: MutableSet<String>) {
 - `TutorialState()` at WELCOME step
 - No `currentTier` field (removed)
 
-### Step 6.3: Debug Rich Seed Update
+### Step 6.3 [PARTIAL]: Debug Rich Seed Update
 
 `GameEngine.buildDebugRichState()` — update to use research state:
 ```kotlin
@@ -873,9 +908,11 @@ researchState = ResearchState(
 tutorialState = TutorialState(tutorialComplete = true, completedSteps = TutorialStep.entries.toSet()),
 ```
 
+> **Partial**: Removed tier references (`currentTier`, `startingTier`) from `buildDebugRichState()`. Now uses `starterOnly = false` to seed all items. Still needs the `researchState` and `tutorialState` populated with sensible debug values.
+
 ---
 
-## Phase 7: Opportunistic Arch-Refactor — ViewModel Slimming
+## Phase 7 [SKIPPED]: Opportunistic Arch-Refactor — ViewModel Slimming
 
 **Context**: GameViewModel is 601 lines. Adding tutorial + research event routing will grow it further unless we also extract.
 
@@ -902,6 +939,8 @@ This keeps `GameViewModel` focused on state flow and tick loop. New research/tut
 ### Step 7.2: Assess — Only Do If Natural
 
 This refactor is purely opportunistic. If the ViewModel event block is small and manageable after adding research events (~5 new events), skip this step. Only extract if the event dispatch block grows past ~80 lines or becomes hard to navigate.
+
+> **Assessed and skipped**: ViewModel event block is manageable.
 
 ---
 

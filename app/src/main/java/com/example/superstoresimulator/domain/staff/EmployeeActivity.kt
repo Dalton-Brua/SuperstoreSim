@@ -8,4 +8,6 @@ enum class EmployeeActivity {
     STOCKING,
     ZONING,
     HANDLING_FRESH,
+    RESEARCHING,
+    CONSULTING,
 }

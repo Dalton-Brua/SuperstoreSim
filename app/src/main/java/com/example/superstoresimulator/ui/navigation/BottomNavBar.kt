@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -27,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Screen
+import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.NavBarBackground
 import com.example.superstoresimulator.ui.theme.NavBarIndicator
 import com.example.superstoresimulator.ui.theme.NavBarSelectedIcon
@@ -54,24 +56,28 @@ private val navItems = listOf(
 fun BottomNavBar(
     current: Screen,
     onSelect: (Screen) -> Unit,
-    pendingRefundsCount: Int = 0
+    pendingRefundsCount: Int = 0,
+    hintScreen: Screen? = null,
 ) {
     NavigationBar(containerColor = NavBarBackground) {
         navItems.forEach { item ->
+            // Highlight the tab the active tutorial step points to (but not the one already showing).
+            val showsTutorialHint = hintScreen == item.screen && current != item.screen
             NavigationBarItem(
                 selected = current == item.screen,
                 onClick = { onSelect(item.screen) },
                 icon = {
-                    if (item.showsRefundBadge) {
-                        // Icon with optional small badge showing pending refunds count
+                    if (item.showsRefundBadge || showsTutorialHint) {
                         Box {
                             Icon(
                                 item.icon,
                                 contentDescription = item.contentDescription,
-                                tint = Color.Unspecified
+                                tint = if (item.showsRefundBadge) Color.Unspecified else LocalContentColor.current
                             )
-                            if (pendingRefundsCount > 0) {
+                            if (pendingRefundsCount > 0 && item.showsRefundBadge) {
                                 RefundCountBadge(pendingRefundsCount)
+                            } else if (showsTutorialHint) {
+                                TutorialHintDot()
                             }
                         }
                     } else {
@@ -89,6 +95,17 @@ fun BottomNavBar(
             )
         }
     }
+}
+
+@Composable
+private fun BoxScope.TutorialHintDot() {
+    Box(
+        modifier = Modifier
+            .size(10.dp)
+            .align(Alignment.TopEnd)
+            .offset(x = 6.dp, y = (-4).dp)
+            .background(color = Primary, shape = CircleShape)
+    )
 }
 
 @Composable

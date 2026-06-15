@@ -7,13 +7,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import com.example.superstoresimulator.domain.Screen
 import com.example.superstoresimulator.domain.inventory.InventoryState
-import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.ui.GameEvent
 import com.example.superstoresimulator.ui.navigation.GameNavigationState
 import com.example.superstoresimulator.ui.screens.inventory.InventoryItemDetailScreen
-import com.example.superstoresimulator.ui.screens.staff.EntityTypeDetailScreen
 import com.example.superstoresimulator.ui.state.GameUiState
 
 /**
@@ -36,33 +33,6 @@ private fun OverlayScrim(content: @Composable () -> Unit) {
     }
 }
 
-/** Staff Entity Detail Screen as overlay (not part of pager). */
-@Composable
-fun StaffEntityOverlay(
-    state: GameUiState,
-    navState: GameNavigationState,
-    onEvent: (GameEvent) -> Unit,
-) {
-    if (navState.currentScreen != Screen.STAFF_ENTITY_LIST) return
-
-    OverlayScrim {
-        EntityTypeDetailScreen(
-            state = state.staff,
-            money = state.app.money,
-            def = state.staff.selectedDef,
-            currentTier = state.progression.currentTier,
-            currentStoreSize = state.time?.currentStoreSize ?: StoreSize.MOM_AND_POP,
-            onHire = { def -> onEvent(GameEvent.HireStaff(def)) },
-            onFire = { id -> onEvent(GameEvent.FireStaff(id)) },
-            onUpgrade = { id -> onEvent(GameEvent.PromoteStaff(id)) },
-            onBack = {
-                onEvent(GameEvent.SelectStaffDef(null))
-                navState.currentScreen = Screen.STAFF
-            }
-        )
-    }
-}
-
 /** Inventory Item Detail Screen as overlay (not part of pager). */
 @Composable
 fun InventoryItemDetailOverlay(
@@ -80,7 +50,6 @@ fun InventoryItemDetailOverlay(
         InventoryItemDetailScreen(
             item = selectedItem,
             money = state.app.money,
-            currentTier = state.progression.currentTier,
             currentDay = state.time?.currentTime?.dayNumber ?: 0,
             metricsData = state.metrics.completedDays,
             shelfBatches = inventoryState?.shelfBatches ?: emptyList(),

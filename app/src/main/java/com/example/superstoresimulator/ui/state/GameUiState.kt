@@ -1,7 +1,7 @@
 package com.example.superstoresimulator.ui.state
 
-import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.Screen
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.FreshAutoOrderConfig
 import com.example.superstoresimulator.domain.IncompleteOrderRequest
@@ -11,7 +11,9 @@ import com.example.superstoresimulator.domain.StoreManagerConfig
 import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.items.ItemCategory
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
+import com.example.superstoresimulator.domain.research.AnalystAssignment
+import com.example.superstoresimulator.domain.research.ResearchableUpgrade
+import com.example.superstoresimulator.domain.tutorial.TutorialStep
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.domain.pricing.Markdown
@@ -31,7 +33,8 @@ data class GameUiState(
     val history: HistoryUIState,
     val time: TimeUIState? = null,
     val metrics: MetricsUIState = MetricsUIState(),
-    val progression: ProgressionUIState = ProgressionUIState(),
+    val research: ResearchUIState = ResearchUIState(),
+    val tutorial: TutorialUIState = TutorialUIState(),
     val delivery: DeliveryUIState = DeliveryUIState(),
     /** Register system — per-register status, assignment, and purchase info. */
     val registers: RegistersUIState = RegistersUIState(),
@@ -122,7 +125,6 @@ data class InventoryItemUI(
 
 data class StaffUIState(
     val registry: HiredEntityRegistry,
-    val selectedDef: EntityDef? = null,
     /** All hired employees with their shift times and register assignments. */
     val scheduleEntries: List<StaffScheduleEntryUI> = emptyList(),
     /** Current game hour (0-23) — used to show on-shift status in schedule view. */
@@ -171,26 +173,40 @@ data class MetricsUIState(
     val lastReport: DailyMetrics? = null,
 )
 
-// Progression: revenue tier unlock progress
-data class ProgressionUIState(
-    /** The player's current active tier (paid and unlocked). */
-    val currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
-    /** Cumulative revenue earned — never decreases. */
+// Research system UI state
+data class ResearchUIState(
     val totalRevenue: Money = Money.ZERO,
-    /** The next tier to unlock, or null if at the top tier. */
-    val nextTier: ItemUnlockTier? = ItemUnlockTier.TIER_2,
-    /** How much more revenue is needed to reach the next tier's revenue gate, or null at top tier. */
-    val revenueToNextTier: Money? = Money(500_000L),
-    /** Progress fraction (0.0–1.0) within the current tier band. */
-    val tierProgressFraction: Float = 0f,
-    /** Non-null for one UI frame after a tier unlock — cleared by DismissTierUnlock. */
-    val justUnlockedTier: ItemUnlockTier? = null,
-    /**
-     * The next tier whose revenue gate has been met and is ready to be purchased,
-     * or null if the revenue gate for the next tier hasn't been crossed yet.
-     */
-    val availableTier: ItemUnlockTier? = null,
+    val researchedUpgrades: Set<String> = emptySet(),
+    val researchProgress: Map<String, Float> = emptyMap(),
+    val totalPointsEarned: Float = 0f,
+    val analystAssignments: Map<Int, AnalystAssignment> = emptyMap(),
+    val visibleUpgrades: List<ResearchableUpgrade> = emptyList(),
+    /** Hired market analysts and their current assignment (for the assignment UI). */
+    val analysts: List<AnalystUiInfo> = emptyList(),
 )
+
+/** A hired market analyst as shown in the research assignment UI. */
+data class AnalystUiInfo(
+    val id: Int,
+    val name: String,
+    val assignment: AnalystAssignment? = null,
+)
+
+data class TutorialUIState(
+    val tutorialComplete: Boolean = false,
+    val currentStep: TutorialStep = TutorialStep.WELCOME,
+    val displayTitle: String = "",
+    val instruction: String = "",
+    val hintText: String = "",
+    /** Per-feature gating flags keyed by TutorialManager.FEATURE_* constants. */
+    val featureVisibility: Map<String, Boolean> = emptyMap(),
+    /** Bottom-nav screen the current tutorial step wants the player to visit (null when complete). */
+    val hintScreen: Screen? = null,
+)
+
+/** Convenience lookup; unknown keys default to visible so partial maps never hide UI. */
+fun TutorialUIState.isFeatureVisible(feature: String): Boolean =
+    featureVisibility[feature] ?: true
 
 // ── Truck Delivery UI State ───────────────────────────────────────────────────
 

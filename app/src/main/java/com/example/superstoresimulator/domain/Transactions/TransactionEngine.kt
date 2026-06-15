@@ -11,7 +11,6 @@ import com.example.superstoresimulator.domain.updateRegister
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.OutOfStockEvent
 import com.example.superstoresimulator.domain.metrics.SoldItemEvent
 import com.example.superstoresimulator.domain.pricing.MarkdownReason
@@ -41,13 +40,12 @@ class TransactionEngine(
     ): GameState {
         val register = state.registers.findRegisterById(registerId) ?: return state
 
-        val currentTierAmount = state.currentTier.unlockAmount
+        val researchedUpgrades = state.researchState.researchedUpgrades
         val currentVendorTier = state.vendorSystem.currentVendorTier
         val availableItemIds = state.inventory.keys.filter { itemId ->
-            val meta = cache?.get(itemId)
-            val itemTier = meta?.tier ?: ItemUnlockTier.TIER_1
-            if (itemTier.unlockAmount > currentTierAmount) return@filter false
-            if (meta?.isVendorItem == true && meta.vendorTier > currentVendorTier) return@filter false
+            val meta = cache?.get(itemId) ?: return@filter false
+            if (cache != null && !cache.isItemAccessible(itemId, researchedUpgrades)) return@filter false
+            if (meta.isVendorItem && meta.vendorTier > currentVendorTier) return@filter false
             true
         }
         if (availableItemIds.isEmpty()) return state
@@ -102,13 +100,12 @@ class TransactionEngine(
         // Don't interrupt an active transaction on this register
         if (register.transactionActive) return state
 
-        val currentTierAmount = state.currentTier.unlockAmount
+        val researchedUpgrades = state.researchState.researchedUpgrades
         val currentVendorTier = state.vendorSystem.currentVendorTier
         val availableItemIds = state.inventory.keys.filter { itemId ->
-            val meta = cache?.get(itemId)
-            val itemTier = meta?.tier ?: ItemUnlockTier.TIER_1
-            if (itemTier.unlockAmount > currentTierAmount) return@filter false
-            if (meta?.isVendorItem == true && meta.vendorTier > currentVendorTier) return@filter false
+            val meta = cache?.get(itemId) ?: return@filter false
+            if (cache != null && !cache.isItemAccessible(itemId, researchedUpgrades)) return@filter false
+            if (meta.isVendorItem && meta.vendorTier > currentVendorTier) return@filter false
             true
         }
         if (availableItemIds.isEmpty()) return state
@@ -377,13 +374,24 @@ class TransactionEngine(
 
         val result = mutableListOf<Int>()
         repeat(count.coerceAtMost(weighted.size)) {
-            val total = weighted.sumOf { (_, w) -> w.toDouble() }
+            // Apply affinity boost and substitution penalty based on already-selected items
+            val adjustedWeights = weighted.map { (id, baseW) ->
+                val hasAffinity = result.any { sel -> cache.sharesAffinityGroup(sel, id) }
+                val hasSubstitution = result.any { sel -> cache.sharesSubstitutionGroup(sel, id) }
+                val multiplier = when {
+                    hasSubstitution -> SUBSTITUTION_PENALTY
+                    hasAffinity -> AFFINITY_BOOST
+                    else -> 1.0f
+                }
+                id to (baseW * multiplier)
+            }
+
+            val total = adjustedWeights.sumOf { (_, w) -> w.toDouble() }
             var r = random.nextDouble() * total
-            // Walk the list consuming weight until r is exhausted
-            val idx = weighted.indexOfFirst { (_, w) ->
+            val idx = adjustedWeights.indexOfFirst { (_, w) ->
                 r -= w
                 r <= 0.0
-            }.let { if (it < 0) weighted.lastIndex else it }   // guard against float rounding
+            }.let { if (it < 0) adjustedWeights.lastIndex else it }
             result.add(weighted[idx].first)
             weighted.removeAt(idx)
         }
@@ -650,6 +658,8 @@ class TransactionEngine(
     companion object {
         const val XP_PER_TRANSACTION = 5
         const val DEFAULT_SALES_TAX_RATE = 0.0825
+        const val AFFINITY_BOOST = 2.0f
+        const val SUBSTITUTION_PENALTY = 0.1f
     }
 
     fun ringUpItemOnRegister(state: GameState, registerId: Int): GameState {

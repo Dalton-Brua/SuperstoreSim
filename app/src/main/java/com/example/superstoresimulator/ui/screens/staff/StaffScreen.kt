@@ -43,17 +43,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Entities.EntityDef
+import com.example.superstoresimulator.domain.research.AnalystAssignment
 import com.example.superstoresimulator.domain.Entities.HiredEntity
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.StoreManagerConfig
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.staff.EmployeeActivity
 import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.dialogs.StoreManagerConfigDialog
-import com.example.superstoresimulator.ui.state.ProgressionUIState
+import com.example.superstoresimulator.ui.state.ResearchUIState
 import com.example.superstoresimulator.ui.state.StaffUIState
 import com.example.superstoresimulator.ui.state.VendorUIState
 import com.example.superstoresimulator.ui.theme.Amber
@@ -82,15 +82,54 @@ import com.example.superstoresimulator.ui.theme.WarningTextDark
 import com.yourapp.ui.theme.GameButtonStyles
 import kotlinx.coroutines.launch
 
+/**
+ * Hiring criteria gate. A staff type only appears in the list (and is hireable in the
+ * detail screen) once its requirement is met:
+ *  - fresh_handler: requires the Fresh tab unlock ("prod_fresh_basics").
+ *  - manager: requires store size of at least Small Grocery.
+ * All other types are always available.
+ */
+fun canHireEntity(
+    def: EntityDef,
+    researchedUpgrades: Set<String>,
+    currentStoreSize: StoreSize,
+): Boolean = when (def.key) {
+    "fresh_handler" -> "prod_fresh_basics" in researchedUpgrades
+    "manager" -> currentStoreSize.ordinal >= StoreSize.SMALL_GROCERY.ordinal
+    else -> true
+}
+
 @Composable
 fun StaffScreen(
     state: StaffUIState,
     money: Money,
-    onSelectStaffDef: (EntityDef?) -> Unit,
+    researchedUpgrades: Set<String>,
+    currentStoreSize: StoreSize,
+    onHire: (EntityDef) -> Unit,
+    onFire: (Int) -> Unit,
+    onUpgrade: (Int) -> Unit,
     onUpdateStoreManagerConfig: (StoreManagerConfig) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showManagerConfig by remember { mutableStateOf(false) }
+    var selectedDef by remember { mutableStateOf<EntityDef?>(null) }
+
+    // Drill into a staff type in-place (back button keeps us on the same screen).
+    if (selectedDef != null) {
+        EntityTypeDetailScreen(
+            state = state,
+            money = money,
+            def = selectedDef,
+            researchedUpgrades = researchedUpgrades,
+            currentStoreSize = currentStoreSize,
+            onHire = onHire,
+            onFire = onFire,
+            onUpgrade = onUpgrade,
+            onBack = { selectedDef = null },
+            modifier = modifier,
+        )
+        return
+    }
 
     Column(
         modifier = modifier
@@ -107,11 +146,11 @@ fun StaffScreen(
         Spacer(Modifier.height(20.dp))
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(EntityDef.allEntities) { def ->
+            items(EntityDef.allEntities.filter { canHireEntity(it, researchedUpgrades, currentStoreSize) }) { def ->
                 StaffTypeCard(
                     def = def,
                     count = state.registry.countByDef(def),
-                    onClick = { onSelectStaffDef(def) }
+                    onClick = { selectedDef = def }
                 )
             }
 
@@ -207,28 +246,40 @@ fun EntityTypeDetailScreen(
     state: StaffUIState,
     money: Money,
     def: EntityDef?,
-    currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
+    researchedUpgrades: Set<String> = emptySet(),
     currentStoreSize: StoreSize = StoreSize.MOM_AND_POP,
     onHire: (EntityDef) -> Unit,
     onFire: (Int) -> Unit,
     onUpgrade: (Int) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     if (def == null) return
 
     val entities = state.registry.getByDef(def)
     val isFreshHandlers = def.key == "fresh_handler"
-    val canHireFreshHandlers = currentTier.unlockAmount >= ItemUnlockTier.TIER_2.unlockAmount
+    val canHireFreshHandlers = "prod_fresh_basics" in researchedUpgrades
     val isManager = def.key == "manager"
     val canHireManagers = currentStoreSize.ordinal >= StoreSize.SMALL_GROCERY.ordinal
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .background(LightBackground)
             .statusBarsPadding()
             .padding(16.dp)
     ) {
+
+        Text(
+            text = "‹ Back",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = PrimaryDark,
+            modifier = Modifier
+                .clickable(onClick = onBack)
+                .padding(vertical = 4.dp, horizontal = 2.dp)
+        )
+        Spacer(Modifier.height(8.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(def.icon, contentDescription = null, modifier = Modifier.size(32.dp), tint = Primary)
@@ -343,17 +394,6 @@ fun EntityTypeDetailScreen(
                     onUpgrade = { onUpgrade(entity.id) }
                 )
             }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        Button(
-            onClick = onBack,
-            colors = GameButtonStyles.primaryBlueColor(),
-            shape = GameButtonStyles.Shape,
-            border = GameButtonStyles.PrimaryBorder
-        ) {
-            Text("Back", color = TextWhite)
         }
     }
 }
@@ -493,6 +533,8 @@ private fun ActivityChip(activity: EmployeeActivity) {
         EmployeeActivity.STOCKING -> "Stocking"
         EmployeeActivity.ZONING -> "Zoning shelves"
         EmployeeActivity.HANDLING_FRESH -> "Handling fresh"
+        EmployeeActivity.RESEARCHING -> "Researching"
+        EmployeeActivity.CONSULTING -> "Consulting"
         EmployeeActivity.IDLE -> "Idle"
         EmployeeActivity.OFF_SHIFT -> "Off shift"
     }
@@ -558,18 +600,21 @@ private fun UtilizationBar(label: String, utilization: Float) {
 @Composable
 fun StaffAndUnlocksScreen(
     staffState: StaffUIState,
-    progression: ProgressionUIState,
+    research: ResearchUIState,
     vendorState: VendorUIState,
     money: Money,
     modifier: Modifier = Modifier,
     initialTab: Int = 0,
     onTabChanged: (Int) -> Unit,
-    onSelectStaffDef: (EntityDef?) -> Unit,
-    onUnlockNextTier: () -> Unit,
+    currentStoreSize: StoreSize,
+    onHireStaff: (EntityDef) -> Unit,
+    onFireStaff: (Int) -> Unit,
+    onPromoteStaff: (Int) -> Unit,
     onUnlockNextVendorTier: () -> Unit,
     onInvestInVendor: (String) -> Unit,
     onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int) -> Unit = { _, _, _ -> },
     onUpdateStoreManagerConfig: (StoreManagerConfig) -> Unit = {},
+    onAssignAnalyst: (entityId: Int, assignment: AnalystAssignment?) -> Unit = { _, _ -> },
 ) {    val tabs = listOf("Staff", "Schedule", "Unlocks", "Vendors")
 
     // Pager state for tab navigation
@@ -643,7 +688,11 @@ fun StaffAndUnlocksScreen(
                 0 -> StaffScreen(
                     state = staffState,
                     money = money,
-                    onSelectStaffDef = onSelectStaffDef,
+                    researchedUpgrades = research.researchedUpgrades,
+                    currentStoreSize = currentStoreSize,
+                    onHire = onHireStaff,
+                    onFire = onFireStaff,
+                    onUpgrade = onPromoteStaff,
                     onUpdateStoreManagerConfig = onUpdateStoreManagerConfig,
                 )
                 1 -> ScheduleScreen(
@@ -651,9 +700,9 @@ fun StaffAndUnlocksScreen(
                     onUpdateShift = onUpdateShift,
                 )
                 2 -> UnlocksScreen(
-                    progression = progression,
+                    research = research,
                     money = money,
-                    onUnlockNextTier = onUnlockNextTier,
+                    onAssignAnalyst = onAssignAnalyst,
                 )
                 3 -> VendorsScreen(
                     vendorState = vendorState,

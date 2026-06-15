@@ -9,7 +9,6 @@ import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.items.MoneyData
 import com.example.superstoresimulator.domain.store.StoreConfig
 import kotlinx.coroutines.runBlocking
@@ -27,9 +26,9 @@ import com.example.superstoresimulator.domain.helpers.FakeItemDao
  * maps — no [GameEngine] is needed.
  *
  * Test-item catalogue (all casePack = 6 unless stated):
- *   Item 1 — GROCERY, casePack 6, unitCost 500 ¢, tier TIER_1
- *   Item 2 — SNACKS,  casePack 4, unitCost 400 ¢, tier TIER_1
- *   Item 3 — DAIRY,   casePack 6, unitCost 600 ¢, tier TIER_2
+ *   Item 1 — GROCERY, casePack 6, unitCost 500 ¢, starter (no gate)
+ *   Item 2 — SNACKS,  casePack 4, unitCost 400 ¢, starter (no gate)
+ *   Item 3 — DAIRY,   casePack 6, unitCost 600 ¢, gated on "research_dairy"
  *
  * Default StoreConfig.backroomCapPerItem = 50 units.
  *
@@ -64,7 +63,7 @@ import com.example.superstoresimulator.domain.helpers.FakeItemDao
  *   - No-op when casePacksPerItem ≤ 0
  *   - Orders all qualifying items below the stock threshold
  *   - Skips items whose combined stock exceeds maxTotalQuantity
- *   - Skips tier-gated items above the player's current tier
+ *   - Skips research-gated items that have not been unlocked
  *   - Applies category filter
  *   - Applies 10% discount when ≥ 20 case-packs are ordered
  *   - No-op when the player cannot afford the discounted total
@@ -79,19 +78,19 @@ class InventoryManagerTest {
         id = "item_001", name = "Item 1",
         price = MoneyData(1_000), unitCost = MoneyData(500),
         description = "", category = ItemCategory.GROCERY,
-        casePack = 6, tier = "TIER_1",
+        casePack = 6,
     )
     private val item2 = Item(
         id = "item_002", name = "Item 2",
         price = MoneyData(800), unitCost = MoneyData(400),
         description = "", category = ItemCategory.SNACKS,
-        casePack = 4, tier = "TIER_1",
+        casePack = 4,
     )
     private val item3 = Item(
         id = "item_003", name = "Item 3",
         price = MoneyData(1_200), unitCost = MoneyData(600),
         description = "", category = ItemCategory.DAIRY,
-        casePack = 6, tier = "TIER_2",
+        casePack = 6, researchGate = "research_dairy",
     )
 
     // Item 1 case-pack cost = 6 × 500 = 3_000 ¢
@@ -126,12 +125,10 @@ class InventoryManagerTest {
     private fun stateWith(
         vararg items: Pair<Int, InventoryState>,
         money: Money = Money(100_000L),
-        currentTier: ItemUnlockTier = ItemUnlockTier.TIER_1,
         backroomCap: Int = 50,
     ): GameState = GameState(
         inventory = mapOf(*items),
         money = money,
-        currentTier = currentTier,
         storeConfig = StoreConfig(backroomCapPerItem = backroomCap),
     )
 
@@ -351,15 +348,14 @@ class InventoryManagerTest {
     }
 
     @Test
-    fun `placeBulkOrder skips tier-gated items above the current tier`() {
-        // Item 3 requires TIER_2; player is at TIER_1
+    fun `placeBulkOrder skips research-gated items that are not unlocked`() {
+        // Item 3 is gated on "research_dairy", which has not been researched
         val state = stateWith(
             1 to inv(0, 0),
             3 to inv(0, 0),
-            currentTier = ItemUnlockTier.TIER_1,
         )
         val result = manager.placeBulkOrder(state, maxTotalQuantity = 100, casePacksPerItem = 1, categoryFilter = null)
-        assertTrue(result.orderLines.none { it.itemId == 3 })   // tier-blocked
+        assertTrue(result.orderLines.none { it.itemId == 3 })   // research-blocked
         assertTrue(result.orderLines.any { it.itemId == 1 })    // allowed
     }
 
@@ -379,13 +375,13 @@ class InventoryManagerTest {
 
     @Test
     fun `placeBulkOrder applies 10 percent discount when 20 or more case-packs are ordered`() {
-        // Build 20 TIER_1 GROCERY items (id 1..20, each casePack=6, unitCost=500 ¢)
+        // Build 20 starter GROCERY items (id 1..20, each casePack=6, unitCost=500 ¢)
         val manyItems = (1..20).map { id ->
             Item(
                 id = "item_${String.format("%03d", id)}", name = "Item $id",
                 price = MoneyData(1_000), unitCost = MoneyData(500),
                 description = "", category = ItemCategory.GROCERY,
-                casePack = 6, tier = "TIER_1",
+                casePack = 6,
             )
         }
         val cache = ItemMetadataCache(FakeItemDao(manyItems))
@@ -394,7 +390,7 @@ class InventoryManagerTest {
 
         val inventory = (1..20).associate { id -> id to inv(0, 0) }
         val startMoney = Money(500_000L)
-        val state = GameState(inventory = inventory, money = startMoney, currentTier = ItemUnlockTier.TIER_1)
+        val state = GameState(inventory = inventory, money = startMoney)
 
         // 20 items × 1 case-pack each = 20 total cases → 10% discount
         val result = mgr.placeBulkOrder(state, maxTotalQuantity = 100, casePacksPerItem = 1, categoryFilter = null)

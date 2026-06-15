@@ -20,9 +20,11 @@ import com.example.superstoresimulator.domain.metrics.DayManager
 import com.example.superstoresimulator.domain.player.PlayerActionHandler
 import com.example.superstoresimulator.domain.pricing.PricingManager
 import com.example.superstoresimulator.domain.registers.RegisterManager
+import com.example.superstoresimulator.domain.research.ResearchManager
 import com.example.superstoresimulator.domain.staff.StaffManager
 import com.example.superstoresimulator.domain.store.StoreController
 import com.example.superstoresimulator.domain.traffic.TrafficManager
+import com.example.superstoresimulator.domain.tutorial.TutorialManager
 import com.example.superstoresimulator.domain.vendor.VendorManager
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -67,12 +69,15 @@ class TickOrchestratorTest {
             PlayerActionHandler(), transactionEngine, inventoryManager, cache,
         )
         val utilizationTracker = UtilizationTracker(staffManager, inventoryManager, cache)
+        val researchTickProcessor = ResearchTickProcessor(ResearchManager(cache))
+        val tutorialTickProcessor = TutorialTickProcessor(TutorialManager())
         orchestrator = TickOrchestrator(
             timeManager, spoilageManager, storeController, pricingManager,
             registerManager, transactionEngine, trafficManager,
             dayRolloverProcessor, trafficProcessor, staffTickProcessor,
             playerTickProcessor, utilizationTracker,
             staffManager, dayManager,
+            researchTickProcessor, tutorialTickProcessor,
         )
     }
 

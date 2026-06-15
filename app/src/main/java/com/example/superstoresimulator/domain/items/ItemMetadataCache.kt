@@ -7,29 +7,33 @@ import javax.inject.Singleton
 
 @Singleton
 class ItemMetadataCache @Inject constructor(private val itemDao: ItemDao) {
-    
+
     private var metadataCache: Map<Int, ItemMetadata> = emptyMap()
     private var itemsCache: Map<Int, Item> = emptyMap()
     private var itemNamesCache: Map<Int, String> = emptyMap()
+    private var affinityIndex: Map<String, Set<Int>> = emptyMap()
+    private var substitutionIndex: Map<String, Set<Int>> = emptyMap()
     private var initialized = false
-    
-    /**
-     * Initialize cache from database (call once on app startup)
-     * SINGLE entry point - all components should use this
-     */
+
     suspend fun initialize() = withContext(Dispatchers.IO) {
         if (initialized) return@withContext
-        
+
         val items = itemDao.getAllItems()
-        
-        // Build all three caches from a single database load
+
         val metadata = mutableMapOf<Int, ItemMetadata>()
         val fullItems = mutableMapOf<Int, Item>()
         val names = mutableMapOf<Int, String>()
-        
+        val affinity = mutableMapOf<String, MutableSet<Int>>()
+        val substitution = mutableMapOf<String, MutableSet<Int>>()
+
         items.forEach { item ->
             val itemId = item.id.removePrefix("item_").toIntOrNull() ?: 0
-            
+            val groups = item.affinityGroups
+                ?.split(",")
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+                ?: emptyList()
+
             metadata[itemId] = ItemMetadata(
                 id = itemId,
                 name = item.name,
@@ -39,7 +43,9 @@ class ItemMetadataCache @Inject constructor(private val itemDao: ItemDao) {
                 casePack = item.casePack,
                 casePackCost = item.getCasePackCostAsMoney(),
                 purchaseWeight = item.purchaseWeight,
-                tier = runCatching { ItemUnlockTier.valueOf(item.tier) }.getOrDefault(ItemUnlockTier.TIER_1),
+                researchGate = item.researchGate,
+                affinityGroups = groups,
+                substitutionGroup = item.substitutionGroup,
                 shelfLifeDays = item.shelfLifeDays,
                 soldByWeight = item.soldByWeight,
                 vendorId = item.vendorId,
@@ -47,41 +53,51 @@ class ItemMetadataCache @Inject constructor(private val itemDao: ItemDao) {
             )
             fullItems[itemId] = item
             names[itemId] = item.name
+
+            for (group in groups) {
+                affinity.getOrPut(group) { mutableSetOf() }.add(itemId)
+            }
+            item.substitutionGroup?.let { sg ->
+                substitution.getOrPut(sg) { mutableSetOf() }.add(itemId)
+            }
         }
-        
+
         metadataCache = metadata
         itemsCache = fullItems
         itemNamesCache = names
+        affinityIndex = affinity
+        substitutionIndex = substitution
         initialized = true
     }
-    
-    /**
-     * Get cached metadata for an item (O(1) lookup)
-     * Used by inventory UI for fast name/price/category display
-     */
+
     fun get(itemId: Int): ItemMetadata? = metadataCache[itemId]
-    
-    /**
-     * Get full Item object for an item (O(1) lookup)
-     * Used by GameEngine and other components that need full item data
-     */
+
     fun getItem(itemId: Int): Item? = itemsCache[itemId]
-    
-    /**
-     * Get all cached item names as Map<Int, String>
-     * Used by InventoryScreen instead of separate database query
-     */
+
     fun getAllItemNames(): Map<Int, String> = itemNamesCache
-    
-    /**
-     * Get all cached items as Map<Int, Item>
-     * Used by GameEngine initialization instead of separate database query
-     */
+
     fun getAllItems(): Map<Int, Item> = itemsCache
-    
-    /**
-     * Check if cache is initialized
-     */
+
+    fun isItemAccessible(itemId: Int, researchedUpgrades: Set<String>): Boolean {
+        val meta = get(itemId) ?: return false
+        return meta.researchGate == null || meta.researchGate in researchedUpgrades
+    }
+
+    fun getAccessibleItemIds(researchedUpgrades: Set<String>): Set<Int> =
+        metadataCache.keys.filter { isItemAccessible(it, researchedUpgrades) }.toSet()
+
+    fun sharesAffinityGroup(id1: Int, id2: Int): Boolean {
+        val g1 = get(id1)?.affinityGroups ?: return false
+        val g2 = get(id2)?.affinityGroups ?: return false
+        return g1.any { it in g2 }
+    }
+
+    fun sharesSubstitutionGroup(id1: Int, id2: Int): Boolean {
+        val s1 = get(id1)?.substitutionGroup ?: return false
+        val s2 = get(id2)?.substitutionGroup ?: return false
+        return s1 == s2
+    }
+
     fun getVendorItems(vendorId: String): List<ItemMetadata> =
         metadataCache.values.filter { it.vendorId == vendorId }
 
@@ -90,4 +106,3 @@ class ItemMetadataCache @Inject constructor(private val itemDao: ItemDao) {
 
     fun isInitialized(): Boolean = initialized
 }
-

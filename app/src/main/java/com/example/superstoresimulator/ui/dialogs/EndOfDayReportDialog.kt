@@ -116,10 +116,7 @@ fun EndOfDayReportDialog(
                 SectionHeader("💸 Operating Costs")
                 StatRow(Icons.Default.Home, "Daily Rent", "-${report.rentPaid}", tint = ClosedRed)
                 StatRow(Icons.Default.People, "Staff Wages", "-${report.wagesPaid}", tint = ClosedRed)
-                if (report.vendorCommissionPaid.cents > 0) {
-                    StatRow(Icons.Default.LocalShipping, "Vendor Commission", "-${report.vendorCommissionPaid}", tint = ClosedRed)
-                }
-                
+
                 // Net revenue calculation
                 val netAfterCosts = report.netRevenue
                 StatRow(

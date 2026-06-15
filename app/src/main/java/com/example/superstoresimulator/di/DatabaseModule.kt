@@ -30,7 +30,7 @@ object DatabaseModule {
         val database = Room.databaseBuilder(
             context,
             AppDatabase::class.java,
-            "superstore-database-v9"
+            "superstore-database-v10"
         )
             .fallbackToDestructiveMigration(dropAllTables = true)
             .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)

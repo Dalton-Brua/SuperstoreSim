@@ -23,7 +23,8 @@ import com.example.superstoresimulator.ui.state.mappers.countActiveStaff
 import com.example.superstoresimulator.ui.state.mappers.buildDeliveryUiState
 import com.example.superstoresimulator.ui.state.mappers.buildPricingUiState
 import com.example.superstoresimulator.ui.state.mappers.buildVendorUiState
-import com.example.superstoresimulator.ui.state.mappers.buildProgressionUiState
+import com.example.superstoresimulator.ui.state.mappers.buildResearchUiState
+import com.example.superstoresimulator.ui.state.mappers.buildTutorialUiState
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,6 +58,7 @@ class GameViewModel @Inject constructor(
     private val gameStateRepository: GameStateRepository,
     private val gameEngine: GameEngine,
     private val itemMetadataCache: ItemMetadataCache,
+    private val tutorialManager: com.example.superstoresimulator.domain.tutorial.TutorialManager,
 ) : ViewModel() {
 
     private var gameEngineInitialized = false
@@ -115,6 +117,12 @@ class GameViewModel @Inject constructor(
                     is GameEngine.EngineEvent.OrderScheduled -> {
                         val day = event.arrivalDay
                         _snackbarMessage.tryEmit("Order placed — arriving ${GameTime.fullDayName(day)}, Day ${day + 1}")
+                    }
+                    is GameEngine.EngineEvent.ResearchCompleted -> {
+                        val itemsSuffix = if (event.unlockedItemCount > 0) {
+                            " — ${event.unlockedItemCount} new item${if (event.unlockedItemCount == 1) "" else "s"} unlocked!"
+                        } else ""
+                        _snackbarMessage.tryEmit("Research Complete: ${event.displayName}$itemsSuffix")
                     }
                 }
             }
@@ -181,8 +189,12 @@ class GameViewModel @Inject constructor(
                 return
             }
 
-            GameEvent.UnlockNextTier -> {
-                gameEngine.unlockNextTier()
+            is GameEvent.AssignAnalyst -> {
+                gameEngine.assignAnalyst(event.entityId, event.assignment)
+            }
+
+            GameEvent.SkipTutorial -> {
+                gameEngine.skipTutorial()
             }
 
             is GameEvent.BulkOrder -> {
@@ -203,21 +215,7 @@ class GameViewModel @Inject constructor(
                 return  // No UI state update needed - will reload fresh state
             }
 
-            GameEvent.DismissTierUnlock -> {
-                _uiState.update { it?.copy(progression = it.progression.copy(justUnlockedTier = null)) }
-                return  // Pure-UI: no engine call needed
-            }
 
-            is GameEvent.SelectStaffDef -> {
-                _uiState.update { state ->
-                    state?.copy(
-                        staff = state.staff.copy(
-                            selectedDef = event.staffDef
-                        )
-                    ) ?: return@update null
-                }
-                return
-            }
             is GameEvent.SelectItemCategory -> {
                 _uiState.update { state ->
                     state?.copy(
@@ -430,8 +428,10 @@ class GameViewModel @Inject constructor(
                 completedToday = domain.currentDayMetrics.transactionsCompleted,
             ),
             inventory = inventoryMapper.map(
-                domain.inventory, domain.currentTier, domain.storeConfig.backroomCapPerItem,
-                domain.scheduledTrucks,
+                currentInventory = domain.inventory,
+                researchedUpgrades = domain.researchState.researchedUpgrades,
+                backroomCap = domain.storeConfig.backroomCapPerItem,
+                scheduledTrucks = domain.scheduledTrucks,
                 priceResolver = gameEngine::resolvePrice,
                 gameState = domain,
             ).copy(
@@ -453,7 +453,6 @@ class GameViewModel @Inject constructor(
                 storeManagerConfig = domain.storeManagerConfig,
             )) ?: StaffUIState(
                 registry = domain.hiredEntityRegistry,
-                selectedDef = null,
                 scheduleEntries = scheduleEntries,
                 currentHour = domain.currentTime.hour,
                 employeeActivities = gameEngine.employeeActivities(),
@@ -472,7 +471,8 @@ class GameViewModel @Inject constructor(
             ),
             time = buildTimeUiState(domain),
             metrics = buildMetricsUiState(domain),
-            progression = buildProgressionUiState(domain, oldUi?.progression),
+            research = buildResearchUiState(domain),
+            tutorial = buildTutorialUiState(domain, tutorialManager),
             delivery = buildDeliveryUiState(domain, itemMetadataCache),
             registers = buildRegistersUiState(domain),
             pricing = buildPricingUiState(domain),

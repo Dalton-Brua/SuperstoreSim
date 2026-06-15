@@ -9,10 +9,10 @@ import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.research.AnalystAssignment
 import com.example.superstoresimulator.domain.RegisterState
 import com.example.superstoresimulator.domain.StaffShift
 import com.example.superstoresimulator.domain.inventory.InventoryState
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.domain.SimAccumulators
 import com.example.superstoresimulator.domain.ZoningState
@@ -312,6 +312,20 @@ class StaffManager @Inject constructor() {
             }
         }
 
+        // Market Analysts
+        for (entity in registry.getByDef(EntityDef.MARKET_ANALYST)) {
+            val shift = schedules.firstOrNull { it.entityId == entity.id }
+            if (shift == null || !shift.isOnShift(currentHour)) {
+                activities[entity.id] = EmployeeActivity.OFF_SHIFT
+                continue
+            }
+            activities[entity.id] = when (state.researchState.analystAssignments[entity.id]) {
+                is AnalystAssignment.Research -> EmployeeActivity.RESEARCHING
+                AnalystAssignment.Consulting -> EmployeeActivity.CONSULTING
+                null -> EmployeeActivity.IDLE
+            }
+        }
+
         employeeActivities = activities
     }
 
@@ -381,7 +395,8 @@ class StaffManager @Inject constructor() {
 
         if (config.autoHireCashiers && cashierCount == 0 && result.registers.isNotEmpty()) bootstrapHireIfNeeded(EntityDef.CASHIER, "No cashiers")
         if (config.autoHireStockers && stockerCount == 0) bootstrapHireIfNeeded(EntityDef.STOCKER, "No stockers")
-        if (config.autoHireFreshHandlers && freshCount == 0 && state.currentTier >= ItemUnlockTier.TIER_3) bootstrapHireIfNeeded(EntityDef.FRESH_HANDLER, "No fresh staff")
+        val hasFreshItems = state.researchState.researchedUpgrades.contains("prod_fresh_basics")
+        if (config.autoHireFreshHandlers && freshCount == 0 && hasFreshItems) bootstrapHireIfNeeded(EntityDef.FRESH_HANDLER, "No fresh staff")
 
         // Cashier auto-hire: avg customers in line vs register count
         val registerCount = result.registers.size

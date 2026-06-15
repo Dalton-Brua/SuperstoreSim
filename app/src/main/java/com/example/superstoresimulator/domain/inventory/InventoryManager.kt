@@ -300,7 +300,7 @@ class InventoryManager(
      * Returns [BuyResult] with order lines to be scheduled by TruckManager.
      *
      * An item is eligible when ALL of the following hold:
-     *  1. Its tier ≤ [GameState.currentTier]
+     *  1. It is accessible (research gate unlocked or no gate)
      *  2. Its category matches [categoryFilter] (or filter is null)
      *  3. Its combined shelf + backroom stock ≤ [maxTotalQuantity]
      *  4. Its committed stock (backroom + in-transit) < [backroomCapPerItem]
@@ -322,14 +322,15 @@ class InventoryManager(
         val capInCasePacks = state.storeConfig.backroomCapPerItem
         val currentDay = state.currentTime.dayNumber
 
+        val researchedUpgrades = state.researchState.researchedUpgrades
         val matchingEntries = state.inventory.filter { (itemId, inv) ->
             val meta = cache.get(itemId) ?: return@filter false
-            val tierOk = meta.tier.unlockAmount <= state.currentTier.unlockAmount
+            val accessible = meta.researchGate == null || meta.researchGate in researchedUpgrades
             val categoryOk = categoryFilter == null || meta.category == categoryFilter
             val qtyOk = inv.shelfStock + inv.backroomStock <= maxTotalQuantity
             val notFresh = !isFreshItem(itemId)
             val notVendor = !meta.isVendorItem
-            tierOk && categoryOk && qtyOk && notFresh && notVendor
+            accessible && categoryOk && qtyOk && notFresh && notVendor
         }
         if (matchingEntries.isEmpty()) return BuyResult(state, emptyList())
 
@@ -399,9 +400,9 @@ class InventoryManager(
         state: GameState,
         maxTotalQuantity: Int,
         casePacksPerItem: Int,
-        currentTier: com.example.superstoresimulator.domain.items.ItemUnlockTier
     ): BuyResult {
         val currentDay = state.currentTime.dayNumber
+        val researchedUpgrades = state.researchState.researchedUpgrades
         val itemsToAddMap = mutableMapOf<Int, OrderInfo>()
         var totalCases = 0
         var baseCost = Money(0)
@@ -411,7 +412,7 @@ class InventoryManager(
             val metadata = cache.get(itemId) ?: continue
 
             if (!isFreshItem(itemId)) continue
-            if (metadata.tier.unlockAmount > currentTier.unlockAmount) continue
+            if (metadata.researchGate != null && metadata.researchGate !in researchedUpgrades) continue
 
             val currentTotal = inv.shelfStock + inv.backroomStock
             if (currentTotal >= maxTotalQuantity) continue
@@ -550,7 +551,7 @@ class InventoryManager(
         if (isFreshItem(itemId)) return false
         val meta = cache.get(itemId) ?: return false
         if (meta.isVendorItem) return false
-        if (meta.tier.unlockAmount > state.currentTier.unlockAmount) return false
+        if (meta.researchGate != null && meta.researchGate !in state.researchState.researchedUpgrades) return false
         val inv = state.inventory[itemId] ?: return false
         val totalStock = inv.shelfStock + inv.backroomStock
         return totalStock < config.minStockThreshold
@@ -659,7 +660,7 @@ class InventoryManager(
             if (isFreshItem(itemId)) continue
             val meta = cache.get(itemId) ?: continue
             if (meta.isVendorItem) continue
-            if (meta.tier.unlockAmount > s.currentTier.unlockAmount) continue
+            if (meta.researchGate != null && meta.researchGate !in s.researchState.researchedUpgrades) continue
             if (inv.shelfStock + inv.backroomStock > 0) continue
             if ((pending[itemId] ?: 0) > 0) continue
             s = processAutoOrderItem(s, tm, itemId, 1, false, pending)

@@ -3,7 +3,13 @@ package com.example.superstoresimulator.domain
 import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.Transactions.TransactionEngine
 import com.example.superstoresimulator.domain.Transactions.TransactionLine
+import com.example.superstoresimulator.domain.helpers.FakeItemDao
 import com.example.superstoresimulator.domain.inventory.InventoryState
+import com.example.superstoresimulator.domain.items.Item
+import com.example.superstoresimulator.domain.items.ItemCategory
+import com.example.superstoresimulator.domain.items.ItemMetadataCache
+import com.example.superstoresimulator.domain.items.MoneyData
+import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.Assert.*
 import org.junit.Before
@@ -17,6 +23,7 @@ class TransactionEngineTest {
 
     private lateinit var engine: TransactionEngine
     private lateinit var baseState: GameState
+    private lateinit var cache: ItemMetadataCache
 
     /** Helper to create a batch with the given quantity (non-perishable for testing). */
     private fun batch(qty: Int, day: Int = 1): List<com.example.superstoresimulator.domain.inventory.ItemBatch> =
@@ -27,12 +34,31 @@ class TransactionEngineTest {
     private fun inv(shelfStock: Int, backroomStock: Int): InventoryState =
         InventoryState(shelfBatches = batch(shelfStock), backroomBatches = batch(backroomStock))
 
+    /** Ten starter items (ids 1..10) so basket generation has accessible items to pick. */
+    private fun makeCatalog(): List<Item> = (1..10).map { id ->
+        Item(
+            id = "item_${String.format("%03d", id)}",
+            name = "Item $id",
+            price = MoneyData(cents = 1_000),
+            description = "Test item $id",
+            unitCost = MoneyData(cents = 500),
+            category = ItemCategory.GROCERY,
+            casePack = 6,
+        )
+    }
+
     @Before
     fun setUp() {
+        // TransactionEngine builds baskets from cached, research-accessible items, so a
+        // populated cache is required — without it startNewTransaction returns no lines.
+        cache = ItemMetadataCache(FakeItemDao(makeCatalog()))
+        runBlocking { cache.initialize() }
+
         engine = TransactionEngine(
             salesTaxRate = 0.0825,
             refundChance = 0.10,
-            random = Random(42) // Fixed seed for deterministic tests
+            random = Random(42), // Fixed seed for deterministic tests
+            cache = cache,
         )
 
         // Create base state with inventory
@@ -524,7 +550,7 @@ class TransactionEngineTest {
 
     @Test
     fun testTaxCalculationAccuracy() {
-        val engine = TransactionEngine(salesTaxRate = 0.0825)
+        val engine = TransactionEngine(salesTaxRate = 0.0825, cache = cache)
         var state = engine.startNewTransaction(baseState)
 
         val expectedTax = Money.fromDollars(state.currentTransaction.subtotal.toDouble() * 0.0825)
@@ -536,7 +562,7 @@ class TransactionEngineTest {
     @Test
     fun testCustomTaxRate() {
         val customTaxRate = 0.10
-        val engine = TransactionEngine(salesTaxRate = customTaxRate)
+        val engine = TransactionEngine(salesTaxRate = customTaxRate, cache = cache)
         val state = engine.startNewTransaction(baseState)
 
         val expectedTax = Money.fromDollars(state.currentTransaction.subtotal.toDouble() * customTaxRate)

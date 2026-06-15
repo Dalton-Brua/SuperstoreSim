@@ -20,7 +20,6 @@ import java.time.Instant
 import com.example.superstoresimulator.domain.RefundRequest
 import com.example.superstoresimulator.domain.RefundLine
 import com.example.superstoresimulator.domain.inventory.InventoryState
-import com.example.superstoresimulator.domain.items.ItemUnlockTier
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 
 import com.example.superstoresimulator.domain.metrics.OutOfStockEvent
@@ -62,7 +61,6 @@ object LegacyGameStateDeserializer {
                 nextRefundId = json.getInt("nextRefundId"),
                 playerPausedTime = json.getBoolean("playerPausedTime"),
                 totalRevenue = Money(json.getLong("totalRevenue")),
-                currentTier = ItemUnlockTier.valueOf(json.getString("currentTier")),
                 currentStoreSize = StoreSize.valueOf(json.getString("currentStoreSize")),
                 playerRole = PlayerRole.fromLegacyName(json.getString("playerRole")),
                 playerCashierProgress = json.getDouble("playerCashierProgress").toFloat(),
