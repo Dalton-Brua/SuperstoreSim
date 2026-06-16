@@ -6,8 +6,10 @@ import com.example.superstoresimulator.domain.findRegisterById
 import com.example.superstoresimulator.domain.registers.RegisterManager
 import com.example.superstoresimulator.domain.store.StoreState
 import com.example.superstoresimulator.domain.traffic.TrafficManager
+import com.example.superstoresimulator.domain.traffic.TrafficSchedule
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.random.Random
 
 @Singleton
 class TrafficProcessor @Inject constructor(
@@ -29,7 +31,8 @@ class TrafficProcessor @Inject constructor(
                 if (s.pendingCustomers <= 0) break
                 if (reg.transactionActive) continue
                 if (!registerManager.isRegisterMannedAndOnShift(reg.registerId, s, currentHour)) continue
-                val baseBasket = (2..5).random()
+                val pattern = TrafficSchedule.getPatternForTime(s.currentTime)
+                val baseBasket = pattern.averageBasketSize - 1 + Random.nextInt(3)
                 val basketSize = (baseBasket * s.currentStoreSize.basketSizeMultiplier).toInt().coerceAtLeast(1)
                 s = transactionEngine.generateRandomTransaction(s, basketSize, reg.registerId)
                 if (s.registers.findRegisterById(reg.registerId)?.transactionActive == true) {
