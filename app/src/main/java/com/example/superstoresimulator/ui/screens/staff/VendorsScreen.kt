@@ -267,6 +267,12 @@ private fun VendorCard(
                 StatChip("Products", "${vendor.items.size}")
             }
 
+            Text(
+                text = "${vendor.commissionPercent}% of every sale of this vendor's products is paid back as commission. Raise reputation to lower the rate.",
+                fontSize = 11.sp,
+                color = TextSecondary,
+            )
+
             // Invest button
             if (vendor.atMaxRep) {
                 Surface(
