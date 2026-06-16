@@ -89,12 +89,12 @@ fun calculateSalesStats(
     range: SalesTimeRange
 ): SalesStats {
     if (metricsData.isEmpty()) return SalesStats(0, Money.ZERO, 0.0, 0)
-    val daysToAnalyze = when (range) {
+    val daysInPeriod = when (range) {
         SalesTimeRange.DAILY -> 1
         SalesTimeRange.WEEKLY -> 7
         SalesTimeRange.MONTHLY -> 30
     }
-    val relevantDays = metricsData.take(daysToAnalyze)
+    val relevantDays = metricsData.takeLast(daysInPeriod)
     var totalUnits = 0
     var totalRevenue = Money.ZERO
     relevantDays.forEach { dayMetrics ->
@@ -104,10 +104,13 @@ fun calculateSalesStats(
         }
     }
     val actualDays = relevantDays.size
+    val avgPerPeriod = if (actualDays > 0)
+        totalUnits.toDouble() / actualDays * daysInPeriod
+    else 0.0
     return SalesStats(
         totalUnitsSold = totalUnits,
         totalRevenue = totalRevenue,
-        averagePerPeriod = if (actualDays > 0) totalUnits.toDouble() / actualDays else 0.0,
+        averagePerPeriod = avgPerPeriod,
         daysAnalyzed = actualDays
     )
 }

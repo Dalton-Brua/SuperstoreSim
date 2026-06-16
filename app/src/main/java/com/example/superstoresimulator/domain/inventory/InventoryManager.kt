@@ -557,6 +557,31 @@ class InventoryManager(
         return totalStock < config.minStockThreshold
     }
 
+    /**
+     * Total units of [itemId] sold over the last 7 completed days (or fewer if
+     * not enough history exists yet). Used by the stocking manager to size orders
+     * based on actual demand rather than a fixed case-pack count.
+     */
+    private fun weeklySalesUnits(state: GameState, itemId: Int): Int {
+        val history = state.completedDayMetrics.takeLast(7)
+        if (history.isEmpty()) return 0
+        return history.sumOf { day ->
+            day.soldItemEvents.filter { it.itemId == itemId }.sumOf { it.quantitySold }
+        }
+    }
+
+    /**
+     * Compute how many case packs to order for [itemId] based on weekly sales,
+     * capped at the backroom capacity. Returns at least 1 when weekly sales > 0.
+     */
+    private fun casePacksForWeeklySales(state: GameState, itemId: Int): Int {
+        val weeklyUnits = weeklySalesUnits(state, itemId)
+        if (weeklyUnits <= 0) return 0
+        val casePack = cache.getItem(itemId)?.casePack ?: return 0
+        val needed = (weeklyUnits + casePack - 1) / casePack // ceil division
+        return minOf(needed, state.storeConfig.backroomCapPerItem)
+    }
+
     data class AutoOrderResult(val state: GameState, val itemsOrdered: Int)
 
     private fun buildPendingCasePacksMap(state: GameState): MutableMap<Int, Int> {
@@ -640,7 +665,9 @@ class InventoryManager(
             if (actionsUsed >= maxActions) break
             if (itemId in alreadyHandled) continue
             if (!shouldAutoOrderNormalItem(s, itemId, s.normalAutoOrderConfig)) continue
-            s = processAutoOrderItem(s, tm, itemId, s.normalAutoOrderConfig.casePacksPerItem, false, pending)
+            val casePacks = casePacksForWeeklySales(s, itemId)
+            if (casePacks <= 0) continue
+            s = processAutoOrderItem(s, tm, itemId, casePacks, false, pending)
             actionsUsed++
         }
         return AutoOrderResult(s, actionsUsed)
@@ -663,7 +690,8 @@ class InventoryManager(
             if (meta.researchGate != null && meta.researchGate !in s.researchState.researchedUpgrades) continue
             if (inv.shelfStock + inv.backroomStock > 0) continue
             if ((pending[itemId] ?: 0) > 0) continue
-            s = processAutoOrderItem(s, tm, itemId, 1, false, pending)
+            val casePacks = casePacksForWeeklySales(s, itemId).coerceAtLeast(1)
+            s = processAutoOrderItem(s, tm, itemId, casePacks, false, pending)
         }
         return s
     }
