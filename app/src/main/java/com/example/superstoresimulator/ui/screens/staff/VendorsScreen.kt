@@ -262,9 +262,10 @@ private fun VendorCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
+                val unlockedProducts = vendor.items.count { it.vendorTier <= currentVendorTier }
                 StatChip("Commission", "${vendor.commissionPercent}%")
                 StatChip("Restock", "${vendor.restockIntervalDays}d")
-                StatChip("Products", "${vendor.items.size}")
+                StatChip("Products", "$unlockedProducts")
             }
 
             Text(
@@ -273,50 +274,50 @@ private fun VendorCard(
                 color = TextSecondary,
             )
 
-            // Invest button
-            if (vendor.atMaxRep) {
-                Surface(
-                    color = SuccessSurface,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Default.Star, null, tint = Success, modifier = Modifier.size(18.dp))
-                        Text("Max reputation — lowest commission rate!", fontSize = 13.sp, color = SuccessTextDark)
-                    }
-                }
-            } else {
-                Button(
-                    onClick = onInvest,
-                    enabled = vendor.canInvest,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Primary,
-                        contentColor = TextWhite,
-                        disabledContainerColor = TextMuted,
-                        disabledContentColor = TextWhite,
-                    ),
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.TrendingUp, null, modifier = Modifier.size(16.dp))
-                    Text(
-                        text = if (vendor.canInvest) "  Invest ${vendor.investCost} (+5 rep)"
-                        else "  Need ${vendor.investCost}",
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-
-            // Expandable items section
+            // Expandable section
             AnimatedVisibility(
                 visible = expanded,
                 enter = expandVertically(),
                 exit = shrinkVertically(),
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Invest button
+                    if (vendor.atMaxRep) {
+                        Surface(
+                            color = SuccessSurface,
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Default.Star, null, tint = Success, modifier = Modifier.size(18.dp))
+                                Text("Max reputation — lowest commission rate!", fontSize = 13.sp, color = SuccessTextDark)
+                            }
+                        }
+                    } else {
+                        Button(
+                            onClick = onInvest,
+                            enabled = vendor.canInvest,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Primary,
+                                contentColor = TextWhite,
+                                disabledContainerColor = TextMuted,
+                                disabledContentColor = TextWhite,
+                            ),
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.TrendingUp, null, modifier = Modifier.size(16.dp))
+                            Text(
+                                text = if (vendor.canInvest) "  Invest ${vendor.investCost} (+5 rep)"
+                                else "  Need ${vendor.investCost}",
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+
                     HorizontalDivider(color = ProgressBarTrack)
                     Text(
                         "Products Supplied",

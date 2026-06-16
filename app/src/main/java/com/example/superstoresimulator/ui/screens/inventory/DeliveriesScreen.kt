@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +20,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,12 +37,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.ui.components.common.ScreenHeader
 import com.example.superstoresimulator.ui.state.DeliveryUIState
 import com.example.superstoresimulator.ui.state.TruckOrderLineUI
 import com.example.superstoresimulator.ui.state.TruckUIState
 import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.CautionDark
+import com.example.superstoresimulator.ui.theme.ChipSurface
 import com.example.superstoresimulator.ui.theme.ChipTextDark
 import com.example.superstoresimulator.ui.theme.DestructiveDark
 import com.example.superstoresimulator.ui.theme.LightBackground
@@ -48,6 +52,7 @@ import com.example.superstoresimulator.ui.theme.Primary
 import com.example.superstoresimulator.ui.theme.PrimaryDark
 import com.example.superstoresimulator.ui.theme.ProgressBarTrack
 import com.example.superstoresimulator.ui.theme.SuccessAccent
+import com.example.superstoresimulator.ui.theme.Teal
 import com.example.superstoresimulator.ui.theme.Violet
 import com.example.superstoresimulator.ui.theme.TextMuted
 import com.example.superstoresimulator.ui.theme.TextSecondary
@@ -62,10 +67,15 @@ fun DeliveriesScreen(
     onCancelOrderLine: (itemId: Int, truckId: Int) -> Unit,
     onDecrementOrderLine: (itemId: Int, truckId: Int) -> Unit,
     onRequestEarlyTruck: () -> Unit,
+    onTruckConfigChanged: (deliveryDays: Set<Int>, regularCap: Int, freshCap: Int) -> Unit = { _, _, _ -> },
+    onPurchaseExtraTruckSlot: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Track which truck cards are expanded
     val expandedTrucks = remember { mutableStateMapOf<Int, Boolean>() }
+
+    val truckConfig = deliveries.truckConfig
+    var selectedDays by remember { mutableStateOf(truckConfig.deliveryDays) }
 
     Column(
         modifier = modifier
@@ -82,29 +92,32 @@ fun DeliveriesScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Empty state
-        if (deliveries.regularTrucks.isEmpty() && deliveries.freshTruck == null && deliveries.vendorTrucks.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "No deliveries scheduled.\nPlace an order to see it here.",
-                    fontSize = 16.sp,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 24.sp,
-                )
-            }
-            return@Column
-        }
-
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // ── Delivery Schedule Card ──────────────────────────────────
+            item(key = "schedule_card") {
+                DeliveryScheduleCard(
+                    selectedDays = selectedDays,
+                    maxTrucksPerWeek = deliveries.maxTrucksPerWeek,
+                    freeTrucksPerWeek = deliveries.freeTrucksPerWeek,
+                    extraSlotsUnlocked = deliveries.extraTruckSlotsUnlocked,
+                    money = money,
+                    onDayToggle = { index ->
+                        val isSelected = index in selectedDays
+                        val isLastSelected = selectedDays.size == 1 && isSelected
+                        val atMax = selectedDays.size >= deliveries.maxTrucksPerWeek
+                        val disabledByLimit = !isSelected && atMax
+                        if (!isLastSelected && !disabledByLimit) {
+                            val newDays = if (isSelected) selectedDays - index else selectedDays + index
+                            selectedDays = newDays
+                            onTruckConfigChanged(newDays, truckConfig.regularTruckCapacityCasePacks, truckConfig.freshTruckCapacityCasePacks)
+                        }
+                    },
+                    onPurchaseExtraTruckSlot = onPurchaseExtraTruckSlot,
+                )
+            }
             // ── Fresh Truck ──────────────────────────────────────────────
             deliveries.freshTruck?.let { fresh ->
                 item(key = "fresh_header") {
@@ -385,3 +398,86 @@ private fun OrderLineRow(
     }
 }
 
+@Composable
+private fun DeliveryScheduleCard(
+    selectedDays: Set<Int>,
+    maxTrucksPerWeek: Int,
+    freeTrucksPerWeek: Int,
+    extraSlotsUnlocked: Int,
+    money: Money,
+    onDayToggle: (Int) -> Unit,
+    onPurchaseExtraTruckSlot: () -> Unit,
+) {
+    val atMaxDays = selectedDays.size >= maxTrucksPerWeek
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(CardWhite),
+        elevation = CardDefaults.cardElevation(2.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "Delivery Schedule",
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = PrimaryDark,
+            )
+            Text(
+                "Slots used: ${selectedDays.size} / $maxTrucksPerWeek" +
+                    if (extraSlotsUnlocked > 0) " ($freeTrucksPerWeek free + $extraSlotsUnlocked purchased)" else " (free)",
+                fontSize = 11.sp,
+                color = if (atMaxDays) CautionDark else TextSecondary,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                GameTime.SHORT_DAY_NAMES.forEachIndexed { index, label ->
+                    val isSelected = index in selectedDays
+                    val isLastSelected = selectedDays.size == 1 && isSelected
+                    val disabledByLimit = !isSelected && atMaxDays
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { onDayToggle(index) },
+                        label = { Text(label, fontSize = 11.sp) },
+                        enabled = !isLastSelected && !disabledByLimit,
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Primary,
+                            selectedLabelColor = TextWhite,
+                            labelColor = ChipTextDark,
+                            disabledContainerColor = ChipSurface,
+                            disabledLabelColor = TextMuted,
+                            disabledSelectedContainerColor = Primary.copy(alpha = 0.5f),
+                        ),
+                    )
+                }
+            }
+            if (atMaxDays && maxTrucksPerWeek < 7) {
+                Button(
+                    onClick = onPurchaseExtraTruckSlot,
+                    enabled = money >= TruckConfig.EXTRA_SLOT_COST,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Teal,
+                        contentColor = TextWhite,
+                        disabledContainerColor = ChipSurface,
+                        disabledContentColor = TextMuted,
+                    ),
+                ) {
+                    Text(
+                        if (money >= TruckConfig.EXTRA_SLOT_COST) "🚛 Add Truck Slot (${TruckConfig.EXTRA_SLOT_COST})"
+                        else "🚛 Add Truck Slot — need ${TruckConfig.EXTRA_SLOT_COST}",
+                        fontSize = 12.sp,
+                    )
+                }
+                Text(
+                    "Purchase an extra weekly delivery day beyond your free limit.",
+                    fontSize = 10.sp,
+                    color = TextSecondary,
+                )
+            }
+        }
+    }
+}

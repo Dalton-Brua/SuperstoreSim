@@ -295,6 +295,7 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
      * delivery day via [updateConfig].
      */
     fun purchaseExtraTruckSlot(state: GameState): GameState {
+        if (maxDeliveryDaysAllowed(state) >= 7) return state
         val cost = TruckConfig.EXTRA_SLOT_COST
         if (state.money < cost) return state
         return state.copy(

@@ -24,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.ui.components.PlayerRoleButtons
@@ -68,10 +67,6 @@ fun StoreHomeScreen (
     onUpgradeStore: () -> Unit = {},
     onSave: () -> Unit = {},
     onReset: () -> Unit = {},
-    truckConfig: TruckConfig = TruckConfig(),
-    currentStoreSize: com.example.superstoresimulator.domain.store.StoreSize = com.example.superstoresimulator.domain.store.StoreSize.MOM_AND_POP,
-    onTruckConfigChanged: (Set<Int>, Int, Int) -> Unit = { _, _, _ -> },
-    onPurchaseExtraTruckSlot: () -> Unit = {},
     onPurchaseRegister: () -> Unit = {},
     onAssignPlayerToRegister: (registerId: Int?) -> Unit = {},
     onAssignCashierToRegister: (cashierId: Int?, registerId: Int) -> Unit = { _, _ -> },
@@ -264,10 +259,6 @@ fun StoreHomeScreen (
                 onClose = { settingsOpen = false },
                 onSave = onSave,
                 onReset = onReset,
-                truckConfig = truckConfig,
-                currentStoreSize = currentStoreSize,
-                onTruckConfigChanged = onTruckConfigChanged,
-                onPurchaseExtraTruckSlot = onPurchaseExtraTruckSlot,
                 modifier = Modifier.padding(bottom = contentPadding.calculateBottomPadding()),
             )
         }

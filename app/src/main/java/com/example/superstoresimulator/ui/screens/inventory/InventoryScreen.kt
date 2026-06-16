@@ -613,6 +613,8 @@ fun InventoryAndFreshScreen(
     onCancelOrderLine: (itemId: Int, truckId: Int) -> Unit = { _, _ -> },
     onDecrementOrderLine: (itemId: Int, truckId: Int) -> Unit = { _, _ -> },
     onRequestEarlyTruck: () -> Unit = {},
+    onTruckConfigChanged: (deliveryDays: Set<Int>, regularCap: Int, freshCap: Int) -> Unit = { _, _, _ -> },
+    onPurchaseExtraTruckSlot: () -> Unit = {},
     onItemClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -729,6 +731,8 @@ fun InventoryAndFreshScreen(
                     onCancelOrderLine = onCancelOrderLine,
                     onDecrementOrderLine = onDecrementOrderLine,
                     onRequestEarlyTruck = onRequestEarlyTruck,
+                    onTruckConfigChanged = onTruckConfigChanged,
+                    onPurchaseExtraTruckSlot = onPurchaseExtraTruckSlot,
                 )
             }
         }

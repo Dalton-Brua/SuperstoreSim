@@ -56,14 +56,6 @@ fun MainScreenPager(
                 onUpgradeStore = { onEvent(GameEvent.UpgradeStoreSize) },
                 onSave = { onEvent(GameEvent.SaveGame) },
                 onReset = { onEvent(GameEvent.ResetGame) },
-                truckConfig = state.delivery.truckConfig,
-                currentStoreSize = state.time?.currentStoreSize ?: StoreSize.MOM_AND_POP,
-                onTruckConfigChanged = { days, regularCap, freshCap ->
-                    onEvent(GameEvent.UpdateTruckConfig(days, regularCap, freshCap))
-                },
-                onPurchaseExtraTruckSlot = {
-                    onEvent(GameEvent.PurchaseExtraTruckSlot)
-                },
                 onPurchaseRegister = {
                     onEvent(GameEvent.PurchaseRegister)
                 },
@@ -118,6 +110,12 @@ fun MainScreenPager(
                 },
                 onRequestEarlyTruck = {
                     onEvent(GameEvent.RequestEarlyTruck)
+                },
+                onTruckConfigChanged = { days, regularCap, freshCap ->
+                    onEvent(GameEvent.UpdateTruckConfig(days, regularCap, freshCap))
+                },
+                onPurchaseExtraTruckSlot = {
+                    onEvent(GameEvent.PurchaseExtraTruckSlot)
                 },
                 onItemClick = { itemId -> navState.selectedInventoryItemId = itemId },
                 modifier = Modifier.padding(paddingValues)
