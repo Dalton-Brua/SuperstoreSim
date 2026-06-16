@@ -19,7 +19,7 @@ paths. Findings below are ranked most-severe first.
 | 1 | **Blocker** | Fresh subsystem gated on nonexistent id `prod_fresh_basics` | StaffManager.kt:383 |
 | 2 | **Blocker** | Test source set won't compile (deleted symbols) | test/* |
 | 3 | **High** | `prevState` leaks across load/reset in @Singleton processors | ResearchTickProcessor.kt:12 |
-| 4 | **High** | `onTruckDelivery`/`onSpoilage` dead — insight sources never fire | ResearchTickProcessor.kt:44 |
+| 4 | **RESOLVED** | `onTruckDelivery`/`onSpoilage` dead (fire at midnight, no analyst on shift) — deleted | ResearchTickProcessor.kt:44 |
 | 5 | **Med** | `visibleUpgrades` ignores storeSize/gateCheck → assign no-ops | ProgressionUiMapper.kt:60 |
 | 6 | **High-impact (PENDING)** | items.json never migrated → all gating inert | res/raw/items.json |
 | 7 | **Med** | Bulk Order gated on `if (true)` | InventoryScreen.kt:257 |
@@ -74,16 +74,19 @@ cheap upgrades); tutorial diffs a stale backroom/shelf baseline and mis-advances
 `GameEngine.loadState()` and `seedNewGame()`. (Deeper option: drive deltas off explicit
 event counters carried in `GameState` so the computation is pure and reload-safe.)
 
-### 4. `onTruckDelivery` / `onSpoilage` are dead code
+### 4. `onTruckDelivery` / `onSpoilage` are dead code — RESOLVED (deleted)
 **File**: `ResearchTickProcessor.kt:44,50`
 **Problem**: Zero callers (verified by grep). `TickOrchestrator` only calls `process(s)`.
-So `DELIVERY_INSIGHT` (1.5 — the largest source) and `SPOILAGE_INSIGHT` (0.2) never
-contribute; research accrues only from transactions/stocking/lost-customers and progresses
-far slower than designed.
-**Fix**: Wire them in. Call `researchTickProcessor.onTruckDelivery(state)` at the truck-arrival
-site (TruckManager/delivery application) and `onSpoilage(state)` at the spoilage site
-(SpoilageManager), or fold both into per-tick deltas inside `process()` using existing
-metrics. Delete whichever path you don't wire so there's no dead method.
+So `DELIVERY_INSIGHT` (1.5) and `SPOILAGE_INSIGHT` (0.2) never contribute.
+**Original fix proposal was wrong**: "Wire them in at the truck-arrival / spoilage site"
+would not work. Both events fire only at **day rollover** (`DayRolloverProcessor` —
+spoilage keyed to `expirationDay <= currentDay`, trucks to `scheduledArrivalDay <= currentDay`),
+which runs on the **hour-0 (midnight)** tick. `StaffShift` allows `startHour 6..20` ending
+by 21:00, so **no analyst can ever be on shift at hour 0** — `distributeInsightPoints`
+hits its `onShiftIds.isEmpty()` guard and returns zero regardless of wiring.
+**Resolution**: Dropped both insight sources entirely — deleted `onTruckDelivery`/`onSpoilage`
+methods and the `DELIVERY_INSIGHT`/`SPOILAGE_INSIGHT` constants. No retune; the remaining
+three sources (transaction/stock/lost-customer) already pace research acceptably.
 
 ---
 

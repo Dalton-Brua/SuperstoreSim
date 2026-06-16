@@ -6,6 +6,7 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
+import com.example.superstoresimulator.domain.staff.StaffManager
 import com.example.superstoresimulator.domain.store.StoreSize
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,8 +19,6 @@ class ResearchManager @Inject constructor(
     companion object {
         const val TRANSACTION_INSIGHT = 0.3f
         const val STOCK_INSIGHT = 0.05f
-        const val SPOILAGE_INSIGHT = 0.2f
-        const val DELIVERY_INSIGHT = 1.5f
         const val LOST_CUSTOMER_INSIGHT = 0.15f
         val CONSULTING_CASH_PER_POINT = Money(500L) // $5.00
 
@@ -29,24 +28,25 @@ class ResearchManager @Inject constructor(
 
     fun distributeInsightPoints(state: GameState, baseEventPoints: Float): GameState {
         val currentHour = state.currentTime.hour
-        val analysts = state.hiredEntityRegistry.hiredEntities.filter {
-            it.entityDefinition == EntityDef.MARKET_ANALYST
-        }
-        if (analysts.isEmpty()) return state
 
-        val onShiftAnalysts = analysts.filter { analyst ->
-            val shift = state.staffSchedules.firstOrNull { it.entityId == analyst.id }
-            shift != null && shift.isOnShift(currentHour)
-        }
-        if (onShiftAnalysts.isEmpty()) return state
+        // Canonical staff weighting (throughputWeight * levelMultiplier * trait.throughputMultiplier)
+        // lives in StaffManager — reuse it so analyst traits scale insight/consulting like every other role.
+        val activeWeights = StaffManager.activeWeightedCountWithIds(
+            EntityDef.MARKET_ANALYST,
+            currentHour,
+            state.staffSchedules,
+            state.hiredEntityRegistry,
+        )
+        if (activeWeights.onShiftIds.isEmpty()) return state
+
+        val weightByAnalystId = activeWeights.onShiftIds.zip(activeWeights.perEntityWeights)
 
         // Group by assignment
         val researchGroups = mutableMapOf<String, MutableList<Float>>()
         var cashEarned = Money.ZERO
 
-        for (analyst in onShiftAnalysts) {
-            val assignment = state.researchState.analystAssignments[analyst.id]
-            val effectiveWeight = analyst.throughputWeight * analyst.levelMultiplier
+        for ((analystId, effectiveWeight) in weightByAnalystId) {
+            val assignment = state.researchState.analystAssignments[analystId]
             when (assignment) {
                 is AnalystAssignment.Research -> {
                     researchGroups.getOrPut(assignment.upgradeId) { mutableListOf() }

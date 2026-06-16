@@ -40,16 +40,4 @@ class ResearchTickProcessor @Inject constructor(
         s = researchManager.checkCompletions(s)
         return s
     }
-
-    fun onTruckDelivery(state: GameState): GameState {
-        var s = researchManager.distributeInsightPoints(state, ResearchManager.DELIVERY_INSIGHT)
-        s = researchManager.checkCompletions(s)
-        return s
-    }
-
-    fun onSpoilage(state: GameState): GameState {
-        var s = researchManager.distributeInsightPoints(state, ResearchManager.SPOILAGE_INSIGHT)
-        s = researchManager.checkCompletions(s)
-        return s
-    }
 }
