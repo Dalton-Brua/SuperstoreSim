@@ -14,6 +14,12 @@ enum class StoreSize(
     val upgradeCost: Money? = null,  // null for starting size
     /** Maximum number of registers that can be owned at this store size. */
     val maxRegisters: Int,
+    /**
+     * Research upgrade that must be completed before advancing to this size, or null
+     * for the starting size. Resolved against [ResearchUpgradeRegistry] by
+     * [com.example.superstoresimulator.domain.research.ResearchGates.validate].
+     */
+    val requiredUpgradeId: String? = null,
 ) {
     MOM_AND_POP(
         displayName = "Mom & Pop Store",
@@ -23,7 +29,8 @@ enum class StoreSize(
         trafficMultiplier = 1.0f,        // Baseline traffic
         basketSizeMultiplier = 1.0f,     // Baseline basket
         upgradeCost = null,              // Starting size
-        maxRegisters = 1
+        maxRegisters = 1,
+        requiredUpgradeId = null,        // Starting size — no research gate
     ),
     SMALL_GROCERY(
         displayName = "Small Grocery",
@@ -33,7 +40,8 @@ enum class StoreSize(
         trafficMultiplier = 2.0f,        // 2× traffic
         basketSizeMultiplier = 1.25f,    // +25% basket
         upgradeCost = Money(100_000),    // $1,000 to upgrade
-        maxRegisters = 2
+        maxRegisters = 2,
+        requiredUpgradeId = "store_small_grocery",
     ),
     GROCERY_STORE(
         displayName = "Grocery Store",
@@ -43,7 +51,8 @@ enum class StoreSize(
         trafficMultiplier = 4.0f,        // 4× traffic (3² = 3×3)
         basketSizeMultiplier = 1.75f,     // +75% basket
         upgradeCost = Money(2_000_000),  // $20,000 to upgrade
-        maxRegisters = 3
+        maxRegisters = 3,
+        requiredUpgradeId = "store_grocery",
     ),
     SUPERSTORE(
         displayName = "Superstore",
@@ -53,7 +62,8 @@ enum class StoreSize(
         trafficMultiplier = 8.0f,       // 8× traffic (3³ = 9×3)
         basketSizeMultiplier = 2.25f,    // +125% basket
         upgradeCost = Money(20_000_000), // $200,000 to upgrade
-        maxRegisters = 5
+        maxRegisters = 5,
+        requiredUpgradeId = "store_superstore",
     ),
     SUPERCENTER(
         displayName = "Supercenter",
@@ -63,7 +73,8 @@ enum class StoreSize(
         trafficMultiplier = 16.0f,       // 16× traffic (3⁴ = 27×3)
         basketSizeMultiplier = 3.0f,     // +200% basket
         upgradeCost = Money(100_000_000), // $1,000,000 to upgrade
-        maxRegisters = 8
+        maxRegisters = 8,
+        requiredUpgradeId = "store_supercenter",
     );
 
     companion object {

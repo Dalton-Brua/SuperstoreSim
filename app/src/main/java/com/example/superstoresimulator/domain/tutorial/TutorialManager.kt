@@ -2,6 +2,7 @@ package com.example.superstoresimulator.domain.tutorial
 
 import com.example.superstoresimulator.domain.Entities.EntityDef
 import com.example.superstoresimulator.domain.GameState
+import com.example.superstoresimulator.domain.research.ResearchGates
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -65,13 +66,16 @@ class TutorialManager @Inject constructor() {
             FEATURE_HIRE_STAFF -> stepDone(TutorialStep.COMPLETE_TRANSACTION)
             FEATURE_HIRE_ANALYST -> stepDone(TutorialStep.HIRE_STAFF)
             FEATURE_RESEARCH_TAB -> ts.tutorialComplete
-            FEATURE_PRICING_UI -> ts.tutorialComplete && "category_pricing" in researched
-            FEATURE_DELIVERY_SETTINGS -> ts.tutorialComplete && "extra_truck_slots" in researched
-            FEATURE_STAFF_SCHEDULING -> ts.tutorialComplete && "staff_scheduling" in researched
-            FEATURE_REGISTERS -> ts.tutorialComplete && "register_expansion" in researched
-            FEATURE_BULK_ORDERING -> ts.tutorialComplete && "bulk_ordering" in researched
-            FEATURE_MANAGER_HIRING -> ts.tutorialComplete && "manager_hiring" in researched
-            else -> true
+            else -> {
+                // Research-gated features unlock once the tutorial is complete and the
+                // upgrade in ResearchGates.FEATURE_UPGRADE is researched. The id is
+                // validated against the registry by ResearchGates.validate(), so a
+                // dangling gate is a startup/test failure rather than a feature that
+                // never appears. Unknown keys default to visible.
+                val gate = ResearchGates.FEATURE_UPGRADE[feature]
+                if (gate != null) ts.tutorialComplete && gate in researched
+                else true
+            }
         }
     }
 
@@ -88,7 +92,6 @@ class TutorialManager @Inject constructor() {
         const val FEATURE_RESEARCH_TAB = "research_tab"
         const val FEATURE_PRICING_UI = "pricing_ui"
         const val FEATURE_DELIVERY_SETTINGS = "delivery_settings"
-        const val FEATURE_STAFF_SCHEDULING = "staff_scheduling"
         const val FEATURE_REGISTERS = "registers"
         const val FEATURE_BULK_ORDERING = "bulk_ordering"
         const val FEATURE_MANAGER_HIRING = "manager_hiring"
@@ -96,7 +99,7 @@ class TutorialManager @Inject constructor() {
         val ALL_FEATURES = listOf(
             FEATURE_ORDER_ITEMS, FEATURE_STORE_TOGGLE, FEATURE_PLAYER_ROLES,
             FEATURE_HIRE_STAFF, FEATURE_HIRE_ANALYST, FEATURE_RESEARCH_TAB,
-            FEATURE_PRICING_UI, FEATURE_DELIVERY_SETTINGS, FEATURE_STAFF_SCHEDULING,
+            FEATURE_PRICING_UI, FEATURE_DELIVERY_SETTINGS,
             FEATURE_REGISTERS, FEATURE_BULK_ORDERING, FEATURE_MANAGER_HIRING,
         )
     }

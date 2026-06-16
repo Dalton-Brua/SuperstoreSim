@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.ItemCategory
+import com.example.superstoresimulator.domain.research.ResearchGates
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 import com.example.superstoresimulator.ui.components.cards.InventoryItemCard
 import com.example.superstoresimulator.ui.components.common.ScreenHeader
@@ -609,7 +610,7 @@ fun InventoryAndFreshScreen(
     onItemClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val showFreshTab = "prod_fresh_basics" in researchedUpgrades
+    val showFreshTab = ResearchGates.hasFreshSubsystem(researchedUpgrades)
 
     // Deliveries tab is always visible (truck system replaces instant delivery for all tiers)
     val tabs = if (showFreshTab) listOf("Inventory", "Fresh", "Deliveries") else listOf("Inventory", "Deliveries")

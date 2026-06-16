@@ -7,6 +7,7 @@ import com.example.superstoresimulator.domain.RegisterState
 import com.example.superstoresimulator.domain.StaffShift
 import com.example.superstoresimulator.domain.findRegisterById
 import com.example.superstoresimulator.domain.player.PlayerRole
+import com.example.superstoresimulator.domain.research.ResearchGates
 import com.example.superstoresimulator.domain.staff.StaffManager
 import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.updateRegister
@@ -17,6 +18,7 @@ import javax.inject.Singleton
 class RegisterManager @Inject constructor() {
 
     fun purchaseRegister(state: GameState): GameState {
+        if (!ResearchGates.isResearched(state.researchState.researchedUpgrades, ResearchGates.REGISTER_EXPANSION)) return state
         if (state.ownedRegisterCount >= state.currentStoreSize.maxRegisters) return state
         val cost = StoreSize.nextRegisterCost(state.ownedRegisterCount)
         if (state.money < cost) return state

@@ -49,6 +49,7 @@ import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.StoreManagerConfig
+import com.example.superstoresimulator.domain.research.ResearchGates
 import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.staff.EmployeeActivity
 import com.example.superstoresimulator.ui.components.common.ScreenHeader
@@ -85,7 +86,7 @@ import kotlinx.coroutines.launch
 /**
  * Hiring criteria gate. A staff type only appears in the list (and is hireable in the
  * detail screen) once its requirement is met:
- *  - fresh_handler: requires the Fresh tab unlock ("prod_fresh_basics").
+ *  - fresh_handler: requires the fresh subsystem unlock (any perishable department).
  *  - manager: requires store size of at least Small Grocery.
  * All other types are always available.
  */
@@ -94,7 +95,7 @@ fun canHireEntity(
     researchedUpgrades: Set<String>,
     currentStoreSize: StoreSize,
 ): Boolean = when (def.key) {
-    "fresh_handler" -> "prod_fresh_basics" in researchedUpgrades
+    "fresh_handler" -> ResearchGates.hasFreshSubsystem(researchedUpgrades)
     "manager" -> currentStoreSize.ordinal >= StoreSize.SMALL_GROCERY.ordinal
     else -> true
 }
@@ -258,7 +259,7 @@ fun EntityTypeDetailScreen(
 
     val entities = state.registry.getByDef(def)
     val isFreshHandlers = def.key == "fresh_handler"
-    val canHireFreshHandlers = "prod_fresh_basics" in researchedUpgrades
+    val canHireFreshHandlers = ResearchGates.hasFreshSubsystem(researchedUpgrades)
     val isManager = def.key == "manager"
     val canHireManagers = currentStoreSize.ordinal >= StoreSize.SMALL_GROCERY.ordinal
 

@@ -1,10 +1,14 @@
 package com.example.superstoresimulator.domain
 
 import com.example.superstoresimulator.domain.registers.RegisterManager
+import com.example.superstoresimulator.domain.research.ResearchGates
+import com.example.superstoresimulator.domain.research.ResearchState
 import com.example.superstoresimulator.domain.store.StoreSize
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+
+private val REGISTER_RESEARCH = ResearchState(researchedUpgrades = setOf(ResearchGates.REGISTER_EXPANSION))
 
 class RegisterTest {
 
@@ -72,6 +76,7 @@ class RegisterTest {
         val state = GameState(
             money = Money(50_000L),
             currentStoreSize = StoreSize.SMALL_GROCERY,
+            researchState = REGISTER_RESEARCH,
         )
         val result = registerManager.purchaseRegister(state)
         assertEquals(2, result.registers.size)
@@ -80,11 +85,25 @@ class RegisterTest {
     }
 
     @Test
+    fun `purchaseRegister blocked without register_expansion research`() {
+        val registerManager = RegisterManager()
+        val state = GameState(
+            money = Money(50_000L),
+            currentStoreSize = StoreSize.SMALL_GROCERY,
+            // no researchState — register_expansion not researched
+        )
+        val result = registerManager.purchaseRegister(state)
+        assertEquals("Should not add register without research", 1, result.registers.size)
+        assertEquals(Money(50_000L), result.money)
+    }
+
+    @Test
     fun `purchaseRegister blocked when at max for store size`() {
         val registerManager = RegisterManager()
         val state = GameState(
             money = Money(500_000L),
             currentStoreSize = StoreSize.MOM_AND_POP,
+            researchState = REGISTER_RESEARCH,
         )
         val result = registerManager.purchaseRegister(state)
         assertEquals("Should not add register at MOM_AND_POP max", 1, result.registers.size)
@@ -97,6 +116,7 @@ class RegisterTest {
         val state = GameState(
             money = Money(100L),
             currentStoreSize = StoreSize.SMALL_GROCERY,
+            researchState = REGISTER_RESEARCH,
         )
         val result = registerManager.purchaseRegister(state)
         assertEquals(1, result.registers.size)
@@ -109,6 +129,7 @@ class RegisterTest {
         var state = GameState(
             money = Money(500_000L),
             currentStoreSize = StoreSize.GROCERY_STORE,
+            researchState = REGISTER_RESEARCH,
         )
         state = registerManager.purchaseRegister(state)
         state = registerManager.purchaseRegister(state)

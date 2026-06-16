@@ -1,6 +1,7 @@
 package com.example.superstoresimulator.domain.store
 
 import com.example.superstoresimulator.domain.GameState
+import com.example.superstoresimulator.domain.research.ResearchGates
 import com.example.superstoresimulator.domain.traffic.TrafficManager
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,6 +20,8 @@ class StoreController @Inject constructor() {
      *
      * Guards:
      *  - Returns the same state unchanged if already at max size (XL).
+     *  - Returns the same state unchanged if the size's [StoreSize.requiredUpgradeId]
+     *    research has not been completed.
      *  - Returns the same state unchanged if player doesn't have enough cash.
      *
      * On success: deducts [StoreSize.upgradeCost] and advances to next size.
@@ -26,7 +29,10 @@ class StoreController @Inject constructor() {
     fun upgradeStoreSize(state: GameState): GameState {
         val nextSize = StoreSize.nextSize(state.currentStoreSize) ?: return state
         val cost = nextSize.upgradeCost ?: return state
-        
+
+        val gate = nextSize.requiredUpgradeId
+        if (gate != null && !ResearchGates.isResearched(state.researchState.researchedUpgrades, gate)) return state
+
         if (state.money < cost) return state
 
         return state.copy(

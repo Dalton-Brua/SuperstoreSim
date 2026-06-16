@@ -10,6 +10,7 @@ import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.research.AnalystAssignment
+import com.example.superstoresimulator.domain.research.ResearchGates
 import com.example.superstoresimulator.domain.RegisterState
 import com.example.superstoresimulator.domain.StaffShift
 import com.example.superstoresimulator.domain.inventory.InventoryState
@@ -395,7 +396,7 @@ class StaffManager @Inject constructor() {
 
         if (config.autoHireCashiers && cashierCount == 0 && result.registers.isNotEmpty()) bootstrapHireIfNeeded(EntityDef.CASHIER, "No cashiers")
         if (config.autoHireStockers && stockerCount == 0) bootstrapHireIfNeeded(EntityDef.STOCKER, "No stockers")
-        val hasFreshItems = state.researchState.researchedUpgrades.contains("prod_fresh_basics")
+        val hasFreshItems = ResearchGates.hasFreshSubsystem(state.researchState.researchedUpgrades)
         if (config.autoHireFreshHandlers && freshCount == 0 && hasFreshItems) bootstrapHireIfNeeded(EntityDef.FRESH_HANDLER, "No fresh staff")
 
         // Cashier auto-hire: avg customers in line vs register count
