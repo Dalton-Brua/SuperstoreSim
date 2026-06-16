@@ -150,7 +150,7 @@ fun StoreHomeScreen (
                 )
             }
 
-            // Staff activity card (stockers, fresh handlers)
+            // Staff activity card (all roles incl. cashiers)
             item {
                 StaffActivityCard(
                     scheduleEntries = state.staff.scheduleEntries,
@@ -169,6 +169,7 @@ fun StoreHomeScreen (
                         dailyRent = state.time.dailyRent,
                         dailyWages = state.time.dailyWages,
                         playerMoney = state.app.money,
+                        researchedUpgrades = state.research.researchedUpgrades,
                         onUpgrade = onUpgradeStore,
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )

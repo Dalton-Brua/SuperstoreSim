@@ -321,6 +321,12 @@ data class PricingUIState(
     val basketMultiplier: Float = 1.0f,
     val reputationLabel: String = "Standard",
     val itemsMarkedDown: Int = 0,
+    /** `default_markup` researched — show the store-wide Default Markup slider. */
+    val defaultMarkupUnlocked: Boolean = false,
+    /** `category_pricing` researched — show the per-category markup sliders. */
+    val categoryPricingUnlocked: Boolean = false,
+    /** `item_pricing` researched — show the per-item price override slider. */
+    val itemPricingUnlocked: Boolean = false,
 )
 
 // ── Vendor System UI State ──────────────────────────────────────────────────

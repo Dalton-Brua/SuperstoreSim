@@ -55,7 +55,7 @@ object ResearchUpgradeRegistry {
             teaserDescription = "Take your store to the next level.",
             category = ResearchCategory.STORE_EXPANSION,
             researchCost = 25,
-            prerequisites = listOf("store_small_grocery"),
+            prerequisites = listOf("register_expansion"),
         ))
         put("store_superstore", ResearchableUpgrade(
             id = "store_superstore",
@@ -82,6 +82,7 @@ object ResearchUpgradeRegistry {
             teaserDescription = "Longer lines mean lost sales...",
             category = ResearchCategory.STORE_EXPANSION,
             researchCost = 15,
+            prerequisites = listOf("store_small_grocery"),
         ))
 
         // ── Product Lines: Grocery ────────────────────────────────────────────
@@ -726,6 +727,16 @@ object ResearchUpgradeRegistry {
         ))
 
         // ── Pricing ───────────────────────────────────────────────────────────
+        // Tiered chain: store-wide markup → category markups → per-item overrides.
+        // Each level requires the broader one above it.
+        put("default_markup", ResearchableUpgrade(
+            id = "default_markup",
+            displayName = "Store Pricing Strategy",
+            description = "Unlocks the store-wide default markup slider.",
+            teaserDescription = "A consistent markup strategy builds margins.",
+            category = ResearchCategory.PRICING,
+            researchCost = 10,
+        ))
         put("category_pricing", ResearchableUpgrade(
             id = "category_pricing",
             displayName = "Category Pricing Analysis",
@@ -733,6 +744,7 @@ object ResearchUpgradeRegistry {
             teaserDescription = "Different categories have different price sensitivities.",
             category = ResearchCategory.PRICING,
             researchCost = 15,
+            prerequisites = listOf("default_markup"),
         ))
         put("item_pricing", ResearchableUpgrade(
             id = "item_pricing",
@@ -741,15 +753,6 @@ object ResearchUpgradeRegistry {
             teaserDescription = "Surgical pricing is the most profitable strategy.",
             category = ResearchCategory.PRICING,
             researchCost = 20,
-            prerequisites = listOf("category_pricing"),
-        ))
-        put("default_markup", ResearchableUpgrade(
-            id = "default_markup",
-            displayName = "Store Pricing Strategy",
-            description = "Unlocks the store-wide default markup slider.",
-            teaserDescription = "A consistent markup strategy builds margins.",
-            category = ResearchCategory.PRICING,
-            researchCost = 10,
             prerequisites = listOf("category_pricing"),
         ))
 

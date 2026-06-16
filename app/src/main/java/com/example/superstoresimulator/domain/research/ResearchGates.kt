@@ -32,16 +32,28 @@ object ResearchGates {
     /** Required upgrade for purchasing additional registers. */
     const val REGISTER_EXPANSION = "register_expansion"
 
+    /** Bulk-ordering UI (the Bulk Order button + dialog on the Inventory screen). */
+    const val BULK_ORDERING = "bulk_ordering"
+
+    /** Category-level markup sliders (gates the whole Store Pricing card via [FEATURE_UPGRADE]). */
+    const val CATEGORY_PRICING = "category_pricing"
+
+    /** Store-wide default markup slider. */
+    const val DEFAULT_MARKUP = "default_markup"
+
+    /** Per-item price override sliders on the item detail screen. */
+    const val ITEM_PRICING = "item_pricing"
+
     /**
      * Tutorial feature key (a [TutorialManager] `FEATURE_*` constant) → the research
      * upgrade that unlocks it once the tutorial is complete. Features absent from this
      * map have no research gate.
      */
     val FEATURE_UPGRADE: Map<String, String> = mapOf(
-        TutorialManager.FEATURE_PRICING_UI to "category_pricing",
+        TutorialManager.FEATURE_PRICING_UI to DEFAULT_MARKUP,
         TutorialManager.FEATURE_DELIVERY_SETTINGS to "extra_truck_slots",
         TutorialManager.FEATURE_REGISTERS to REGISTER_EXPANSION,
-        TutorialManager.FEATURE_BULK_ORDERING to "bulk_ordering",
+        TutorialManager.FEATURE_BULK_ORDERING to BULK_ORDERING,
         TutorialManager.FEATURE_MANAGER_HIRING to "manager_hiring",
     )
 
@@ -57,6 +69,7 @@ object ResearchGates {
     private fun referencedUpgradeIds(): Set<String> =
         FRESH_SUBSYSTEM_GATES +
             FEATURE_UPGRADE.values +
+            setOf(CATEGORY_PRICING, DEFAULT_MARKUP, ITEM_PRICING) +
             StoreSize.entries.mapNotNull { it.requiredUpgradeId }
 
     /**

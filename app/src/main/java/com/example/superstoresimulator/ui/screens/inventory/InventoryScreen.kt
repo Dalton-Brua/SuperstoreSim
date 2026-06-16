@@ -255,8 +255,8 @@ private fun InventoryListScreen(
                 modifier = Modifier.weight(1f)
             )
 
-            if (true) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (ResearchGates.BULK_ORDERING in researchedUpgrades) {
                     Button(
                         onClick = onShowBulkOrderDialog,
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryDark),
@@ -276,6 +276,7 @@ private fun InventoryListScreen(
                             fontWeight = FontWeight.SemiBold,
                             color = TextWhite
                         )
+                    }
                     }
 
                     Button(
@@ -308,8 +309,6 @@ private fun InventoryListScreen(
                     }
                 }
             }
-        }
-
         // Incomplete normal orders banner
         if (incompleteNormalOrdersCount > 0) {
             Spacer(Modifier.height(8.dp))
@@ -330,8 +329,14 @@ private fun InventoryListScreen(
 
         Spacer(Modifier.height(16.dp))
 
+        // Only show chips for categories that have at least one accessible item.
+        // state.items is already research-gated (see MemoizedInventoryMapper), so a
+        // research-locked category simply has no items here and its chip is hidden.
+        val availableCategories = remember(state.items) {
+            ItemCategory.entries.filter { cat -> state.items.any { it.category == cat } }
+        }
         InventoryCategoryBar(
-            categories = ItemCategory.entries,
+            categories = availableCategories,
             selected = state.selectedCategory,
             onSelect = onSelectCategory
         )
@@ -454,6 +459,7 @@ internal fun InventoryItemDetailScreen(
     onSetItemOverride: (Int, Int) -> Unit = { _, _ -> },
     onClearMarkdown: (Int) -> Unit = { _ -> },
     itemOverridePercent: Int = 0,
+    itemPricingUnlocked: Boolean = false,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -508,7 +514,7 @@ internal fun InventoryItemDetailScreen(
                 PricingCard(
                     item = item,
                     itemOverridePercent = itemOverridePercent,
-                    onSetItemOverride = onSetItemOverride,
+                    onSetItemOverride = if (itemPricingUnlocked) onSetItemOverride else null,
                     onClearMarkdown = onClearMarkdown,
                 )
             }

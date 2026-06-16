@@ -71,6 +71,7 @@ fun InventoryItemDetailOverlay(
                 onEvent(GameEvent.ClearItemMarkdown(itemId))
             },
             itemOverridePercent = state.pricing.pricingState.itemOverrides[selectedId] ?: 0,
+            itemPricingUnlocked = state.pricing.itemPricingUnlocked,
             onBack = { navState.selectedInventoryItemId = null }
         )
     }

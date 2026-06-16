@@ -34,11 +34,14 @@ fun StoreSizeCard(
     dailyRent: Money,
     dailyWages: Money,
     playerMoney: Money,
+    researchedUpgrades: Set<String>,
     onUpgrade: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val nextSize = StoreSize.nextSize(currentSize)
-    val canUpgrade = nextSize != null && 
+    // Upgrade is only offered once the next size's expansion research is finished.
+    val nextSizeResearched = nextSize?.requiredUpgradeId?.let { it in researchedUpgrades } ?: false
+    val canUpgrade = nextSize != null &&
                      nextSize.upgradeCost != null && 
                      playerMoney >= nextSize.upgradeCost
     
@@ -132,8 +135,8 @@ fun StoreSizeCard(
                 }
             }
 
-            // Upgrade button (if not at max size)
-            if (nextSize != null && nextSize.upgradeCost != null) {
+            // Upgrade button (if not at max size and the expansion research is done)
+            if (nextSize != null && nextSize.upgradeCost != null && nextSizeResearched) {
                 Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = onUpgrade,
@@ -167,6 +170,15 @@ fun StoreSizeCard(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
+            } else if (nextSize != null && nextSize.upgradeCost != null) {
+                // Next size exists but its expansion research isn't finished yet.
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Research store expansion to upgrade",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    modifier = Modifier.fillMaxWidth()
+                )
             } else {
                 Spacer(Modifier.height(8.dp))
                 Text(

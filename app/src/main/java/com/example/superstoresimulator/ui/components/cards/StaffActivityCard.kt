@@ -62,27 +62,23 @@ fun StaffActivityCard(
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
 
-    val nonCashierEntries = scheduleEntries.filter {
-        !it.entityTypeName.lowercase().contains("cashier")
-    }
+    if (scheduleEntries.isEmpty()) return
 
-    if (nonCashierEntries.isEmpty()) return
-
-    val workingCount = nonCashierEntries.count { entry ->
+    val workingCount = scheduleEntries.count { entry ->
         val activity = employeeActivities[entry.entityId]
         activity != null && activity != EmployeeActivity.IDLE &&
             activity != EmployeeActivity.OFF_SHIFT
     }
-    val idleCount = nonCashierEntries.count { entry ->
+    val idleCount = scheduleEntries.count { entry ->
         employeeActivities[entry.entityId] == EmployeeActivity.IDLE
     }
-    val offShiftCount = nonCashierEntries.count { entry ->
+    val offShiftCount = scheduleEntries.count { entry ->
         val activity = employeeActivities[entry.entityId]
         activity == null || activity == EmployeeActivity.OFF_SHIFT
     }
 
     // Group by role, then count activities within each role
-    val roleGroups = nonCashierEntries.groupBy { it.entityTypeName }
+    val roleGroups = scheduleEntries.groupBy { it.entityTypeName }
 
     Card(
         modifier = modifier.fillMaxWidth(),
