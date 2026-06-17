@@ -54,6 +54,7 @@ fun MainScreenPager(
                 onSetPlayerRole = { role: PlayerRole -> onEvent(GameEvent.SetPlayerRole(role)) },
                 onSkipDay = { onEvent(GameEvent.SkipDay) },
                 onUpgradeStore = { onEvent(GameEvent.UpgradeStoreSize) },
+                onPurchaseBuilding = { onEvent(GameEvent.PurchaseBuilding) },
                 onSave = { onEvent(GameEvent.SaveGame) },
                 onReset = { onEvent(GameEvent.ResetGame) },
                 onPurchaseRegister = {
@@ -116,6 +117,9 @@ fun MainScreenPager(
                 },
                 onPurchaseExtraTruckSlot = {
                     onEvent(GameEvent.PurchaseExtraTruckSlot)
+                },
+                onPurchaseTruckUpgrade = {
+                    onEvent(GameEvent.PurchaseTruckUpgrade)
                 },
                 onItemClick = { itemId -> navState.selectedInventoryItemId = itemId },
                 modifier = Modifier.padding(paddingValues)

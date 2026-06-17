@@ -69,6 +69,7 @@ fun DeliveriesScreen(
     onRequestEarlyTruck: () -> Unit,
     onTruckConfigChanged: (deliveryDays: Set<Int>, regularCap: Int, freshCap: Int) -> Unit = { _, _, _ -> },
     onPurchaseExtraTruckSlot: () -> Unit = {},
+    onPurchaseTruckUpgrade: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Track which truck cards are expanded
@@ -116,6 +117,17 @@ fun DeliveriesScreen(
                         }
                     },
                     onPurchaseExtraTruckSlot = onPurchaseExtraTruckSlot,
+                )
+            }
+            // ── Fleet Upgrade Card ────────────────────────────────────────
+            item(key = "fleet_upgrade_card") {
+                FleetUpgradeCard(
+                    currentTierName = deliveries.currentFleetTierName,
+                    nextTierName = deliveries.nextFleetTierName,
+                    nextTierCost = deliveries.nextFleetUpgradeCost,
+                    isResearched = deliveries.fleetUpgradeResearched,
+                    money = money,
+                    onUpgrade = onPurchaseTruckUpgrade,
                 )
             }
             // ── Fresh Truck ──────────────────────────────────────────────
@@ -476,6 +488,76 @@ private fun DeliveryScheduleCard(
                     "Purchase an extra weekly delivery day beyond your free limit.",
                     fontSize = 10.sp,
                     color = TextSecondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FleetUpgradeCard(
+    currentTierName: String,
+    nextTierName: String?,
+    nextTierCost: Money?,
+    isResearched: Boolean,
+    money: Money,
+    onUpgrade: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(CardWhite),
+        elevation = CardDefaults.cardElevation(2.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "Fleet Capacity",
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = PrimaryDark,
+            )
+            Text(
+                "Current: $currentTierName",
+                fontSize = 13.sp,
+                color = TextSecondary,
+            )
+            if (nextTierName != null && nextTierCost != null) {
+                if (isResearched) {
+                    val canAfford = money >= nextTierCost
+                    Button(
+                        onClick = onUpgrade,
+                        enabled = canAfford,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Teal,
+                            contentColor = TextWhite,
+                            disabledContainerColor = ChipSurface,
+                            disabledContentColor = TextMuted,
+                        ),
+                    ) {
+                        Text(
+                            if (canAfford) "Upgrade to $nextTierName ($nextTierCost)"
+                            else "Upgrade to $nextTierName — need $nextTierCost",
+                            fontSize = 12.sp,
+                        )
+                    }
+                } else {
+                    Text(
+                        "Research fleet upgrade to unlock $nextTierName",
+                        fontSize = 12.sp,
+                        color = TextMuted,
+                    )
+                }
+            } else {
+                Text(
+                    "Maximum fleet capacity",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = SuccessAccent,
                 )
             }
         }

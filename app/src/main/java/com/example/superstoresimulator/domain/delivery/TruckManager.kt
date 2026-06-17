@@ -5,6 +5,7 @@ import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.PendingOrderLine
 import com.example.superstoresimulator.domain.ScheduledTruck
+import com.example.superstoresimulator.domain.TRUCK_CAPACITY_TIERS
 import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.inventory.ItemBatch
@@ -13,6 +14,7 @@ import com.example.superstoresimulator.domain.metrics.AutoHireAction
 import com.example.superstoresimulator.domain.metrics.AutoHireEvent
 import com.example.superstoresimulator.domain.metrics.DeliveredItemLine
 import com.example.superstoresimulator.domain.metrics.DeliveredTruckRecord
+import com.example.superstoresimulator.domain.research.ResearchGates
 import com.example.superstoresimulator.domain.time.GameTime
 
 /**
@@ -110,7 +112,7 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
                 val newTruck = ScheduledTruck(
                     truckId = nextId++,
                     scheduledArrivalDay = arrivalDay,
-                    capacityCasePacks = state.truckConfig.regularTruckCapacityCasePacks,
+                    capacityCasePacks = state.truckConfig.effectiveRegularCapacity,
                 )
                 trucks.add(newTruck)
             }
@@ -134,7 +136,7 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
         var nextId = state.nextTruckId
 
         val existing = trucks.find { it.isFreshTruck && it.scheduledArrivalDay == arrivalDay }
-        val freshCap = state.truckConfig.freshTruckCapacityCasePacks
+        val freshCap = state.truckConfig.effectiveFreshCapacity
 
         if (existing != null) {
             val (updated, _) = fillTruck(existing, lines)
@@ -283,6 +285,7 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
             truckConfig = newConfig.copy(
                 deliveryDays = effectiveDays,
                 extraTruckSlotsUnlocked = existingSlots,  // never changed here
+                truckCapacityTier = state.truckConfig.truckCapacityTier,  // never changed here
             )
         )
     }
@@ -303,6 +306,34 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
             truckConfig = state.truckConfig.copy(
                 extraTruckSlotsUnlocked = state.truckConfig.extraTruckSlotsUnlocked + 1,
             )
+        )
+    }
+
+    /**
+     * Upgrade the truck fleet to the next capacity tier.
+     *
+     * Tier 0 → 1 (Enhanced Fleet): $100K, requires "truck_upgrade_enhanced" research.
+     * Tier 1 → 2 (Heavy Fleet):    $200K, requires "truck_upgrade_heavy" research.
+     *
+     * Already-scheduled trucks keep their original capacity.
+     */
+    fun purchaseTruckUpgrade(state: GameState): GameState {
+        val currentTier = state.truckConfig.truckCapacityTier
+        val nextTierIndex = currentTier + 1
+        val nextTier = TRUCK_CAPACITY_TIERS.getOrNull(nextTierIndex) ?: return state
+        val cost = nextTier.upgradeCost ?: return state
+
+        val requiredResearch = when (nextTierIndex) {
+            1 -> ResearchGates.TRUCK_UPGRADE_ENHANCED
+            2 -> ResearchGates.TRUCK_UPGRADE_HEAVY
+            else -> return state
+        }
+        if (!ResearchGates.isResearched(state.researchState.researchedUpgrades, requiredResearch)) return state
+        if (state.money < cost) return state
+
+        return state.copy(
+            money = state.money - cost,
+            truckConfig = state.truckConfig.copy(truckCapacityTier = nextTierIndex),
         )
     }
 
@@ -435,7 +466,7 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
             val newTruck = ScheduledTruck(
                 truckId = state.nextTruckId,
                 scheduledArrivalDay = arrivalDay,
-                capacityCasePacks = state.truckConfig.regularTruckCapacityCasePacks,
+                capacityCasePacks = state.truckConfig.effectiveRegularCapacity,
                 isEarlyTruck = true,
             )
             updatedTrucks = state.scheduledTrucks + newTruck

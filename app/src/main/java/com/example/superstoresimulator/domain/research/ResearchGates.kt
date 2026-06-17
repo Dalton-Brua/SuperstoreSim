@@ -44,6 +44,15 @@ object ResearchGates {
     /** Per-item price override sliders on the item detail screen. */
     const val ITEM_PRICING = "item_pricing"
 
+    /** Building purchase — eliminates daily rent permanently. */
+    const val BUILDING_PURCHASE = "building_purchase"
+
+    /** Truck fleet upgrade tier 1 (Enhanced Fleet — 3,000/750). */
+    const val TRUCK_UPGRADE_ENHANCED = "truck_upgrade_enhanced"
+
+    /** Truck fleet upgrade tier 2 (Heavy Fleet — 5,000/1,250). */
+    const val TRUCK_UPGRADE_HEAVY = "truck_upgrade_heavy"
+
     /**
      * Tutorial feature key (a [TutorialManager] `FEATURE_*` constant) → the research
      * upgrade that unlocks it once the tutorial is complete. Features absent from this
@@ -70,6 +79,7 @@ object ResearchGates {
         FRESH_SUBSYSTEM_GATES +
             FEATURE_UPGRADE.values +
             setOf(CATEGORY_PRICING, DEFAULT_MARKUP, ITEM_PRICING) +
+            setOf(BUILDING_PURCHASE, TRUCK_UPGRADE_ENHANCED, TRUCK_UPGRADE_HEAVY) +
             StoreSize.entries.mapNotNull { it.requiredUpgradeId }
 
     /**

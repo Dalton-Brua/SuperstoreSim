@@ -90,6 +90,21 @@ data class ScheduledTruck(
 }
 
 @Serializable
+data class TruckCapacityTier(
+    val tier: Int,
+    val regularCapacity: Int,
+    val freshCapacity: Int,
+    val upgradeCost: Money?,
+    val displayName: String,
+)
+
+val TRUCK_CAPACITY_TIERS = listOf(
+    TruckCapacityTier(0, 2000,  500, null,               "Standard Fleet"),
+    TruckCapacityTier(1, 3000,  750, Money(10_000_000L),  "Enhanced Fleet"),   // $100K
+    TruckCapacityTier(2, 5000, 1250, Money(20_000_000L),  "Heavy Fleet"),      // $200K
+)
+
+@Serializable
 data class TruckConfig(
     /** Day-of-week indices for regular trucks (0 = Monday … 6 = Sunday). */
     val deliveryDays: Set<Int> = setOf(0, 3),  // Monday and Thursday by default
@@ -97,7 +112,13 @@ data class TruckConfig(
     val freshTruckCapacityCasePacks: Int = DEFAULT_FRESH_TRUCK_CAPACITY,
     /** Number of extra delivery-day slots purchased beyond the store-size-based free limit. */
     val extraTruckSlotsUnlocked: Int = 0,
+    val truckCapacityTier: Int = 0,
 ) {
+    val effectiveRegularCapacity: Int
+        get() = TRUCK_CAPACITY_TIERS.getOrNull(truckCapacityTier)?.regularCapacity ?: DEFAULT_REGULAR_TRUCK_CAPACITY
+    val effectiveFreshCapacity: Int
+        get() = TRUCK_CAPACITY_TIERS.getOrNull(truckCapacityTier)?.freshCapacity ?: DEFAULT_FRESH_TRUCK_CAPACITY
+
     companion object {
         const val DEFAULT_REGULAR_TRUCK_CAPACITY = 2000
         const val DEFAULT_FRESH_TRUCK_CAPACITY = 500
@@ -212,6 +233,8 @@ data class GameState(
     val playerPausedTime: Boolean = false,
 
     val currentStoreSize: StoreSize = StoreSize.MOM_AND_POP,
+
+    val buildingOwned: Boolean = false,
 
     val playerRole: PlayerRole = PlayerRole.MANAGE,
     val playerCashierProgress: Float = 0f,  // Fractional ring-up accumulator

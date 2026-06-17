@@ -65,6 +65,7 @@ fun StoreHomeScreen (
     onSetPlayerRole: (PlayerRole) -> Unit = {},
     onSkipDay: () -> Unit = {},
     onUpgradeStore: () -> Unit = {},
+    onPurchaseBuilding: () -> Unit = {},
     onSave: () -> Unit = {},
     onReset: () -> Unit = {},
     onPurchaseRegister: () -> Unit = {},
@@ -165,7 +166,9 @@ fun StoreHomeScreen (
                         dailyWages = state.time.dailyWages,
                         playerMoney = state.app.money,
                         researchedUpgrades = state.research.researchedUpgrades,
+                        buildingOwned = state.time.buildingOwned,
                         onUpgrade = onUpgradeStore,
+                        onPurchaseBuilding = onPurchaseBuilding,
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
                 }

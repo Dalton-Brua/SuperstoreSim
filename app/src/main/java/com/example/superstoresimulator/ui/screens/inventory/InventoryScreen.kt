@@ -615,6 +615,7 @@ fun InventoryAndFreshScreen(
     onRequestEarlyTruck: () -> Unit = {},
     onTruckConfigChanged: (deliveryDays: Set<Int>, regularCap: Int, freshCap: Int) -> Unit = { _, _, _ -> },
     onPurchaseExtraTruckSlot: () -> Unit = {},
+    onPurchaseTruckUpgrade: () -> Unit = {},
     onItemClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -719,6 +720,7 @@ fun InventoryAndFreshScreen(
                     incompleteFreshOrdersCount = incompleteFreshOrdersCount,
                     hasFreshHandler = hasFreshHandler,
                     freshAutoOrderConfig = freshAutoOrderConfig,
+                    freshAutoOrderResearched = ResearchGates.isResearched(researchedUpgrades, "fresh_auto_order"),
                     onItemClick = onItemClick,
                     onFreshBulkOrder = onFreshBulkOrder,
                     onViewIncompleteOrders = onViewIncompleteOrders,
@@ -733,6 +735,7 @@ fun InventoryAndFreshScreen(
                     onRequestEarlyTruck = onRequestEarlyTruck,
                     onTruckConfigChanged = onTruckConfigChanged,
                     onPurchaseExtraTruckSlot = onPurchaseExtraTruckSlot,
+                    onPurchaseTruckUpgrade = onPurchaseTruckUpgrade,
                 )
             }
         }

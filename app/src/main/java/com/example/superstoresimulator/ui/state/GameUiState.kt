@@ -159,6 +159,7 @@ data class TimeUIState(
     val currentStoreSize: com.example.superstoresimulator.domain.store.StoreSize = com.example.superstoresimulator.domain.store.StoreSize.MOM_AND_POP,
     val dailyRent: Money = Money.ZERO,
     val dailyWages: Money = Money.ZERO,
+    val buildingOwned: Boolean = false,
 )
 
 // Phase 3: Daily metrics UI state
@@ -247,6 +248,11 @@ data class DeliveryUIState(
     val extraTruckSlotCost: Money = Money(10_000L),       // always $100
     val truckConfig: TruckConfig = TruckConfig(),
     val vendorTrucks: List<TruckUIState> = emptyList(),
+    // Fleet upgrade
+    val currentFleetTierName: String = "Standard Fleet",
+    val nextFleetUpgradeCost: Money? = null,
+    val nextFleetTierName: String? = null,
+    val fleetUpgradeResearched: Boolean = false,
 )
 
 // ── Register System UI State ─────────────────────────────────────────────────

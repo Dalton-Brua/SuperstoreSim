@@ -2,11 +2,14 @@ package com.example.superstoresimulator.domain.persistence
 
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.domain.store.StoreSize
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SerializerMigrationTest {
@@ -164,5 +167,45 @@ class SerializerMigrationTest {
         assertEquals(Money(12345L), restored.money)
         assertEquals(PlayerRole.MANAGE, restored.playerRole)
         assertEquals(Money(5000L), restored.autoHireBudget)
+    }
+
+    // ── Building purchase serialization ─────────────────────────────────────
+
+    @Test
+    fun `GameState with buildingOwned true round-trips through JSON`() {
+        val original = GameState(buildingOwned = true)
+        val serialized = GameStateSerializer.serialize(original)
+        val restored = GameStateSerializer.deserialize(serialized)
+        assertNotNull(restored)
+        assertTrue(restored!!.buildingOwned)
+    }
+
+    @Test
+    fun `old save without buildingOwned deserializes with default false`() {
+        val json = minimalSaveJson()
+        val state = GameStateSerializer.deserialize(json)
+        assertNotNull(state)
+        assertFalse(state!!.buildingOwned)
+    }
+
+    // ── Truck capacity tier serialization ────────────────────────────────────
+
+    @Test
+    fun `GameState with truckCapacityTier 2 round-trips through JSON`() {
+        val original = GameState(
+            truckConfig = TruckConfig(truckCapacityTier = 2),
+        )
+        val serialized = GameStateSerializer.serialize(original)
+        val restored = GameStateSerializer.deserialize(serialized)
+        assertNotNull(restored)
+        assertEquals(2, restored!!.truckConfig.truckCapacityTier)
+    }
+
+    @Test
+    fun `old save without truckCapacityTier deserializes with default 0`() {
+        val json = minimalSaveJson()
+        val state = GameStateSerializer.deserialize(json)
+        assertNotNull(state)
+        assertEquals(0, state!!.truckConfig.truckCapacityTier)
     }
 }

@@ -95,14 +95,18 @@ fun BulkOrderDialog(
     var casePacksPerItem by remember { mutableStateOf(2) }
     var selectedCategory by remember { mutableStateOf<ItemCategory?>(null) }
 
+    val dryItems = remember(allItems) {
+        allItems.filter { it.shelfLifeDays == null }
+    }
+
     // Categories that have at least one item in the current (tier-filtered) list
-    val availableCategories = remember(allItems) {
-        allItems.map { it.category }.distinct().sortedBy { it.ordinal }
+    val availableCategories = remember(dryItems) {
+        dryItems.map { it.category }.distinct().sortedBy { it.ordinal }
     }
 
     // ── Computed order summary ─────────────────────────────────────────────────
-    val matchingItems = remember(allItems, maxTotalQuantity, selectedCategory) {
-        allItems.filter { item ->
+    val matchingItems = remember(dryItems, maxTotalQuantity, selectedCategory) {
+        dryItems.filter { item ->
             val totalQty = item.shelfStock + item.backroomStock
             val categoryOk = selectedCategory == null || item.category == selectedCategory
             val notVendor = item.vendorName == null

@@ -155,4 +155,8 @@ sealed interface GameEvent {
     // Vendor System
     data object UnlockNextVendorTier : GameEvent
     data class InvestInVendor(val vendorId: String) : GameEvent
+
+    // Building & Fleet Upgrades
+    data object PurchaseBuilding : GameEvent
+    data object PurchaseTruckUpgrade : GameEvent
 }

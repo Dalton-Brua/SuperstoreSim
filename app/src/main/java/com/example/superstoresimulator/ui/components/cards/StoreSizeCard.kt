@@ -35,7 +35,9 @@ fun StoreSizeCard(
     dailyWages: Money,
     playerMoney: Money,
     researchedUpgrades: Set<String>,
+    buildingOwned: Boolean = false,
     onUpgrade: () -> Unit,
+    onPurchaseBuilding: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val nextSize = StoreSize.nextSize(currentSize)
@@ -98,12 +100,21 @@ fun StoreSizeCard(
                         fontSize = 12.sp,
                         color = TextSecondary
                     )
-                    Text(
-                        text = dailyRent.toString(),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextDark
-                    )
+                    if (buildingOwned) {
+                        Text(
+                            text = "$0 (Owned)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PositiveGreen
+                        )
+                    } else {
+                        Text(
+                            text = dailyRent.toString(),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextDark
+                        )
+                    }
                 }
                 
                 Column {
@@ -188,6 +199,48 @@ fun StoreSizeCard(
                     color = PositiveGreen,
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+
+            // Building purchase section
+            val buildingResearched = "building_purchase" in researchedUpgrades
+            if (buildingOwned) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "✓ Building owned — no rent",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = PositiveGreen,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else if (buildingResearched) {
+                val buildingCost = Money(50_000_000L)
+                val canAfford = playerMoney >= buildingCost
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = onPurchaseBuilding,
+                    enabled = canAfford,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = PrimaryDark,
+                        disabledContainerColor = DisabledGrey
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = "Buy Building — $buildingCost",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextWhite
+                    )
+                }
+                if (!canAfford) {
+                    Text(
+                        text = "Insufficient funds",
+                        fontSize = 11.sp,
+                        color = ClosedRed,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
             }
         }
     }

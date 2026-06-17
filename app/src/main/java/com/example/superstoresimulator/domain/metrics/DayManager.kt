@@ -52,7 +52,7 @@ class DayManager @Inject constructor() {
         val processedState = state
 
         // Calculate operating costs
-        val rentCost = processedState.currentStoreSize.dailyRent
+        val rentCost = if (processedState.buildingOwned) Money.ZERO else processedState.currentStoreSize.dailyRent
         val wagesCost = StaffWageCalculator.calculateTotalWages(processedState.hiredEntityRegistry, processedState.staffSchedules)
 
         // Update metrics with operating costs and pricing snapshot

@@ -15,9 +15,9 @@ data class StoreConfig(
      * Prevents unlimited stockpiling via bulk or repeated single orders.
      *
      * Synchronized with StoreSize.backroomCapPerItem when the store is upgraded.
-     * Default (2) matches the MOM_AND_POP starting size.
+     * Default (4) matches the MOM_AND_POP starting size.
      */
-    val backroomCapPerItem: Int = 2,
+    val backroomCapPerItem: Int = 4,
 ) {
     fun isOpen(gameTime: GameTime): Boolean {
         return gameTime.isOpen(openTimeMinutes, closeTimeMinutes)

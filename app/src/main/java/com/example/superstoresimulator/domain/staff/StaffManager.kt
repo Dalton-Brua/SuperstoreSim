@@ -435,8 +435,10 @@ class StaffManager @Inject constructor() {
             }
         }
 
-        // Stocker auto-hire: non-fresh backroom not empty or zone score too low
-        if (config.autoHireStockers) {
+        // Stocker auto-hire: non-fresh backroom not empty or zone score too low.
+        // Skip when stockers were just bootstrap-hired — backroom items are expected
+        // when no one was stocking; the bootstrap hire covers that case.
+        if (config.autoHireStockers && stockerCount > 0) {
             val hasBackroomStock = result.inventory.any { (_, inv) ->
                 inv.backroomBatches.any { it.expirationDay == Int.MAX_VALUE && it.quantity > 0 }
             }

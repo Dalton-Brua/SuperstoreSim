@@ -50,4 +50,32 @@ class ResearchGatesTest {
         assertTrue(ResearchGates.isResearched(setOf("register_expansion"), "register_expansion"))
         assertFalse(ResearchGates.isResearched(emptySet(), "register_expansion"))
     }
+
+    @Test
+    fun `building purchase gate exists in registry`() {
+        assertTrue(
+            "building_purchase missing from registry",
+            "building_purchase" in ResearchUpgradeRegistry.allUpgrades,
+        )
+    }
+
+    @Test
+    fun `truck upgrade gates exist in registry`() {
+        assertTrue(
+            "truck_upgrade_enhanced missing",
+            "truck_upgrade_enhanced" in ResearchUpgradeRegistry.allUpgrades,
+        )
+        assertTrue(
+            "truck_upgrade_heavy missing",
+            "truck_upgrade_heavy" in ResearchUpgradeRegistry.allUpgrades,
+        )
+    }
+
+    @Test
+    fun `truck upgrade prerequisites form a valid chain`() {
+        val enhanced = ResearchUpgradeRegistry.allUpgrades["truck_upgrade_enhanced"]!!
+        assertTrue("extra_truck_slots" in enhanced.prerequisites)
+        val heavy = ResearchUpgradeRegistry.allUpgrades["truck_upgrade_heavy"]!!
+        assertTrue("truck_upgrade_enhanced" in heavy.prerequisites)
+    }
 }

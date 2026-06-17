@@ -3,8 +3,10 @@ package com.example.superstoresimulator.ui.state.mappers
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.ScheduledTruck
+import com.example.superstoresimulator.domain.TRUCK_CAPACITY_TIERS
 import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
+import com.example.superstoresimulator.domain.research.ResearchGates
 import com.example.superstoresimulator.domain.vendor.VendorConfig
 import com.example.superstoresimulator.ui.state.DeliveryUIState
 import com.example.superstoresimulator.ui.state.TruckOrderLineUI
@@ -47,6 +49,9 @@ fun buildDeliveryUiState(domain: GameState, cache: ItemMetadataCache): DeliveryU
         .sortedBy { it.scheduledArrivalDay }
         .map { makeTruckUI(it) }
 
+    val earlyTruckResearched = ResearchGates.isResearched(
+        domain.researchState.researchedUpgrades, "early_truck"
+    )
     val earlyTruckAlreadyExists = domain.scheduledTrucks.any {
         it.isEarlyTruck && it.scheduledArrivalDay == nextDay
     }
@@ -85,10 +90,19 @@ fun buildDeliveryUiState(domain: GameState, cache: ItemMetadataCache): DeliveryU
         }
         .sortedBy { it.arrivalDay }
 
+    val currentTier = domain.truckConfig.truckCapacityTier
+    val currentTierDef = TRUCK_CAPACITY_TIERS.getOrNull(currentTier)
+    val nextTierDef = TRUCK_CAPACITY_TIERS.getOrNull(currentTier + 1)
+    val nextTierResearched = when (currentTier + 1) {
+        1 -> ResearchGates.isResearched(domain.researchState.researchedUpgrades, ResearchGates.TRUCK_UPGRADE_ENHANCED)
+        2 -> ResearchGates.isResearched(domain.researchState.researchedUpgrades, ResearchGates.TRUCK_UPGRADE_HEAVY)
+        else -> false
+    }
+
     return DeliveryUIState(
         regularTrucks = regularTrucks,
         freshTruck = freshTruck,
-        earlyTruckAvailable = !earlyTruckAlreadyExists,
+        earlyTruckAvailable = earlyTruckResearched && !earlyTruckAlreadyExists,
         earlyTruckCost = Money(10_000L),
         maxTrucksPerWeek = maxTrucks,
         freeTrucksPerWeek = freeTrucks,
@@ -96,5 +110,9 @@ fun buildDeliveryUiState(domain: GameState, cache: ItemMetadataCache): DeliveryU
         extraTruckSlotCost = TruckConfig.EXTRA_SLOT_COST,
         truckConfig = domain.truckConfig,
         vendorTrucks = vendorTrucks,
+        currentFleetTierName = currentTierDef?.displayName ?: "Standard Fleet",
+        nextFleetUpgradeCost = nextTierDef?.upgradeCost,
+        nextFleetTierName = nextTierDef?.displayName,
+        fleetUpgradeResearched = nextTierResearched,
     )
 }

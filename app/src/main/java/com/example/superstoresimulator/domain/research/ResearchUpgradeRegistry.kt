@@ -56,6 +56,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.STORE_EXPANSION,
             researchCost = 25,
             prerequisites = listOf("register_expansion"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
         put("store_superstore", ResearchableUpgrade(
             id = "store_superstore",
@@ -65,6 +66,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.STORE_EXPANSION,
             researchCost = 50,
             prerequisites = listOf("store_grocery"),
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("store_supercenter", ResearchableUpgrade(
             id = "store_supercenter",
@@ -74,6 +76,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.STORE_EXPANSION,
             researchCost = 100,
             prerequisites = listOf("store_superstore"),
+            requiredStoreSize = StoreSize.SUPERSTORE,
         ))
         put("register_expansion", ResearchableUpgrade(
             id = "register_expansion",
@@ -83,6 +86,16 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.STORE_EXPANSION,
             researchCost = 15,
             prerequisites = listOf("store_small_grocery"),
+        ))
+        put("building_purchase", ResearchableUpgrade(
+            id = "building_purchase",
+            displayName = "Property Acquisition Study",
+            description = "Unlocks the ability to purchase your building and eliminate daily rent.",
+            teaserDescription = "Own the building. Keep the rent.",
+            category = ResearchCategory.STORE_EXPANSION,
+            researchCost = 150,
+            prerequisites = listOf("store_supercenter"),
+            requiredStoreSize = StoreSize.SUPERCENTER,
         ))
 
         // ── Product Lines: Grocery ────────────────────────────────────────────
@@ -706,6 +719,26 @@ object ResearchUpgradeRegistry {
             teaserDescription = "More deliveries means fresher shelves.",
             category = ResearchCategory.OPERATIONS,
             researchCost = 15,
+        ))
+        put("truck_upgrade_enhanced", ResearchableUpgrade(
+            id = "truck_upgrade_enhanced",
+            displayName = "Enhanced Fleet Study",
+            description = "Unlocks upgraded truck capacity: 3,000 regular / 750 fresh case packs.",
+            teaserDescription = "Bigger trucks mean fewer stockouts.",
+            category = ResearchCategory.OPERATIONS,
+            researchCost = 40,
+            prerequisites = listOf("extra_truck_slots"),
+            requiredStoreSize = StoreSize.SUPERSTORE,
+        ))
+        put("truck_upgrade_heavy", ResearchableUpgrade(
+            id = "truck_upgrade_heavy",
+            displayName = "Heavy Fleet Study",
+            description = "Unlocks maximum truck capacity: 5,000 regular / 1,250 fresh case packs.",
+            teaserDescription = "The ultimate logistics upgrade.",
+            category = ResearchCategory.OPERATIONS,
+            researchCost = 80,
+            prerequisites = listOf("truck_upgrade_enhanced"),
+            requiredStoreSize = StoreSize.SUPERCENTER,
         ))
         put("fresh_auto_order", ResearchableUpgrade(
             id = "fresh_auto_order",

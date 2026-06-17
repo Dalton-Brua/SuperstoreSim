@@ -1,6 +1,7 @@
 package com.example.superstoresimulator.domain.store
 
 import com.example.superstoresimulator.domain.GameState
+import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.research.ResearchGates
 import com.example.superstoresimulator.domain.traffic.TrafficManager
 import javax.inject.Inject
@@ -8,6 +9,10 @@ import javax.inject.Singleton
 
 @Singleton
 class StoreController @Inject constructor() {
+
+    companion object {
+        val BUILDING_PURCHASE_COST = Money(50_000_000L) // $500,000
+    }
 
     /**
      * Update the store's display name.
@@ -39,6 +44,20 @@ class StoreController @Inject constructor() {
             currentStoreSize = nextSize,
             money = state.money - cost,
             storeConfig = state.storeConfig.copy(backroomCapPerItem = nextSize.backroomCapPerItem)
+        )
+    }
+
+    /**
+     * Purchase the building for $500,000, eliminating daily rent permanently.
+     */
+    fun purchaseBuilding(state: GameState): GameState {
+        if (state.buildingOwned) return state
+        if (!ResearchGates.isResearched(state.researchState.researchedUpgrades, ResearchGates.BUILDING_PURCHASE)) return state
+        val cost = BUILDING_PURCHASE_COST
+        if (state.money < cost) return state
+        return state.copy(
+            money = state.money - cost,
+            buildingOwned = true,
         )
     }
 

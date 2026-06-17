@@ -365,6 +365,14 @@ class GameViewModel @Inject constructor(
                 gameEngine.investInVendor(event.vendorId)
             }
 
+            GameEvent.PurchaseBuilding -> {
+                gameEngine.purchaseBuilding()
+            }
+
+            GameEvent.PurchaseTruckUpgrade -> {
+                gameEngine.purchaseTruckUpgrade()
+            }
+
             GameEvent.Tick -> {
                 if (!gameEngine.isSimulating) gameEngine.tick(tickDelta)
             }
@@ -521,8 +529,9 @@ class GameViewModel @Inject constructor(
         playerCashierProgress = domain.playerCashierProgress,
         playerStockerProgress = domain.playerStockerProgress,
         currentStoreSize = domain.currentStoreSize,
-        dailyRent = domain.currentStoreSize.dailyRent,
+        dailyRent = if (domain.buildingOwned) com.example.superstoresimulator.domain.Money.ZERO else domain.currentStoreSize.dailyRent,
         dailyWages = calculateTotalWages(domain.hiredEntityRegistry, domain.staffSchedules),
+        buildingOwned = domain.buildingOwned,
     )
 
     private fun buildMetricsUiState(domain: GameState) = MetricsUIState(

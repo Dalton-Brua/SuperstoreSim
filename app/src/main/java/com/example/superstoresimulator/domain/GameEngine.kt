@@ -219,6 +219,10 @@ class GameEngine @Inject constructor(
         state = storeController.upgradeStoreSize(state)
     }
 
+    fun purchaseBuilding() {
+        state = storeController.purchaseBuilding(state)
+    }
+
     fun setGameSpeed(multiplier: Float) {
         timeManager.setSpeedMultiplier(multiplier)
         state = storeController.setGameSpeedState(state, multiplier)
@@ -330,6 +334,10 @@ class GameEngine @Inject constructor(
 
     fun purchaseExtraTruckSlot() {
         state = truckManager.purchaseExtraTruckSlot(state)
+    }
+
+    fun purchaseTruckUpgrade() {
+        state = truckManager.purchaseTruckUpgrade(state)
     }
 
     fun requestEarlyTruck() {
