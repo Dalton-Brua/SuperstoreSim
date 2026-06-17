@@ -271,6 +271,8 @@ data class GameState(
 
     // Store Manager autonomous action config
     val storeManagerConfig: StoreManagerConfig = StoreManagerConfig(),
+    // Day number when the store manager last terminated each entity type (keyed by EntityDef.key)
+    val lastTerminationDayByType: Map<String, Int> = emptyMap(),
 
     // Truck delivery system
     val scheduledTrucks: List<ScheduledTruck> = emptyList(),

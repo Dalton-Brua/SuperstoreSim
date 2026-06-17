@@ -399,6 +399,21 @@ class StaffManager @Inject constructor() {
         val hasFreshItems = ResearchGates.hasFreshSubsystem(state.researchState.researchedUpgrades)
         if (config.autoHireFreshHandlers && freshCount == 0 && hasFreshItems) bootstrapHireIfNeeded(EntityDef.FRESH_HANDLER, "No fresh staff")
 
+        // Skip metric-based hiring if manager terminated someone today — hiring and firing are mutually exclusive
+        val firedToday = result.currentDayMetrics.autoHireEvents.any {
+            it.action == com.example.superstoresimulator.domain.metrics.AutoHireAction.TERMINATED
+        }
+        if (firedToday) {
+            if (events.isNotEmpty()) {
+                result = result.copy(
+                    currentDayMetrics = result.currentDayMetrics.copy(
+                        autoHireEvents = result.currentDayMetrics.autoHireEvents + events,
+                    ),
+                )
+            }
+            return result
+        }
+
         // Cashier auto-hire: avg customers in line vs register count
         val registerCount = result.registers.size
         val avgInLine = metrics.avgHourlyPendingCustomers
@@ -577,7 +592,10 @@ class StaffManager @Inject constructor() {
         }
 
         // 4. Auto-terminate excess idle employees (based on 3-day average)
-        if (config.autoTerminateEnabled) {
+        // Skip if any hiring happened today — hiring and firing are mutually exclusive
+        val hiredToday = result.currentDayMetrics.autoHireEvents.any { it.action == com.example.superstoresimulator.domain.metrics.AutoHireAction.HIRED }
+        if (config.autoTerminateEnabled && !hiredToday) {
+            val currentDay = result.currentTime.dayNumber
             val recentDays = result.completedDayMetrics.takeLast(TERMINATE_LOOKBACK_DAYS)
             if (recentDays.size >= TERMINATE_LOOKBACK_DAYS) {
                 val avgCashierUtil = recentDays.map { it.avgCashierUtilization }.average().toFloat()
@@ -585,14 +603,26 @@ class StaffManager @Inject constructor() {
                 val avgFreshUtil = recentDays.map { it.avgFreshUtilization }.average().toFloat()
                 val avgZone = recentDays.map { it.avgZoneScore }.average().toFloat()
 
+                fun canTerminate(def: EntityDef): Boolean {
+                    val lastDay = result.lastTerminationDayByType[def.key] ?: return true
+                    return currentDay - lastDay >= TERMINATE_COOLDOWN_DAYS
+                }
+
+                fun recordTermination(def: EntityDef) {
+                    result = result.copy(
+                        lastTerminationDayByType = result.lastTerminationDayByType + (def.key to currentDay)
+                    )
+                }
+
                 // Cashiers: fire if more cashiers than registers and utilization consistently low
                 val cashiers = result.hiredEntityRegistry.getByDef(EntityDef.CASHIER)
-                if (cashiers.size > 1 && cashiers.size > result.registers.size && avgCashierUtil < 0.5f) {
+                if (canTerminate(EntityDef.CASHIER) && cashiers.size > 1 && cashiers.size > result.registers.size && avgCashierUtil < 0.5f) {
                     val assignedIds = result.registers.mapNotNull { it.assignedCashierId }.toSet()
                     val unassigned = cashiers.filter { it.id !in assignedIds }
                     val victim = unassigned.minByOrNull { it.level * 100 + it.xp }
                     if (victim != null) {
                         result = fireEntity(result, victim.id)
+                        recordTermination(EntityDef.CASHIER)
                         events += AutoHireEvent(
                             EntityDef.CASHIER.displayName,
                             "Overstaffed",
@@ -605,10 +635,11 @@ class StaffManager @Inject constructor() {
                 // Stockers: fire if zone score consistently high and utilization consistently low
                 val stockers = result.hiredEntityRegistry.getByDef(EntityDef.STOCKER)
                     .filter { !it.isDeptManager }
-                if (stockers.size > 1 && avgZone >= 0.95f && avgStockerUtil < 0.3f) {
+                if (canTerminate(EntityDef.STOCKER) && stockers.size > 1 && avgZone >= 0.95f && avgStockerUtil < 0.3f) {
                     val victim = stockers.minByOrNull { it.level * 100 + it.xp }
                     if (victim != null) {
                         result = fireEntity(result, victim.id)
+                        recordTermination(EntityDef.STOCKER)
                         events += AutoHireEvent(
                             EntityDef.STOCKER.displayName,
                             "Overstaffed",
@@ -627,10 +658,11 @@ class StaffManager @Inject constructor() {
                         inv != null && (inv.shelfBatches + inv.backroomBatches).any { it.expirationDay != Int.MAX_VALUE }
                     }
                 }
-                if (freshHandlers.size > 1 && !recentFreshOos && avgFreshUtil < 0.3f) {
+                if (canTerminate(EntityDef.FRESH_HANDLER) && freshHandlers.size > 1 && !recentFreshOos && avgFreshUtil < 0.3f) {
                     val victim = freshHandlers.minByOrNull { it.level * 100 + it.xp }
                     if (victim != null) {
                         result = fireEntity(result, victim.id)
+                        recordTermination(EntityDef.FRESH_HANDLER)
                         events += AutoHireEvent(
                             EntityDef.FRESH_HANDLER.displayName,
                             "Overstaffed",
@@ -807,6 +839,7 @@ class StaffManager @Inject constructor() {
 
         const val EMPLOYEES_PER_DEPT_MANAGER = 5
         const val TERMINATE_LOOKBACK_DAYS = 3
+        const val TERMINATE_COOLDOWN_DAYS = 3
 
         private const val TAG = "StaffManager"
 

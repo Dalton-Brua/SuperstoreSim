@@ -555,7 +555,9 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
         }
 
         // 3. Purchase an extra truck slot and add a day if slots were already maxed before fill
+        // Manager limited to 1 extra purchased slot; player can buy more manually
         if (config.autoBuyTruckSlotEnabled && oosCount >= config.buySlotOosThreshold && slotsWereMaxedBeforeFill &&
+            result.truckConfig.extraTruckSlotsUnlocked < 1 &&
             result.truckConfig.deliveryDays.size < 7
         ) {
             val cost = TruckConfig.EXTRA_SLOT_COST
