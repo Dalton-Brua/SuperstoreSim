@@ -6,6 +6,7 @@ import com.example.superstoresimulator.domain.ZoningState
 import com.example.superstoresimulator.domain.Transactions.TransactionEngine
 import com.example.superstoresimulator.domain.expiration.SpoilageManager
 import com.example.superstoresimulator.domain.metrics.DayManager
+import com.example.superstoresimulator.domain.metrics.MetricsArchiver
 import com.example.superstoresimulator.domain.pricing.PricingManager
 import com.example.superstoresimulator.domain.registers.RegisterManager
 import com.example.superstoresimulator.domain.staff.StaffManager
@@ -33,16 +34,39 @@ class TickOrchestrator @Inject constructor(
     private val dayManager: DayManager,
     private val researchTickProcessor: ResearchTickProcessor,
     private val tutorialTickProcessor: TutorialTickProcessor,
+    private val metricsArchiver: MetricsArchiver,
 ) {
+    fun resetTickProcessors() {
+        researchTickProcessor.reset()
+        tutorialTickProcessor.reset()
+    }
+
     fun tick(
         state: GameState,
         deltaMilliseconds: Long,
         offlineMode: Boolean = false,
         sampleUtilization: Boolean = true,
+        skipAccumulators: Boolean = false,
     ): GameState {
         if (state.playerPausedTime) return state
 
-        var s = advanceTime(state, deltaMilliseconds)
+        var s = state
+        val trimCount = metricsArchiver.consumeTrim()
+        if (trimCount > 0) {
+            val trimmed = s.completedDayMetrics.drop(trimCount)
+            val archived = s.completedDayMetrics.take(trimCount)
+            s = s.copy(
+                completedDayMetrics = trimmed,
+                archivedCumulativeRevenueCents = s.archivedCumulativeRevenueCents +
+                        archived.sumOf { it.revenue.cents },
+                archivedCumulativeExpiredItems = s.archivedCumulativeExpiredItems +
+                        archived.sumOf { it.itemsExpired },
+                archivedCumulativeExpiredWasteCostCents = s.archivedCumulativeExpiredWasteCostCents +
+                        archived.sumOf { it.expiredWasteCost.cents },
+            )
+        }
+
+        s = advanceTime(s, deltaMilliseconds)
         s = processSpoilage(s)
         s = dayRolloverProcessor.process(s)
         s = updateStoreState(s)
@@ -52,9 +76,14 @@ class TickOrchestrator @Inject constructor(
         val speedMultiplier = s.storeConfig.gameSpeedMultiplier
         val currentHour = s.currentTime.hour
 
-        s = registerManager.performShiftCheckAndReassignment(s, currentHour)
-        s = trafficProcessor.process(s, delta, currentHour)
-        s = staffTickProcessor.process(s, delta, speedMultiplier, currentHour)
+        val tickPricingData = if (s.pendingCustomers > 0 || s.registers.any { it.transactionActive }) {
+            pricingManager.computePricingData(s)
+        } else null
+
+        val dayOfWeek = s.currentTime.dayOfWeek
+        s = registerManager.performShiftCheckAndReassignment(s, currentHour, dayOfWeek)
+        s = trafficProcessor.process(s, delta, currentHour, tickPricingData)
+        s = staffTickProcessor.process(s, delta, speedMultiplier, currentHour, tickPricingData)
         if (!offlineMode) {
             s = playerTickProcessor.process(s, delta)
         }
@@ -64,10 +93,10 @@ class TickOrchestrator @Inject constructor(
         s = researchTickProcessor.process(s)
         s = tutorialTickProcessor.process(s)
 
-        return s.copy(simAccumulators = snapshotAccumulators())
+        return if (skipAccumulators) s else s.copy(simAccumulators = snapshotAccumulators())
     }
 
-    private fun snapshotAccumulators(): SimAccumulators = SimAccumulators(
+    internal fun snapshotAccumulators(): SimAccumulators = SimAccumulators(
         timeAccumulatorMs = timeManager.accumulatedMilliseconds,
         trafficAccumulator = trafficManager.accumulatedCustomers,
         lastKnownDayNumber = dayManager.lastKnownDayNumber,

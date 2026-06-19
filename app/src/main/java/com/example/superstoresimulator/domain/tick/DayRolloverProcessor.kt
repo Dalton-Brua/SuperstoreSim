@@ -10,7 +10,10 @@ import com.example.superstoresimulator.domain.Transactions.toEntity
 import com.example.superstoresimulator.domain.Transactions.toLineEntity
 import com.example.superstoresimulator.domain.delivery.TruckManager
 import com.example.superstoresimulator.domain.inventory.InventoryManager
+import com.example.superstoresimulator.domain.reputation.ReputationManager
+import com.example.superstoresimulator.domain.research.ResearchGates
 import com.example.superstoresimulator.domain.metrics.DayManager
+import com.example.superstoresimulator.domain.metrics.MetricsArchiver
 import com.example.superstoresimulator.domain.staff.StaffManager
 import com.example.superstoresimulator.domain.vendor.VendorManager
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +31,7 @@ class DayRolloverProcessor @Inject constructor(
     private val inventoryManager: InventoryManager,
     private val transactionDao: TransactionDao,
     private val vendorManager: VendorManager,
+    private val metricsArchiver: MetricsArchiver,
 ) {
     private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -47,9 +51,34 @@ class DayRolloverProcessor @Inject constructor(
             ),
         )
         s = staffManager.evaluateStoreManagerActions(s)
+        s = staffManager.optimizeWeeklySchedules(s)
         s = truckManager.evaluateStoreManagerTruckActions(s, newDayNumber)
         s = staffManager.evaluateAutoHire(s)
         s = dayManager.rollOverDay(s, dayManager.lastKnownDayNumber)
+
+        val repSnapshot = s.lastEndOfDayReport
+        if (repSnapshot != null
+            && s.currentStoreSize.baseRevenueTarget != null
+            && ResearchGates.isResearched(s.researchState.researchedUpgrades, ResearchGates.REVENUE_REPUTATION)
+        ) {
+            var updatedReputation = ReputationManager.updateReputation(
+                reputationState = s.reputationState,
+                snapshot = repSnapshot,
+                storeSize = s.currentStoreSize,
+            )
+            val nextDay = s.currentTime.dayNumber
+            if (ReputationManager.checkGoobSaleEligible(updatedReputation, nextDay)) {
+                updatedReputation = ReputationManager.applyGoobSale(updatedReputation, nextDay)
+            } else {
+                updatedReputation = updatedReputation.copy(goobSaleActiveToday = false)
+            }
+            s = s.copy(reputationState = updatedReputation)
+        }
+
+        syncScope.launch {
+            metricsArchiver.archiveIfNeeded(s.completedDayMetrics)
+        }
+
         dayManager.advanceDay(newDayNumber)
         s = s.copy(
             registers = s.registers.map {

@@ -35,6 +35,7 @@ fun SoldItemsReportDialog(
     onDismiss: () -> Unit,
     /** Called with the item's ID when the player taps its name row. */
     onItemClick: (itemId: Int) -> Unit = {},
+    itemNames: Map<Int, String> = emptyMap(),
 ) {
     // Group raw per-transaction events by itemId, summing quantity and revenue
     val grouped: List<SoldItemEvent> = remember(report.soldItemEvents) {
@@ -43,7 +44,6 @@ fun SoldItemsReportDialog(
             .map { (_, events) ->
                 SoldItemEvent(
                     itemId = events.first().itemId,
-                    itemName = events.first().itemName,
                     quantitySold = events.sumOf { it.quantitySold },
                     revenue = events.fold(Money.ZERO) { acc, e -> acc + e.revenue },
                 )
@@ -155,7 +155,11 @@ fun SoldItemsReportDialog(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         items(grouped, key = { it.itemId }) { event ->
-                            SoldItemRow(event, onItemClick = onItemClick)
+                            SoldItemRow(
+                                event,
+                                displayName = itemNames[event.itemId] ?: event.itemName.ifEmpty { "Item ${event.itemId}" },
+                                onItemClick = onItemClick,
+                            )
                         }
                     }
 
@@ -213,6 +217,7 @@ fun SoldItemsReportDialog(
 @Composable
 private fun SoldItemRow(
     event: SoldItemEvent,
+    displayName: String,
     onItemClick: (itemId: Int) -> Unit = {},
 ) {
     Row(
@@ -224,7 +229,7 @@ private fun SoldItemRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = event.itemName,
+            text = displayName,
             fontSize = 13.sp,
             color = Primary,
             textDecoration = TextDecoration.Underline,

@@ -41,8 +41,10 @@ sealed interface GameEvent {
     // Tutorial system
     data object SkipTutorial : GameEvent
 
-    // Skip Day: simulate the rest of the current day and show the end-of-day report
+    // Skip Day / Skip Week: simulate the rest of the current day (or 7 days)
     data object SkipDay : GameEvent
+    data object SkipWeek : GameEvent
+    data object DismissEndOfWeekReport : GameEvent
 
     // Bulk Order: purchase case packs for all items meeting a criteria, with volume discounts
     data class BulkOrder(
@@ -121,7 +123,7 @@ sealed interface GameEvent {
      * [newStartHour] is clamped to 6..13 in the UI before dispatch; the domain
      * layer also validates the range and silently ignores invalid values.
      */
-    data class UpdateShift(val entityId: Int, val newStartHour: Int, val newDuration: Int = 8) : GameEvent
+    data class UpdateShift(val entityId: Int, val newStartHour: Int, val newDuration: Int = 8, val workDays: Set<Int> = emptySet()) : GameEvent
 
     // Register System (Phase 3)
     /** Purchase one additional register (subject to store-size cap and affordability). */
@@ -159,4 +161,8 @@ sealed interface GameEvent {
     // Building & Fleet Upgrades
     data object PurchaseBuilding : GameEvent
     data object PurchaseTruckUpgrade : GameEvent
+
+    // Archived metrics on-demand loading
+    data class LoadArchivedDayDetail(val dayNumber: Int) : GameEvent
+    data object ClearLoadedArchivedDay : GameEvent
 }

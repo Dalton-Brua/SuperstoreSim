@@ -85,13 +85,16 @@ class RegisterManager @Inject constructor() {
         return if (updated != state.registers) state.copy(registers = updated) else state
     }
 
-    fun performShiftCheckAndReassignment(state: GameState, currentHour: Int): GameState {
+    fun performShiftCheckAndReassignment(state: GameState, currentHour: Int, dayOfWeek: Int = -1): GameState {
         val registersAfterShiftCheck = state.registers.map { reg ->
             val assignedId = reg.assignedCashierId ?: return@map reg
             if (reg.transactionActive) return@map reg
             val shift = state.staffSchedules.firstOrNull { it.entityId == assignedId }
-            if (shift != null && !shift.isOnShift(currentHour)) reg.copy(assignedCashierId = null)
-            else reg
+            val offShift = if (dayOfWeek >= 0)
+                shift != null && !shift.isOnShift(currentHour, dayOfWeek)
+            else
+                shift != null && !shift.isOnShift(currentHour)
+            if (offShift) reg.copy(assignedCashierId = null) else reg
         }
 
         var registers = if (registersAfterShiftCheck != state.registers) registersAfterShiftCheck
@@ -101,7 +104,11 @@ class RegisterManager @Inject constructor() {
             cashier.entityDefinition == EntityDef.CASHIER &&
                 cashier.id !in state.manuallyUnassignedCashiers &&
                 registers.none { reg -> reg.assignedCashierId == cashier.id } &&
-                state.staffSchedules.firstOrNull { it.entityId == cashier.id }?.isOnShift(currentHour) != false
+                run {
+                    val shift = state.staffSchedules.firstOrNull { it.entityId == cashier.id }
+                    if (dayOfWeek >= 0) shift?.isOnShift(currentHour, dayOfWeek) != false
+                    else shift?.isOnShift(currentHour) != false
+                }
         }
         for (cashier in unassignedOnShiftCashiers) {
             val freeRegister = registers.firstOrNull { it.assignedCashierId == null && state.playerAssignedRegisterId != it.registerId }
@@ -117,6 +124,7 @@ class RegisterManager @Inject constructor() {
         registerId: Int,
         state: GameState,
         currentHour: Int,
+        dayOfWeek: Int = -1,
     ): Boolean {
         val register = state.registers.findRegisterById(registerId) ?: return false
 
@@ -127,12 +135,13 @@ class RegisterManager @Inject constructor() {
         val assignedId = register.assignedCashierId
         if (assignedId != null) {
             val shift = state.staffSchedules.firstOrNull { it.entityId == assignedId }
-            return shift?.isOnShift(currentHour) == true
+            return if (dayOfWeek >= 0) shift?.isOnShift(currentHour, dayOfWeek) == true
+            else shift?.isOnShift(currentHour) == true
         }
 
         if (state.registers.size == 1) {
             return StaffManager.activeWeightedCount(
-                EntityDef.CASHIER, currentHour, state.staffSchedules, state.hiredEntityRegistry
+                EntityDef.CASHIER, currentHour, state.staffSchedules, state.hiredEntityRegistry, dayOfWeek
             ) > 0f || state.playerRole == PlayerRole.CASHIER
         }
 
@@ -143,6 +152,7 @@ class RegisterManager @Inject constructor() {
         registerId: Int,
         state: GameState,
         currentHour: Int,
+        dayOfWeek: Int = -1,
     ): Float {
         val register = state.registers.findRegisterById(registerId) ?: return 0f
         val assignedId = register.assignedCashierId
@@ -154,7 +164,10 @@ class RegisterManager @Inject constructor() {
                 return 0f
             }
             val shift = state.staffSchedules.firstOrNull { it.entityId == assignedId }
-            val onShift = shift?.isOnShift(currentHour) == true
+            val onShift = if (dayOfWeek >= 0)
+                shift?.isOnShift(currentHour, dayOfWeek) == true
+            else
+                shift?.isOnShift(currentHour) == true
             return if (onShift || register.transactionActive)
                 cashier.throughputWeight * cashier.levelMultiplier * cashier.trait.throughputMultiplier
             else 0f
@@ -162,7 +175,7 @@ class RegisterManager @Inject constructor() {
 
         if (state.registers.size == 1) {
             return StaffManager.activeWeightedCount(
-                EntityDef.CASHIER, currentHour, state.staffSchedules, state.hiredEntityRegistry
+                EntityDef.CASHIER, currentHour, state.staffSchedules, state.hiredEntityRegistry, dayOfWeek
             )
         }
 

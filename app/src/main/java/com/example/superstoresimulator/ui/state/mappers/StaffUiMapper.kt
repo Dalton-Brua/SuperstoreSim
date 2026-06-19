@@ -6,6 +6,7 @@ import com.example.superstoresimulator.ui.state.StaffScheduleEntryUI
 
 fun buildStaffScheduleEntries(domain: GameState): List<StaffScheduleEntryUI> {
     val currentHour = domain.currentTime.hour
+    val dayOfWeek = domain.currentTime.dayOfWeek
     val shiftMap = domain.staffSchedules.associateBy { it.entityId }
 
     val cashierRegisterMap = domain.registers
@@ -14,7 +15,7 @@ fun buildStaffScheduleEntries(domain: GameState): List<StaffScheduleEntryUI> {
 
     return domain.hiredEntityRegistry.hiredEntities.map { entity ->
         val shift = shiftMap[entity.id]
-        val isOnShift = shift?.isOnShift(currentHour) ?: true
+        val isOnShift = shift?.isOnShift(currentHour, dayOfWeek) ?: true
         val tierLabel = when (entity.tier) {
             Tier.BASE -> ""
             Tier.FAST -> "Fast"
@@ -32,14 +33,17 @@ fun buildStaffScheduleEntries(domain: GameState): List<StaffScheduleEntryUI> {
             tierLabel = tierLabel,
             level = entity.level,
             assignedRegisterId = cashierRegisterMap[entity.id],
+            workDays = shift?.workDays ?: emptySet(),
+            daysPerWeek = shift?.daysPerWeek ?: 7,
         )
     }
 }
 
 fun countActiveStaff(domain: GameState): Int {
     val currentHour = domain.currentTime.hour
+    val dayOfWeek = domain.currentTime.dayOfWeek
     val shiftMap = domain.staffSchedules.associateBy { it.entityId }
     return domain.hiredEntityRegistry.hiredEntities.count { entity ->
-        shiftMap[entity.id]?.isOnShift(currentHour) ?: true
+        shiftMap[entity.id]?.isOnShift(currentHour, dayOfWeek) ?: true
     }
 }

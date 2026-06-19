@@ -20,6 +20,6 @@ class UtilizationTracker @Inject constructor(
             (state.freshAutoOrderConfig.enabled && state.inventory.any { (itemId, _) ->
                 inventoryManager.shouldAutoOrderFreshItem(state, itemId, state.freshAutoOrderConfig)
             })
-        staffManager.updateUtilization(state, currentHour, scan.hasActionableBackroom, scan.hasUnzonedItems, hasFreshWork)
+        staffManager.updateUtilization(state, currentHour, scan.hasActionableBackroom, scan.hasUnzonedItems, hasFreshWork, state.currentTime.dayOfWeek)
     }
 }

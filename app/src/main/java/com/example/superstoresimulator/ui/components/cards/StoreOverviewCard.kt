@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.ui.state.ReputationUIState
 import com.example.superstoresimulator.ui.theme.Amber
 import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.Destructive
@@ -37,6 +39,7 @@ fun StoreOverviewCard(
     modifier: Modifier = Modifier,
     activeEmployees: Int = totalEmployees,
     avgZoneScore: Float = 1.0f,
+    reputationUiState: ReputationUIState? = null,
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -54,6 +57,10 @@ fun StoreOverviewCard(
                 CashMetric(cash)
                 EmployeeMetric(totalEmployees = totalEmployees, activeEmployees = activeEmployees)
                 ZoneMetric(avgZoneScore)
+            }
+            if (reputationUiState?.isActive == true) {
+                Spacer(Modifier.height(12.dp))
+                ReputationMetric(reputationUiState)
             }
         }
     }
@@ -85,6 +92,27 @@ private fun EmployeeMetric(totalEmployees: Int, activeEmployees: Int = totalEmpl
         } else {
             Text("Employees", color = TextSecondary, fontSize = 12.sp)
         }
+    }
+}
+
+@Composable
+private fun ReputationMetric(rep: ReputationUIState) {
+    val repPct = rep.reputationScore.toInt()
+    val repColor = when {
+        rep.reputationScore >= 125f -> Secondary
+        rep.reputationScore >= 75f  -> Amber
+        else                        -> Destructive
+    }
+    val trafficDeltaPct = ((rep.trafficMultiplier - 1f) * 100).toInt()
+    val trafficSign = if (trafficDeltaPct >= 0) "+" else ""
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("Reputation: $repPct%", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = repColor)
+        Spacer(Modifier.width(12.dp))
+        Text("Traffic $trafficSign${trafficDeltaPct}%", fontSize = 12.sp, color = TextSecondary)
     }
 }
 

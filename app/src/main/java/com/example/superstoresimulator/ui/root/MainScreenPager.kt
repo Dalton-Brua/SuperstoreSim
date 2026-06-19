@@ -53,6 +53,7 @@ fun MainScreenPager(
                 onOpenStore = { onEvent(GameEvent.ToggleStore) },
                 onSetPlayerRole = { role: PlayerRole -> onEvent(GameEvent.SetPlayerRole(role)) },
                 onSkipDay = { onEvent(GameEvent.SkipDay) },
+                onSkipWeek = { onEvent(GameEvent.SkipWeek) },
                 onUpgradeStore = { onEvent(GameEvent.UpgradeStoreSize) },
                 onPurchaseBuilding = { onEvent(GameEvent.PurchaseBuilding) },
                 onSave = { onEvent(GameEvent.SaveGame) },
@@ -138,8 +139,8 @@ fun MainScreenPager(
                 onPromoteStaff = { id -> onEvent(GameEvent.PromoteStaff(id)) },
                 onUnlockNextVendorTier = { onEvent(GameEvent.UnlockNextVendorTier) },
                 onInvestInVendor = { vendorId -> onEvent(GameEvent.InvestInVendor(vendorId)) },
-                onUpdateShift = { entityId, newStartHour, newDuration ->
-                    onEvent(GameEvent.UpdateShift(entityId, newStartHour, newDuration))
+                onUpdateShift = { entityId, newStartHour, newDuration, workDays ->
+                    onEvent(GameEvent.UpdateShift(entityId, newStartHour, newDuration, workDays))
                 },
                 onUpdateStoreManagerConfig = { config ->
                     onEvent(GameEvent.UpdateStoreManagerConfig(config))
@@ -162,7 +163,13 @@ fun MainScreenPager(
                 onFocusInventoryItem = { itemId ->
                     onEvent(GameEvent.FocusInventoryItem(itemId))
                     navState.navigateTo(Screen.INVENTORY)
-                }
+                },
+                onLoadArchivedDay = { dayNumber ->
+                    onEvent(GameEvent.LoadArchivedDayDetail(dayNumber))
+                },
+                onClearLoadedArchivedDay = {
+                    onEvent(GameEvent.ClearLoadedArchivedDay)
+                },
             )
         }
     }

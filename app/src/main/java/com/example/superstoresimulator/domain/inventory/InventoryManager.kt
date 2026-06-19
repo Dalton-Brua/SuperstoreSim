@@ -146,6 +146,64 @@ class InventoryManager(
     }
 
     /**
+     * Batch-stock multiple case packs in one map copy. Used during skip/offline simulation
+     * to avoid per-action map copies.
+     */
+    fun stockMultipleFromBackroom(state: GameState, count: Int, freshOnly: Boolean = false): GameState {
+        if (count <= 0) return state
+        val mutableInv = state.inventory.toMutableMap()
+        var itemsStocked = 0
+        repeat(count) {
+            val candidates = mutableInv.filter { (id, inv) ->
+                inv.backroomStock > 0 && if (freshOnly) isFreshItem(id) else !isFreshItem(id)
+            }
+            if (candidates.isEmpty()) return@repeat
+            val lowestShelf = candidates.minOf { it.value.shelfStock }
+            val lowestGroup = candidates.filter { it.value.shelfStock == lowestShelf }
+            val targetId = lowestGroup.keys.random()
+            itemsStocked += stockCasePackInPlace(mutableInv, targetId)
+        }
+        if (itemsStocked == 0) return state
+        return state.copy(
+            inventory = mutableInv,
+            currentDayMetrics = state.currentDayMetrics.copy(
+                itemsStocked = state.currentDayMetrics.itemsStocked + itemsStocked
+            ),
+        )
+    }
+
+    private fun stockCasePackInPlace(map: MutableMap<Int, InventoryState>, itemId: Int): Int {
+        val inv = map[itemId] ?: return 0
+        val dbItem = cache.getItem(itemId) ?: return 0
+        if (inv.backroomStock <= 0) return 0
+
+        val itemsToStock = minOf(dbItem.casePack, inv.backroomStock)
+        var remaining = itemsToStock
+        var updatedBackroomBatches = inv.backroomBatches
+        val batchesToMove = mutableListOf<ItemBatch>()
+
+        while (remaining > 0 && updatedBackroomBatches.isNotEmpty()) {
+            val oldestBatch = updatedBackroomBatches.minByOrNull { it.receivedDay } ?: break
+            val takeQty = minOf(remaining, oldestBatch.quantity)
+            batchesToMove.add(ItemBatch(oldestBatch.receivedDay, takeQty, oldestBatch.expirationDay))
+            updatedBackroomBatches = updatedBackroomBatches.mapNotNull { batch ->
+                if (batch.receivedDay == oldestBatch.receivedDay && batch.expirationDay == oldestBatch.expirationDay) {
+                    if (batch.quantity > takeQty) batch.copy(quantity = batch.quantity - takeQty) else null
+                } else batch
+            }
+            remaining -= takeQty
+        }
+
+        val updatedShelfBatches = inv.mergeBatches(inv.shelfBatches + batchesToMove)
+        map[itemId] = inv.copy(
+            shelfBatches = updatedShelfBatches,
+            backroomBatches = updatedBackroomBatches,
+            zoneScore = 1.0f,
+        )
+        return itemsToStock
+    }
+
+    /**
      * Move up to one full case-pack of [itemId] from backroom to shelf using FIFO.
      * If fewer items than the case-pack size remain in the backroom, all remaining
      * units are stocked.
@@ -358,7 +416,9 @@ class InventoryManager(
             totalCases >= 20  -> 0.10
             else              -> 0.0
         }
-        val finalCost = Money((baseCost.cents * (1.0 - discountFraction)).toLong())
+        val repBonus = state.reputationState.supplierDiscountBonus.toDouble()
+        val totalDiscount = (discountFraction + repBonus).coerceAtMost(0.99)
+        val finalCost = Money((baseCost.cents * (1.0 - totalDiscount)).toLong())
         if (state.money < finalCost) return BuyResult(state, emptyList())
 
         val lines = mutableListOf<PendingOrderLine>()
@@ -433,7 +493,9 @@ class InventoryManager(
             totalCases >= 15  -> 0.05
             else              -> 0.0
         }
-        val finalCost = Money((baseCost.cents * (1.0 - discountFraction)).toLong())
+        val repBonus = state.reputationState.supplierDiscountBonus.toDouble()
+        val totalDiscount = (discountFraction + repBonus).coerceAtMost(0.99)
+        val finalCost = Money((baseCost.cents * (1.0 - totalDiscount)).toLong())
         if (state.money < finalCost) return BuyResult(state, emptyList())
 
         val lines = mutableListOf<PendingOrderLine>()
@@ -614,7 +676,7 @@ class InventoryManager(
                 else tm.scheduleRegularOrderLines(updated, result.orderLines, day)
             }
             val lineItem = AutoOrderLineItem(
-                itemId = itemId, itemName = item.name,
+                itemId = itemId,
                 casePacksOrdered = casePacks,
                 costPerCasePack = item.getCasePackCostAsMoney(), totalCost = totalCost,
             )
@@ -627,7 +689,7 @@ class InventoryManager(
             )
         } else {
             val incomplete = IncompleteAutoOrderLineItem(
-                itemId = itemId, itemName = item.name,
+                itemId = itemId,
                 casePacksRequested = casePacks,
                 costPerCasePack = item.getCasePackCostAsMoney(), totalCost = totalCost,
                 reason = "Insufficient funds",

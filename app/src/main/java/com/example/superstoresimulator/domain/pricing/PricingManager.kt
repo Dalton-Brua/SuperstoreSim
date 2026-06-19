@@ -21,6 +21,11 @@ class PricingManager @javax.inject.Inject constructor(
 
     fun resolvePrice(itemId: Int, state: GameState): ResolvedPrice {
         val meta = cache.get(itemId) ?: return ResolvedPrice(Money.ZERO, Money.ZERO, 0)
+
+        if (state.reputationState.goobSaleActiveToday) {
+            return ResolvedPrice(meta.price, meta.price, 0)
+        }
+
         val pricing = state.pricingState
 
         val baseMarkup = pricing.defaultMarkup
@@ -185,12 +190,13 @@ class PricingManager @javax.inject.Inject constructor(
     fun computePricingData(state: GameState): PricingData {
         val multipliers = mutableMapOf<Int, Float>()
         val resolved = mutableMapOf<Int, ResolvedPrice>()
+        val effectiveElasticity = config.priceElasticity / state.reputationState.priceToleranceMultiplier
         for (itemId in state.inventory.keys) {
             val r = resolvePrice(itemId, state)
             resolved[itemId] = r
             multipliers[itemId] = if (r.basePrice.cents <= 0 || r.effectivePrice.cents <= 0) 1.0f
             else (r.basePrice.cents.toDouble() / r.effectivePrice.cents.toDouble())
-                .pow(config.priceElasticity.toDouble()).toFloat()
+                .pow(effectiveElasticity.toDouble()).toFloat()
         }
         return PricingData(multipliers, resolved)
     }

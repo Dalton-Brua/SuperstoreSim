@@ -117,7 +117,7 @@ class ResearchManager @Inject constructor(
         // Add newly accessible items to inventory, seeded with starter stock
         // (SEED_QTY on the shelf + SEED_QTY in the backroom) so a freshly unlocked
         // category is immediately sellable instead of starting empty.
-        val currentDay = s.simAccumulators.lastKnownDayNumber
+        val currentDay = s.currentTime.dayNumber
         for (completedId in newlyCompleted) {
             val newItems = itemMetadataCache.getAllItems().filter { (_, item) ->
                 item.researchGate == completedId && !s.inventory.containsKey(

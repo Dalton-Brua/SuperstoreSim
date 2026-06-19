@@ -20,6 +20,7 @@ enum class StoreSize(
      * [com.example.superstoresimulator.domain.research.ResearchGates.validate].
      */
     val requiredUpgradeId: String? = null,
+    val baseRevenueTarget: Money? = null,
 ) {
     MOM_AND_POP(
         displayName = "Mom & Pop Store",
@@ -31,6 +32,7 @@ enum class StoreSize(
         upgradeCost = null,              // Starting size
         maxRegisters = 1,
         requiredUpgradeId = null,        // Starting size — no research gate
+        baseRevenueTarget = null,
     ),
     SMALL_GROCERY(
         displayName = "Small Grocery",
@@ -42,6 +44,7 @@ enum class StoreSize(
         upgradeCost = Money(100_000),    // $1,000 to upgrade
         maxRegisters = 2,
         requiredUpgradeId = "store_small_grocery",
+        baseRevenueTarget = null,
     ),
     GROCERY_STORE(
         displayName = "Grocery Store",
@@ -53,6 +56,7 @@ enum class StoreSize(
         upgradeCost = Money(2_000_000),  // $20,000 to upgrade
         maxRegisters = 3,
         requiredUpgradeId = "store_grocery",
+        baseRevenueTarget = Money(80_000),      // $800/day
     ),
     SUPERSTORE(
         displayName = "Superstore",
@@ -61,9 +65,10 @@ enum class StoreSize(
         backroomCapPerItem = 30,         // 30 case packs per item (15x)
         trafficMultiplier = 8.0f,       // 8× traffic (3³ = 9×3)
         basketSizeMultiplier = 2.25f,    // +125% basket
-        upgradeCost = Money(20_000_000), // $200,000 to upgrade
+        upgradeCost = Money(10_000_000), // $100,000 to upgrade
         maxRegisters = 5,
         requiredUpgradeId = "store_superstore",
+        baseRevenueTarget = Money(300_000),     // $3,000/day
     ),
     SUPERCENTER(
         displayName = "Supercenter",
@@ -72,9 +77,10 @@ enum class StoreSize(
         backroomCapPerItem = 999,        // Effectively unlimited case packs
         trafficMultiplier = 16.0f,       // 16× traffic (3⁴ = 27×3)
         basketSizeMultiplier = 3.0f,     // +200% basket
-        upgradeCost = Money(100_000_000), // $1,000,000 to upgrade
+        upgradeCost = Money(50_000_000), // $500,000 to upgrade
         maxRegisters = 8,
         requiredUpgradeId = "store_supercenter",
+        baseRevenueTarget = Money(1_000_000),   // $10,000/day
     );
 
     companion object {

@@ -48,6 +48,9 @@ fun StoreManagerConfigDialog(
     var autoTerminate by remember { mutableStateOf(config.autoTerminateEnabled) }
     var buyRegisters by remember { mutableStateOf(config.autoBuyRegistersEnabled) }
     var rebalance by remember { mutableStateOf(config.autoRebalanceShiftsEnabled) }
+    var autoOptimizeSchedule by remember { mutableStateOf(config.autoOptimizeWeeklySchedule) }
+    var minDays by remember { mutableFloatStateOf(config.minDaysPerWeek.toFloat()) }
+    var maxDays by remember { mutableFloatStateOf(config.maxDaysPerWeek.toFloat()) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -152,6 +155,32 @@ fun StoreManagerConfigDialog(
                 HorizontalDivider(color = TextSecondary.copy(alpha = 0.2f))
                 Spacer(Modifier.height(8.dp))
 
+                // ── Weekly Scheduling ──
+                SectionHeader("Weekly Scheduling")
+                ToggleRow("Auto-Optimize Schedules", autoOptimizeSchedule) { autoOptimizeSchedule = it }
+                if (autoOptimizeSchedule) {
+                    ConfigSlider(
+                        label = "Min Days/Week",
+                        value = minDays,
+                        range = 1f..5f,
+                        steps = 3,
+                        onValueChange = { minDays = it; if (maxDays < it) maxDays = it },
+                        valueSuffix = " days",
+                    )
+                    ConfigSlider(
+                        label = "Max Days/Week",
+                        value = maxDays,
+                        range = 4f..7f,
+                        steps = 2,
+                        onValueChange = { maxDays = it; if (minDays > it) minDays = it },
+                        valueSuffix = " days",
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider(color = TextSecondary.copy(alpha = 0.2f))
+                Spacer(Modifier.height(8.dp))
+
                 // ── Operations ──
                 SectionHeader("Operations")
                 ToggleRow("Auto-Buy Registers", buyRegisters) { buyRegisters = it }
@@ -189,6 +218,9 @@ fun StoreManagerConfigDialog(
                                     autoRebalanceShiftsEnabled = rebalance,
                                     autoPromoteEnabled = autoPromote,
                                     autoTerminateEnabled = autoTerminate,
+                                    autoOptimizeWeeklySchedule = autoOptimizeSchedule,
+                                    minDaysPerWeek = minDays.toInt(),
+                                    maxDaysPerWeek = maxDays.toInt(),
                                 )
                             )
                             onDismiss()

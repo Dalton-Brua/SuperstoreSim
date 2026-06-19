@@ -29,6 +29,7 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.metrics.AutoHireAction
 import com.example.superstoresimulator.domain.metrics.AutoHireEvent
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
+import com.example.superstoresimulator.ui.state.ReputationUIState
 import com.example.superstoresimulator.ui.theme.*
 import java.util.Locale
 
@@ -43,6 +44,8 @@ fun EndOfDayReportDialog(
     /** True when the dialog is shown automatically at midnight (shows "Start Day" + pauses time).
      *  False when opened manually from the Metrics screen (shows plain "Close"). */
     isAutoShown: Boolean = true,
+    itemNames: Map<Int, String> = emptyMap(),
+    reputationUiState: ReputationUIState? = null,
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -245,7 +248,7 @@ fun EndOfDayReportDialog(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            "${order.itemName}: ${order.casePacksOrdered} packs",
+                                            "${itemNames[order.itemId] ?: order.itemName.ifEmpty { "Item ${order.itemId}" }}: ${order.casePacksOrdered} packs",
                                             fontSize = 11.sp,
                                             color = TextNeutralDark
                                         )
@@ -340,7 +343,7 @@ fun EndOfDayReportDialog(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                "${order.itemName}: ${order.casePacksRequested} packs",
+                                                "${itemNames[order.itemId] ?: order.itemName.ifEmpty { "Item ${order.itemId}" }}: ${order.casePacksRequested} packs",
                                                 fontSize = 11.sp,
                                                 color = TextNeutralDark
                                             )
@@ -434,16 +437,17 @@ fun EndOfDayReportDialog(
                                         modifier = Modifier.padding(vertical = 2.dp)
                                     )
                                     truck.lines.forEach { line ->
+                                        val lineName = itemNames[line.itemId] ?: line.itemName.ifEmpty { "Item ${line.itemId}" }
                                         if (line.casePacks > 0) {
                                             Text(
-                                                "  ${line.itemName}: ${line.casePacks} packs (${line.quantity} units)",
+                                                "  $lineName: ${line.casePacks} packs (${line.quantity} units)",
                                                 fontSize = 11.sp,
                                                 color = TextNeutralMedium
                                             )
                                         }
                                         if (line.deferredCasePacks > 0) {
                                             Text(
-                                                "  ${line.itemName}: ${line.deferredCasePacks} packs deferred — backroom full",
+                                                "  $lineName: ${line.deferredCasePacks} packs deferred — backroom full",
                                                 fontSize = 11.sp,
                                                 color = Amber
                                             )
@@ -455,6 +459,49 @@ fun EndOfDayReportDialog(
                         }
                     }
                     Spacer(Modifier.height(20.dp))
+                }
+
+                // ── Store Reputation section ──────────────────────────────
+                if (reputationUiState?.isActive == true && reputationUiState.lastDailyComposite > 0f) {
+                    Spacer(Modifier.height(12.dp))
+                    SectionHeader("⭐ Store Reputation")
+
+                    val repPct = reputationUiState.reputationScore.toInt()
+                    val repColor = when {
+                        reputationUiState.reputationScore >= 125f -> PositiveGreen
+                        reputationUiState.reputationScore >= 75f  -> Amber
+                        else                                      -> ClosedRed
+                    }
+                    StatRow(Icons.Default.Star, "Reputation", "$repPct%", highlight = true, tint = repColor)
+
+                    val revScore = reputationUiState.lastRevenueScore.toInt()
+                    val stockScore = reputationUiState.lastStockScore.toInt()
+                    val appScore = reputationUiState.lastAppearanceScore.toInt()
+                    if (reputationUiState.currentRevenueTarget.cents > 0) {
+                        StatRow(Icons.Default.AttachMoney, "Revenue Score", "$revScore% (target ${reputationUiState.currentRevenueTarget})")
+                    }
+                    StatRow(Icons.Default.Inventory2, "Stock Score", "$stockScore%")
+                    StatRow(Icons.Default.CleaningServices, "Appearance Score", "$appScore%")
+
+                    val trafficPct = ((reputationUiState.trafficMultiplier - 1f) * 100).toInt()
+                    val tolPct = ((reputationUiState.priceToleranceMultiplier - 1f) * 100).toInt()
+                    val supPct = (reputationUiState.supplierDiscountBonus * 100 * 10).toInt() / 10f
+                    val trafficSign = if (trafficPct >= 0) "+" else ""
+                    val tolSign = if (tolPct >= 0) "+" else ""
+                    StatRow(
+                        Icons.Default.People, "Active Bonuses",
+                        "Traffic ${trafficSign}${trafficPct}% · Tolerance ${tolSign}${tolPct}% · Supplier +${supPct}%"
+                    )
+
+                    if (reputationUiState.consecutiveTargetHits > 1) {
+                        StatRow(Icons.Default.Star, "Streak", "${reputationUiState.consecutiveTargetHits}-day target streak", tint = PositiveGreen)
+                    } else if (reputationUiState.consecutiveTargetMisses > 0) {
+                        StatRow(Icons.Default.Warning, "Streak",
+                            "Target missed (${reputationUiState.consecutiveTargetMisses} day${if (reputationUiState.consecutiveTargetMisses > 1) "s" else ""})",
+                            tint = Amber)
+                    }
+
+                    Spacer(Modifier.height(12.dp))
                 }
 
                 // ── Dismiss button ────────────────────────────────────────
@@ -538,6 +585,8 @@ private fun AutoHireRow(event: AutoHireEvent) {
         AutoHireAction.PURCHASED -> Triple(Icons.Default.ShoppingCart, Violet, "Purchased")
         AutoHireAction.PROMOTED -> Triple(Icons.AutoMirrored.Filled.TrendingUp, Secondary, "Promoted")
         AutoHireAction.TERMINATED -> Triple(Icons.Default.PersonOff, Destructive, "Terminated")
+        AutoHireAction.REDUCED_HOURS -> Triple(Icons.Default.RemoveCircleOutline, Amber, "Reduced")
+        AutoHireAction.SCHEDULE_OPTIMIZED -> Triple(Icons.Default.CalendarMonth, Primary, "Scheduled")
     }
     val displayReason = if (event.blocked) event.blockReason else event.reason
     val detail = event.detail

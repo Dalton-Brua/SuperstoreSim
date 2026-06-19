@@ -211,11 +211,9 @@ class TruckManager @javax.inject.Inject constructor(private val cache: ItemMetad
                     )
                 }
 
-                val itemName = cache.get(line.itemId)?.name ?: "Item ${line.itemId}"
                 deliveredLines.add(
                     DeliveredItemLine(
                         itemId = line.itemId,
-                        itemName = itemName,
                         casePacks = deliverableCasePacks,
                         quantity = casePack * deliverableCasePacks,
                         deferredCasePacks = deferredCasePacks,

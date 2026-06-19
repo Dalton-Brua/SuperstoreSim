@@ -140,6 +140,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 10,
             prerequisites = listOf("prod_condiments"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
         put("prod_organic", ResearchableUpgrade(
             id = "prod_organic",
@@ -149,6 +150,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 15,
             prerequisites = listOf("prod_premium_grocery"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
         put("prod_gourmet", ResearchableUpgrade(
             id = "prod_gourmet",
@@ -158,6 +160,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 25,
             prerequisites = listOf("prod_organic"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
         put("prod_international", ResearchableUpgrade(
             id = "prod_international",
@@ -213,6 +216,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 10,
             prerequisites = listOf("prod_snack_variety"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
         put("prod_snack_bars", ResearchableUpgrade(
             id = "prod_snack_bars",
@@ -222,6 +226,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 8,
             prerequisites = listOf("prod_premium_snacks"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
         put("prod_snack_dips", ResearchableUpgrade(
             id = "prod_snack_dips",
@@ -250,6 +255,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 10,
             prerequisites = listOf("prod_beverages"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
         put("prod_juice_variety", ResearchableUpgrade(
             id = "prod_juice_variety",
@@ -268,6 +274,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 10,
             prerequisites = listOf("prod_specialty_drinks"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
 
         // ── Product Lines: Dairy ──────────────────────────────────────────────
@@ -278,6 +285,7 @@ object ResearchUpgradeRegistry {
             teaserDescription = "Every household needs dairy staples.",
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 8,
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
             gateCheck = { s -> s.totalRevenue.cents >= 250_000L },
         ))
         put("prod_dairy_cheese", ResearchableUpgrade(
@@ -288,6 +296,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 10,
             prerequisites = listOf("prod_dairy_basics"),
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("prod_dairy_alternatives", ResearchableUpgrade(
             id = "prod_dairy_alternatives",
@@ -297,6 +306,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 10,
             prerequisites = listOf("prod_dairy_cheese"),
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("prod_plant_based", ResearchableUpgrade(
             id = "prod_plant_based",
@@ -306,6 +316,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 12,
             prerequisites = listOf("prod_dairy_alternatives"),
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
 
         // ── Product Lines: Frozen ─────────────────────────────────────────────
@@ -356,6 +367,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 12,
             prerequisites = listOf("prod_dairy_basics"),
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("prod_artisan_bread", ResearchableUpgrade(
             id = "prod_artisan_bread",
@@ -365,6 +377,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 8,
             prerequisites = listOf("prod_bakery"),
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("prod_bakery_cakes", ResearchableUpgrade(
             id = "prod_bakery_cakes",
@@ -374,6 +387,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 12,
             prerequisites = listOf("prod_artisan_bread"),
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("prod_premium_bakery", ResearchableUpgrade(
             id = "prod_premium_bakery",
@@ -383,6 +397,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 15,
             prerequisites = listOf("prod_bakery_cakes"),
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
 
         // ── Product Lines: Produce ────────────────────────────────────────────
@@ -393,6 +408,7 @@ object ResearchUpgradeRegistry {
             teaserDescription = "Fresh produce makes your store feel like a real grocery.",
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 12,
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
         put("prod_premium_produce", ResearchableUpgrade(
             id = "prod_premium_produce",
@@ -402,6 +418,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 10,
             prerequisites = listOf("prod_produce"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
         put("prod_herbs", ResearchableUpgrade(
             id = "prod_herbs",
@@ -411,6 +428,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 8,
             prerequisites = listOf("prod_premium_produce"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
         put("prod_organic_produce", ResearchableUpgrade(
             id = "prod_organic_produce",
@@ -420,6 +438,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 15,
             prerequisites = listOf("prod_herbs"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
 
         // ── Product Lines: Meat ───────────────────────────────────────────────
@@ -431,6 +450,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 15,
             prerequisites = listOf("prod_dairy_basics"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
             gateCheck = { s -> s.totalRevenue.cents >= 1_000_000L },
         ))
         put("prod_premium_meat", ResearchableUpgrade(
@@ -441,6 +461,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 20,
             prerequisites = listOf("prod_meat_counter"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
         put("prod_deli_meats", ResearchableUpgrade(
             id = "prod_deli_meats",
@@ -450,6 +471,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 12,
             prerequisites = listOf("prod_meat_counter"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
         put("prod_seafood_market", ResearchableUpgrade(
             id = "prod_seafood_market",
@@ -459,6 +481,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 22,
             prerequisites = listOf("prod_premium_meat"),
+            requiredStoreSize = StoreSize.SMALL_GROCERY,
         ))
 
         // ── Product Lines: Health & Non-food ─────────────────────────────────
@@ -469,6 +492,7 @@ object ResearchUpgradeRegistry {
             teaserDescription = "Non-food departments add reliable revenue.",
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 12,
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("prod_household", ResearchableUpgrade(
             id = "prod_household",
@@ -477,6 +501,7 @@ object ResearchUpgradeRegistry {
             teaserDescription = "Household essentials bring people back weekly.",
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 12,
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("prod_pharmacy", ResearchableUpgrade(
             id = "prod_pharmacy",
@@ -496,6 +521,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 20,
             prerequisites = listOf("prod_household"),
+            requiredStoreSize = StoreSize.SUPERCENTER,
             gateCheck = { s -> s.totalRevenue.cents >= 2_500_000L },
         ))
         put("prod_personal_care", ResearchableUpgrade(
@@ -524,6 +550,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 12,
             prerequisites = listOf("prod_cleaning_supplies"),
+            requiredStoreSize = StoreSize.SUPERCENTER,
         ))
         put("prod_wellness", ResearchableUpgrade(
             id = "prod_wellness",
@@ -542,6 +569,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 15,
             prerequisites = listOf("prod_electronics"),
+            requiredStoreSize = StoreSize.SUPERCENTER,
         ))
 
         // ── Product Lines: New Categories (Superstore+) ───────────────────────
@@ -553,7 +581,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 15,
             prerequisites = listOf("prod_dairy_basics"),
-            requiredStoreSize = StoreSize.SUPERSTORE,
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("prod_deli_prepared", ResearchableUpgrade(
             id = "prod_deli_prepared",
@@ -563,7 +591,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 18,
             prerequisites = listOf("prod_deli_counter"),
-            requiredStoreSize = StoreSize.SUPERSTORE,
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("prod_pet_basics", ResearchableUpgrade(
             id = "prod_pet_basics",
@@ -572,7 +600,7 @@ object ResearchUpgradeRegistry {
             teaserDescription = "Pet owners shop on a weekly schedule.",
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 12,
-            requiredStoreSize = StoreSize.SUPERSTORE,
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("prod_pet_premium", ResearchableUpgrade(
             id = "prod_pet_premium",
@@ -582,7 +610,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 15,
             prerequisites = listOf("prod_pet_basics"),
-            requiredStoreSize = StoreSize.SUPERSTORE,
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("prod_baby_basics", ResearchableUpgrade(
             id = "prod_baby_basics",
@@ -592,7 +620,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 15,
             prerequisites = listOf("prod_household"),
-            requiredStoreSize = StoreSize.SUPERSTORE,
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
         put("prod_baby_gear", ResearchableUpgrade(
             id = "prod_baby_gear",
@@ -602,7 +630,7 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRODUCT_LINES,
             researchCost = 18,
             prerequisites = listOf("prod_baby_basics"),
-            requiredStoreSize = StoreSize.SUPERSTORE,
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
 
         // ── Product Lines: Supercenter-only Categories ────────────────────────
@@ -787,6 +815,16 @@ object ResearchUpgradeRegistry {
             category = ResearchCategory.PRICING,
             researchCost = 20,
             prerequisites = listOf("category_pricing"),
+        ))
+        put("revenue_reputation", ResearchableUpgrade(
+            id = "revenue_reputation",
+            displayName = "Customer Loyalty Study",
+            description = "Unlocks the Store Reputation system.",
+            teaserDescription = "A trusted store attracts more shoppers and bigger baskets.",
+            category = ResearchCategory.PRICING,
+            researchCost = 20,
+            prerequisites = listOf("category_pricing"),
+            requiredStoreSize = StoreSize.GROCERY_STORE,
         ))
 
         // ── Staff Management ──────────────────────────────────────────────────

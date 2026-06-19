@@ -167,6 +167,53 @@ class PerformanceRegressionTest {
     // ── Performance Tests ─────────────────────────────────────────────────────
 
     @Test
+    fun `simulateWeek benchmark — skip week user path`() {
+        val inventory = createInventoryForCatalog(testItems, shelfQty = 30, backroomQty = 30)
+        val staffRegistry = createStaffRegistry(
+            cashierCount = 20,
+            stockerCount = 15,
+            stockingManagerCount = 2,
+            freshHandlerCount = 8,
+            managerCount = 2,
+            storeManagerCount = 1,
+        )
+
+        gameEngine.setGameSpeed(1f)
+        gameEngine.state = gameEngine.state.copy(
+            inventory = inventory,
+            hiredEntityRegistry = staffRegistry,
+            money = Money(10_000_000_00),
+            currentStoreSize = StoreSize.SUPERSTORE,
+            freshAutoOrderConfig = FreshAutoOrderConfig(enabled = true),
+            normalAutoOrderConfig = NormalAutoOrderConfig(enabled = true),
+            storeManagerConfig = StoreManagerConfig(),
+            truckConfig = TruckConfig(deliveryDays = setOf(0, 2, 4)),
+            autoHireBudget = Money(500_000),
+        )
+
+        // Warm up JIT
+        gameEngine.simulateWeek()
+        gameEngine.state = gameEngine.state.copy(
+            showEndOfWeekReport = false,
+            playerPausedTime = false,
+        )
+
+        // Actual measurement
+        val startTime = System.nanoTime()
+        gameEngine.simulateWeek()
+        val elapsed = (System.nanoTime() - startTime) / 1_000_000.0
+
+        println("=== simulateWeek() Benchmark (Superstore, 500 items, 48 staff) ===")
+        println("Total: ${elapsed}ms")
+        println("Final day: ${gameEngine.state.currentTime.dayNumber}")
+
+        assertTrue(
+            "simulateWeek too slow: ${elapsed}ms. Expected < 2000ms.",
+            elapsed < 2000.0
+        )
+    }
+
+    @Test
     fun `tick performance under realistic load`() {
         val inventory = createInventoryForCatalog(testItems, shelfQty = 10, backroomQty = 10)
         val staffRegistry = createStaffRegistry(

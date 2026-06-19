@@ -22,10 +22,11 @@ class StaffTickProcessor @Inject constructor(
     private val pricingManager: PricingManager,
     private val itemMetadataCache: ItemMetadataCache,
 ) {
-    fun process(state: GameState, delta: Double, speedMultiplier: Float, currentHour: Int): GameState {
+    fun process(state: GameState, delta: Double, speedMultiplier: Float, currentHour: Int, pricingData: PricingManager.PricingData? = null): GameState {
         var s = state
+        val dayOfWeek = s.currentTime.dayOfWeek
         val bonuses = StaffManager.computeAllBonuses(
-            s.playerRole, currentHour, s.staffSchedules, s.hiredEntityRegistry
+            s.playerRole, currentHour, s.staffSchedules, s.hiredEntityRegistry, dayOfWeek
         )
         val cashierBonus = bonuses.cashierBonus
         val stockerBonus = bonuses.stockerBonus
@@ -37,7 +38,7 @@ class StaffTickProcessor @Inject constructor(
         if (s.registers.any { it.transactionActive }) {
             for (reg in s.registers) {
                 if (!reg.transactionActive) continue
-                val cashierWeight = registerManager.getCashierWeightForRegister(reg.registerId, s, currentHour)
+                val cashierWeight = registerManager.getCashierWeightForRegister(reg.registerId, s, currentHour, dayOfWeek)
                 if (cashierWeight <= 0f) continue
                 val actions = staffManager.advanceCashierProgressForRegister(
                     reg.registerId, cashierWeight, delta, speedMultiplier * cashierBonus
@@ -53,7 +54,7 @@ class StaffTickProcessor @Inject constructor(
 
         // Stocker work — split stocking managers from regular stockers
         val fullStockerResult = StaffManager.activeWeightedCountWithIds(
-            EntityDef.STOCKER, currentHour, s.staffSchedules, s.hiredEntityRegistry
+            EntityDef.STOCKER, currentHour, s.staffSchedules, s.hiredEntityRegistry, dayOfWeek
         )
 
         val regularIds = mutableListOf<Int>()
@@ -84,12 +85,15 @@ class StaffTickProcessor @Inject constructor(
                 remainingManagerActions -= orderResult.itemsOrdered
 
                 if (remainingManagerActions > 0 && (scan.hasActionableBackroom || hasFreshBackroomStock)) {
-                    while (remainingManagerActions > 0 && hasFreshBackroomStock) {
-                        s = inventoryManager.stockRandomFreshItemFromBackroom(s)
-                        remainingManagerActions--
+                    if (hasFreshBackroomStock) {
+                        val freshBefore = remainingManagerActions
+                        s = inventoryManager.stockMultipleFromBackroom(s, remainingManagerActions, freshOnly = true)
                         hasFreshBackroomStock = hasFreshBackroomStock(s)
+                        remainingManagerActions = if (hasFreshBackroomStock) 0 else remainingManagerActions
                     }
-                    repeat(remainingManagerActions) { s = inventoryManager.stockRandomItemFromBackroom(s) }
+                    if (remainingManagerActions > 0) {
+                        s = inventoryManager.stockMultipleFromBackroom(s, remainingManagerActions, freshOnly = false)
+                    }
                 }
             }
 
@@ -105,23 +109,25 @@ class StaffTickProcessor @Inject constructor(
         if (scan.hasActionableBackroom || hasFreshBackroomStock) {
             val assignedStockers = staffManager.advanceStockerProgressWithAssignment(regularResult, delta, speedMultiplier * stockerBonus)
             var remainingStockerActions = assignedStockers.size
-            while (remainingStockerActions > 0 && hasFreshBackroomStock) {
-                s = inventoryManager.stockRandomFreshItemFromBackroom(s)
-                remainingStockerActions--
+            if (remainingStockerActions > 0 && hasFreshBackroomStock) {
+                s = inventoryManager.stockMultipleFromBackroom(s, remainingStockerActions, freshOnly = true)
                 hasFreshBackroomStock = hasFreshBackroomStock(s)
+                if (!hasFreshBackroomStock) remainingStockerActions = 0
             }
-            repeat(remainingStockerActions) { s = inventoryManager.stockRandomItemFromBackroom(s) }
+            if (remainingStockerActions > 0) {
+                s = inventoryManager.stockMultipleFromBackroom(s, remainingStockerActions, freshOnly = false)
+            }
             if (assignedStockers.isNotEmpty()) {
                 s = grantXpAll(s, assignedStockers, StaffManager.XP_PER_STOCK_ACTION)
                 totalEmployeeActions += assignedStockers.size
             }
         } else if (scan.hasUnzonedItems && (activeStockers > 0f || managerResult.weight > 0f)) {
-            s = advanceStockerZoning(s, currentHour, delta, speedMultiplier * stockerBonus)
+            s = advanceStockerZoning(s, currentHour, dayOfWeek, delta, speedMultiplier * stockerBonus)
         }
 
         // Fresh handler work
         val freshResult = StaffManager.activeWeightedCountWithIds(
-            EntityDef.FRESH_HANDLER, currentHour, s.staffSchedules, s.hiredEntityRegistry
+            EntityDef.FRESH_HANDLER, currentHour, s.staffSchedules, s.hiredEntityRegistry, dayOfWeek
         )
         val activeFreshHandlers = freshResult.weight
         val assignedFreshHandlers = staffManager.advanceFreshProgressWithAssignment(freshResult, delta, speedMultiplier * freshBonus)
@@ -144,7 +150,9 @@ class StaffTickProcessor @Inject constructor(
             }
         }
 
-        repeat(remainingFreshActions) { s = inventoryManager.stockRandomFreshItemFromBackroom(s) }
+        if (remainingFreshActions > 0) {
+            s = inventoryManager.stockMultipleFromBackroom(s, remainingFreshActions, freshOnly = true)
+        }
         if (assignedFreshHandlers.isNotEmpty()) {
             s = grantXpAll(s, assignedFreshHandlers, StaffManager.XP_PER_STOCK_ACTION)
             totalEmployeeActions += assignedFreshHandlers.size
@@ -176,9 +184,10 @@ class StaffTickProcessor @Inject constructor(
         return state.copy(hiredEntityRegistry = registry)
     }
 
-    private fun advanceStockerZoning(state: GameState, currentHour: Int, delta: Double, multiplier: Float): GameState {
+    private fun advanceStockerZoning(state: GameState, currentHour: Int, dayOfWeek: Int, delta: Double, multiplier: Float): GameState {
         val onShiftStockers = state.hiredEntityRegistry.getByDef(EntityDef.STOCKER).filter { entity ->
-            state.staffSchedules.firstOrNull { it.entityId == entity.id }?.isOnShift(currentHour) == true
+            val shift = state.staffSchedules.firstOrNull { it.entityId == entity.id }
+            shift?.isOnShift(currentHour, dayOfWeek) == true
         }
         if (onShiftStockers.isEmpty()) return state
 
@@ -203,17 +212,27 @@ class StaffTickProcessor @Inject constructor(
 
         var s = state
         var registry = s.hiredEntityRegistry
+        val zoningUpdates = mutableMapOf<Int, Float>()
         for (stocker in onShiftStockers) {
             val weight = stocker.throughputWeight * stocker.levelMultiplier * stocker.trait.throughputMultiplier
             val actions = staffManager.advanceZoningForStocker(stocker.id, weight, delta, multiplier)
             for (action in actions) {
                 val inv = s.inventory[action.targetItemId] ?: continue
-                val newScore = (inv.zoneScore + StaffManager.ZONE_PER_ACTION).coerceAtMost(1.0f)
-                s = s.copy(inventory = s.inventory + (action.targetItemId to inv.copy(zoneScore = newScore)))
+                val current = zoningUpdates[action.targetItemId] ?: inv.zoneScore
+                val newScore = (current + StaffManager.ZONE_PER_ACTION).coerceAtMost(1.0f)
+                zoningUpdates[action.targetItemId] = newScore
                 if (newScore >= 1.0f) {
                     registry = registry.grantXp(stocker.id, StaffManager.XP_PER_STOCK_ACTION)
                 }
             }
+        }
+        if (zoningUpdates.isNotEmpty()) {
+            val updated = s.inventory.toMutableMap()
+            for ((itemId, score) in zoningUpdates) {
+                val inv = updated[itemId] ?: continue
+                updated[itemId] = inv.copy(zoneScore = score)
+            }
+            s = s.copy(inventory = updated)
         }
         return s.copy(hiredEntityRegistry = registry)
     }

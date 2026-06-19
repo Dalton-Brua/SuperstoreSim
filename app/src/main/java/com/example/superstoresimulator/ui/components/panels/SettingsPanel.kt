@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.ui.state.AppUIState
+import com.example.superstoresimulator.ui.state.ReputationUIState
 import com.example.superstoresimulator.ui.theme.CardWhite
 import com.example.superstoresimulator.ui.theme.ClosedRed
 import com.example.superstoresimulator.ui.theme.PrimaryDark
@@ -52,6 +53,7 @@ fun SettingsPanel(
     onClose: () -> Unit,
     onSave: () -> Unit = {},
     onReset: () -> Unit = {},
+    reputationUiState: ReputationUIState? = null,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -134,6 +136,19 @@ fun SettingsPanel(
                     color = TextTertiary, fontSize = 12.sp,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+
+                if (reputationUiState?.isActive == true) {
+                    HorizontalDivider()
+                    Text("Store Reputation", fontWeight = FontWeight.Medium, color = PrimaryDark)
+                    val repPct = reputationUiState.reputationScore.toInt()
+                    Text("Reputation: $repPct%", fontSize = 14.sp, color = TextPrimary)
+                    if (reputationUiState.currentRevenueTarget.cents > 0) {
+                        Text("Revenue Target: ${reputationUiState.currentRevenueTarget}", fontSize = 13.sp, color = TextSecondary)
+                    }
+                    val tolerancePct = ((reputationUiState.priceToleranceMultiplier - 1f) * 100).toInt()
+                    val sign = if (tolerancePct >= 0) "+" else ""
+                    Text("Price Tolerance: $sign${tolerancePct}%", fontSize = 13.sp, color = TextSecondary)
+                }
             }
 
             Spacer(modifier = Modifier.weight(1f))

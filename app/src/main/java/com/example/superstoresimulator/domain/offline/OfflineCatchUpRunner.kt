@@ -65,7 +65,7 @@ class OfflineCatchUpRunner(
                 }
 
                 val sampleUtilization = tickIndex % 60 == 0
-                gameEngine.tick(SIMULATION_DELTA_MS, offlineMode = true, sampleUtilization = sampleUtilization)
+                gameEngine.tick(SIMULATION_DELTA_MS, offlineMode = true, sampleUtilization = sampleUtilization, skipAccumulators = true)
                 tickIndex++
 
                 val currentDay = gameEngine.state.currentTime.dayNumber
@@ -168,6 +168,10 @@ class OfflineCatchUpRunner(
                         events.add(OfflineEvent.ManagerAction(currentDay, hire.entityDefName, hire.reason))
                     AutoHireAction.TERMINATED ->
                         events.add(OfflineEvent.StaffTerminated(currentDay, hire.entityDefName, hire.reason))
+                    AutoHireAction.REDUCED_HOURS ->
+                        events.add(OfflineEvent.ManagerAction(currentDay, hire.entityDefName, hire.reason))
+                    AutoHireAction.SCHEDULE_OPTIMIZED ->
+                        events.add(OfflineEvent.ManagerAction(currentDay, hire.entityDefName, hire.reason))
                     AutoHireAction.SKIPPED -> { }
                 }
             }
@@ -228,18 +232,21 @@ class OfflineCatchUpRunner(
     }
 
     private fun cumulativeRevenue(): Money {
+        val archived = Money(gameEngine.state.archivedCumulativeRevenueCents)
         val completed = gameEngine.state.completedDayMetrics.fold(Money.ZERO) { acc, d -> acc + d.revenue }
-        return completed + gameEngine.state.currentDayMetrics.revenue
+        return archived + completed + gameEngine.state.currentDayMetrics.revenue
     }
 
     private fun cumulativeExpired(): Int {
+        val archived = gameEngine.state.archivedCumulativeExpiredItems
         val completed = gameEngine.state.completedDayMetrics.sumOf { it.itemsExpired }
-        return completed + gameEngine.state.currentDayMetrics.itemsExpired
+        return archived + completed + gameEngine.state.currentDayMetrics.itemsExpired
     }
 
     private fun cumulativeExpiredCost(): Money {
+        val archived = Money(gameEngine.state.archivedCumulativeExpiredWasteCostCents)
         val completed = gameEngine.state.completedDayMetrics.fold(Money.ZERO) { acc, d -> acc + d.expiredWasteCost }
-        return completed + gameEngine.state.currentDayMetrics.expiredWasteCost
+        return archived + completed + gameEngine.state.currentDayMetrics.expiredWasteCost
     }
 
     /** Concatenate [selector] across all completed days plus the current day. */

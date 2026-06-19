@@ -6,8 +6,10 @@ import com.example.superstoresimulator.domain.RegisterState
 import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.delivery.TruckManager
 import com.example.superstoresimulator.domain.inventory.InventoryManager
+import com.example.superstoresimulator.domain.helpers.FakeArchivedDailyMetricsDao
 import com.example.superstoresimulator.domain.helpers.FakeItemDao
 import com.example.superstoresimulator.domain.helpers.FakeTransactionDao
+import com.example.superstoresimulator.domain.metrics.MetricsArchiver
 import com.example.superstoresimulator.domain.items.Item
 import com.example.superstoresimulator.domain.items.ItemCategory
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
@@ -42,7 +44,7 @@ class DayRolloverProcessorTest {
         runBlocking { cache.initialize() }
         val truckManager = TruckManager(cache)
         val inventoryManager = InventoryManager(cache, truckManager)
-        processor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager, FakeTransactionDao(), VendorManager(cache))
+        processor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager, FakeTransactionDao(), VendorManager(cache), MetricsArchiver(FakeArchivedDailyMetricsDao()))
     }
 
     @Test

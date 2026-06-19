@@ -613,7 +613,7 @@ fun StaffAndUnlocksScreen(
     onPromoteStaff: (Int) -> Unit,
     onUnlockNextVendorTier: () -> Unit,
     onInvestInVendor: (String) -> Unit,
-    onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int) -> Unit = { _, _, _ -> },
+    onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int, workDays: Set<Int>) -> Unit = { _, _, _, _ -> },
     onUpdateStoreManagerConfig: (StoreManagerConfig) -> Unit = {},
     onAssignAnalyst: (entityId: Int, assignment: AnalystAssignment?) -> Unit = { _, _ -> },
 ) {    val tabs = listOf("Staff", "Schedule", "Unlocks", "Vendors")
@@ -698,6 +698,7 @@ fun StaffAndUnlocksScreen(
                 )
                 1 -> ScheduleScreen(
                     scheduleEntries = staffState.scheduleEntries,
+                    currentDayOfWeek = staffState.currentDayOfWeek,
                     onUpdateShift = onUpdateShift,
                 )
                 2 -> UnlocksScreen(

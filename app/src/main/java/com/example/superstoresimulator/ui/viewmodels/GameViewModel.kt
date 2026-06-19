@@ -24,6 +24,7 @@ import com.example.superstoresimulator.ui.state.mappers.buildDeliveryUiState
 import com.example.superstoresimulator.ui.state.mappers.buildPricingUiState
 import com.example.superstoresimulator.ui.state.mappers.buildVendorUiState
 import com.example.superstoresimulator.ui.state.mappers.buildResearchUiState
+import com.example.superstoresimulator.ui.state.mappers.buildReputationUiState
 import com.example.superstoresimulator.ui.state.mappers.buildTutorialUiState
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -49,6 +50,7 @@ import com.example.superstoresimulator.domain.offline.OfflineProgress
 import com.example.superstoresimulator.domain.offline.OfflineState
 import com.example.superstoresimulator.domain.store.StaffWageCalculator.calculateTotalWages
 import com.example.superstoresimulator.domain.time.GameTime
+import com.example.superstoresimulator.domain.metrics.MetricsArchiver
 
 @HiltViewModel
 class GameViewModel @Inject constructor(
@@ -59,6 +61,7 @@ class GameViewModel @Inject constructor(
     private val gameEngine: GameEngine,
     private val itemMetadataCache: ItemMetadataCache,
     private val tutorialManager: com.example.superstoresimulator.domain.tutorial.TutorialManager,
+    private val metricsArchiver: MetricsArchiver,
 ) : ViewModel() {
 
     private var gameEngineInitialized = false
@@ -83,6 +86,8 @@ class GameViewModel @Inject constructor(
 
     private var pausedWallClock: Long = 0L
     private var tickLoopActive = true
+    private var archivedSummaries: List<com.example.superstoresimulator.domain.metrics.DailyMetrics> = emptyList()
+    private var loadedArchivedDay: com.example.superstoresimulator.domain.metrics.DailyMetrics? = null
 
     companion object {
         private const val MIN_OFFLINE_THRESHOLD_MS = 2L * 60 * 1000
@@ -97,9 +102,11 @@ class GameViewModel @Inject constructor(
             val lastSaveTime = gameStateRepository.getLastSaveTime()
             if (savedState != null) {
                 gameEngine.loadState(savedState)
+                migrateOldMetricsToRoom(savedState)
             } else {
                 gameEngine.seedNewGame()
             }
+            archivedSummaries = metricsArchiver.loadAllSummaries()
 
             gameEngineInitialized = true
 
@@ -187,6 +194,17 @@ class GameViewModel @Inject constructor(
                     gameEngine.simulateRestOfDay()
                 }
                 return
+            }
+
+            GameEvent.SkipWeek -> {
+                viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+                    gameEngine.simulateWeek()
+                }
+                return
+            }
+
+            GameEvent.DismissEndOfWeekReport -> {
+                gameEngine.dismissEndOfWeekReport()
             }
 
             is GameEvent.AssignAnalyst -> {
@@ -321,7 +339,7 @@ class GameViewModel @Inject constructor(
             is GameEvent.UpdateShift -> {
                 val duration = event.newDuration.coerceIn(2, 8)
                 val clampedHour = event.newStartHour.coerceIn(6, 21 - duration)
-                gameEngine.updateShift(event.entityId, clampedHour, duration)
+                gameEngine.updateShift(event.entityId, clampedHour, duration, event.workDays)
             }
 
             // Register System (Phase 3)
@@ -377,14 +395,35 @@ class GameViewModel @Inject constructor(
                 if (!gameEngine.isSimulating) gameEngine.tick(tickDelta)
             }
 
+            is GameEvent.LoadArchivedDayDetail -> {
+                viewModelScope.launch {
+                    loadedArchivedDay = metricsArchiver.loadArchivedDay(event.dayNumber)
+                    refreshUiState()
+                }
+                return
+            }
+
+            GameEvent.ClearLoadedArchivedDay -> {
+                loadedArchivedDay = null
+            }
         }
-        
+
         refreshUiState()
     }
 
     /** Rebuild the UI state from the engine if the domain state changed since the last rebuild. */
     private fun refreshUiState() {
         if (!gameEngineInitialized) return
+        if (metricsArchiver.consumeSummariesDirty()) {
+            viewModelScope.launch {
+                archivedSummaries = metricsArchiver.loadAllSummaries()
+                val ds = gameEngine.currentState()
+                val ui = toUiState(ds, _uiState.value)
+                _uiState.value = ui
+                lastUiState = ui
+                lastDomainState = ds
+            }
+        }
         val newDomainState = gameEngine.currentState()
         if (!shouldRebuildUiState(newDomainState)) return
         val newUiState = toUiState(newDomainState, _uiState.value)
@@ -450,6 +489,7 @@ class GameViewModel @Inject constructor(
                 registry = domain.hiredEntityRegistry,
                 scheduleEntries = scheduleEntries,
                 currentHour = domain.currentTime.hour,
+                currentDayOfWeek = domain.currentTime.dayOfWeek,
                 employeeActivities = gameEngine.employeeActivities(),
                 cashierUtilization = gameEngine.cashierUtilization(),
                 stockerUtilization = gameEngine.stockerUtilization(),
@@ -463,6 +503,7 @@ class GameViewModel @Inject constructor(
                 registry = domain.hiredEntityRegistry,
                 scheduleEntries = scheduleEntries,
                 currentHour = domain.currentTime.hour,
+                currentDayOfWeek = domain.currentTime.dayOfWeek,
                 employeeActivities = gameEngine.employeeActivities(),
                 cashierUtilization = gameEngine.cashierUtilization(),
                 stockerUtilization = gameEngine.stockerUtilization(),
@@ -485,6 +526,7 @@ class GameViewModel @Inject constructor(
             registers = buildRegistersUiState(domain),
             pricing = buildPricingUiState(domain),
             vendors = buildVendorUiState(domain, itemMetadataCache),
+            reputation = buildReputationUiState(domain),
         )
     }
 
@@ -530,16 +572,46 @@ class GameViewModel @Inject constructor(
         playerStockerProgress = domain.playerStockerProgress,
         currentStoreSize = domain.currentStoreSize,
         dailyRent = if (domain.buildingOwned) com.example.superstoresimulator.domain.Money.ZERO else domain.currentStoreSize.dailyRent,
-        dailyWages = calculateTotalWages(domain.hiredEntityRegistry, domain.staffSchedules),
+        dailyWages = calculateTotalWages(domain.hiredEntityRegistry, domain.staffSchedules, dayOfWeek = domain.currentTime.dayOfWeek),
         buildingOwned = domain.buildingOwned,
     )
 
-    private fun buildMetricsUiState(domain: GameState) = MetricsUIState(
-        completedDays = domain.completedDayMetrics.sortedByDescending { it.dayNumber },
-        activeDay = domain.currentDayMetrics.copy(dayOfWeek = domain.currentTime.dayOfWeek),
-        showEndOfDayReport = domain.showEndOfDayReport,
-        lastReport = domain.lastEndOfDayReport,
-    )
+    private fun buildMetricsUiState(domain: GameState): MetricsUIState {
+        val allDays = (domain.completedDayMetrics + archivedSummaries)
+            .sortedByDescending { it.dayNumber }
+        val archivedDayNumbers = archivedSummaries.map { it.dayNumber }.toSet()
+        return MetricsUIState(
+            completedDays = allDays,
+            activeDay = domain.currentDayMetrics.copy(dayOfWeek = domain.currentTime.dayOfWeek),
+            showEndOfDayReport = domain.showEndOfDayReport,
+            lastReport = domain.lastEndOfDayReport,
+            showEndOfWeekReport = domain.showEndOfWeekReport,
+            weeklyReport = domain.lastEndOfWeekReport,
+            itemNames = itemMetadataCache.getAllItemNames(),
+            archivedDayNumbers = archivedDayNumbers,
+            loadedArchivedDay = loadedArchivedDay,
+        )
+    }
+
+    private suspend fun migrateOldMetricsToRoom(savedState: GameState) {
+        val metrics = savedState.completedDayMetrics
+        if (metrics.size <= MetricsArchiver.IN_MEMORY_DAYS) return
+        val archiveCount = metricsArchiver.migrateExistingSave(metrics)
+        if (archiveCount <= 0) return
+        val trimmed = metrics.drop(archiveCount)
+        val archived = metrics.take(archiveCount)
+        val migratedState = savedState.copy(
+            completedDayMetrics = trimmed,
+            archivedCumulativeRevenueCents = savedState.archivedCumulativeRevenueCents +
+                archived.sumOf { it.revenue.cents },
+            archivedCumulativeExpiredItems = savedState.archivedCumulativeExpiredItems +
+                archived.sumOf { it.itemsExpired },
+            archivedCumulativeExpiredWasteCostCents = savedState.archivedCumulativeExpiredWasteCostCents +
+                archived.sumOf { it.expiredWasteCost.cents },
+        )
+        gameEngine.loadState(migratedState)
+        gameStateRepository.saveGameState(migratedState)
+    }
 
     fun onAppPaused() {
         tickLoopActive = false
@@ -593,6 +665,9 @@ class GameViewModel @Inject constructor(
     private fun resetGame() {
         viewModelScope.launch {
             gameStateRepository.clearSave()
+            metricsArchiver.clearAll()
+            archivedSummaries = emptyList()
+            loadedArchivedDay = null
 
             if (gameEngineInitialized) {
                 gameEngine.resetState()

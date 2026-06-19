@@ -97,18 +97,19 @@ class VendorManager @Inject constructor(private val cache: ItemMetadataCache) {
             val maxCasePacks = state.storeConfig.backroomCapPerItem
 
             for (item in items) {
-                val quantity = item.casePack * maxCasePacks
+                val maxUnits = item.casePack * maxCasePacks
+                val existing = inventory[item.id] ?: InventoryState()
+                val currentTotal = existing.shelfStock + existing.backroomStock
+                val quantity = maxOf(0, maxUnits - currentTotal)
+                if (quantity == 0) continue
                 val expirationDay = if (item.shelfLifeDays != null) {
                     currentDay + item.shelfLifeDays
                 } else Int.MAX_VALUE
-
                 val batch = ItemBatch(
                     receivedDay = currentDay,
                     quantity = quantity,
                     expirationDay = expirationDay,
                 )
-
-                val existing = inventory[item.id] ?: InventoryState()
                 inventory[item.id] = existing.copy(
                     shelfBatches = existing.shelfBatches + batch,
                 )
@@ -135,6 +136,8 @@ class VendorManager @Inject constructor(private val cache: ItemMetadataCache) {
         val meta = cache.get(itemId) ?: return state
         val vendorId = meta.vendorId ?: return state
         val vendor = state.vendorSystem.vendors[vendorId] ?: return state
+
+        if (state.reputationState.goobSaleActiveToday) return state
 
         val commissionRate = VendorConfig.getCommissionRate(vendor.reputation)
         val commission = Money(saleRevenue.cents * commissionRate / 100)

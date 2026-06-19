@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class DeliveredItemLine(
     val itemId: Int,
-    val itemName: String,
+    val itemName: String = "",
     val casePacks: Int,
     val quantity: Int,
     val deferredCasePacks: Int = 0,
@@ -27,7 +27,7 @@ data class DeliveredTruckRecord(
 @Serializable
 data class AutoOrderLineItem(
     val itemId: Int,
-    val itemName: String,
+    val itemName: String = "",
     val casePacksOrdered: Int,
     val costPerCasePack: Money,
     val totalCost: Money,
@@ -36,7 +36,7 @@ data class AutoOrderLineItem(
 @Serializable
 data class IncompleteAutoOrderLineItem(
     val itemId: Int,
-    val itemName: String,
+    val itemName: String = "",
     val casePacksRequested: Int,
     val costPerCasePack: Money,
     val totalCost: Money,
@@ -46,7 +46,7 @@ data class IncompleteAutoOrderLineItem(
 @Serializable
 data class ExpiredItemEvent(
     val itemId: Int,
-    val itemName: String,
+    val itemName: String = "",
     /** How many units expired (shelf + backroom combined). */
     val quantity: Int,
     /** Value lost (at unit cost, not sale price — this is what was paid for the lost inventory). */
@@ -56,7 +56,7 @@ data class ExpiredItemEvent(
 @Serializable
 data class OutOfStockEvent(
     val itemId: Int,
-    val itemName: String,
+    val itemName: String = "",
     /** How many units the customer wanted that we could not fulfil. */
     val quantityLost: Int,
     /** Revenue we would have earned on those units. */
@@ -64,7 +64,7 @@ data class OutOfStockEvent(
 )
 
 @Serializable
-enum class AutoHireAction { HIRED, SKIPPED, REBALANCED, PURCHASED, PROMOTED, TERMINATED }
+enum class AutoHireAction { HIRED, SKIPPED, REBALANCED, PURCHASED, PROMOTED, TERMINATED, REDUCED_HOURS, SCHEDULE_OPTIMIZED }
 
 @Serializable
 data class AutoHireEvent(
@@ -79,7 +79,7 @@ data class AutoHireEvent(
 @Serializable
 data class SoldItemEvent(
     val itemId: Int,
-    val itemName: String,
+    val itemName: String = "",
     /** How many units were sold across all transactions this day. */
     val quantitySold: Int,
     /** Revenue earned from those units. */

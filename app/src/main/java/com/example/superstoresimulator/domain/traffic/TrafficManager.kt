@@ -1,6 +1,7 @@
 package com.example.superstoresimulator.domain.traffic
 
 import com.example.superstoresimulator.domain.GameState
+import com.example.superstoresimulator.domain.reputation.ReputationManager
 import com.example.superstoresimulator.domain.store.StoreState
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -44,11 +45,14 @@ class TrafficManager @Inject constructor() {
         // Divide by 60 to get per-game-second, then scale by:
         //  - game speed (faster time = more customers proportionally)
         //  - store size (larger stores = more foot traffic)
+        val goobBoost = if (state.reputationState.goobSaleActiveToday) ReputationManager.GOOB_SALE_TRAFFIC_BOOST.toDouble() else 1.0
         val customerRatePerSecond =
             (pattern.baseCustomerRate / 60.0) *
             state.storeConfig.gameSpeedMultiplier *
             state.currentStoreSize.trafficMultiplier *
-            state.pricingState.priceTrafficMultiplier
+            state.pricingState.priceTrafficMultiplier *
+            state.reputationState.trafficMultiplier *
+            goobBoost
 
         accumulatedCustomers += customerRatePerSecond * deltaSeconds
 

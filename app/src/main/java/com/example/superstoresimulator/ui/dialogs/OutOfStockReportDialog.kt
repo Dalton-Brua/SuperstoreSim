@@ -35,6 +35,7 @@ fun OutOfStockReportDialog(
     onDismiss: () -> Unit,
     /** Called with the item's ID when the player taps its name row. */
     onItemClick: (itemId: Int) -> Unit = {},
+    itemNames: Map<Int, String> = emptyMap(),
 ) {
     // Group events by itemId, aggregating quantityLost and revenueLost
     val grouped: List<OutOfStockEvent> = remember(report.outOfStockEvents) {
@@ -43,7 +44,6 @@ fun OutOfStockReportDialog(
             .map { (_, events) ->
                 OutOfStockEvent(
                     itemId = events.first().itemId,
-                    itemName = events.first().itemName,
                     quantityLost = events.sumOf { it.quantityLost },
                     revenueLost = events.fold(Money.ZERO) { acc, e -> acc + e.revenueLost },
                 )
@@ -155,7 +155,11 @@ fun OutOfStockReportDialog(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         items(grouped, key = { it.itemId }) { event ->
-                            OutOfStockRow(event, onItemClick = onItemClick)
+                            OutOfStockRow(
+                                event,
+                                displayName = itemNames[event.itemId] ?: event.itemName.ifEmpty { "Item ${event.itemId}" },
+                                onItemClick = onItemClick,
+                            )
                         }
                     }
 
@@ -213,6 +217,7 @@ fun OutOfStockReportDialog(
 @Composable
 private fun OutOfStockRow(
     event: OutOfStockEvent,
+    displayName: String,
     onItemClick: (itemId: Int) -> Unit = {},
 ) {
     Row(
@@ -224,7 +229,7 @@ private fun OutOfStockRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = event.itemName,
+            text = displayName,
             fontSize = 13.sp,
             color = Primary,
             textDecoration = TextDecoration.Underline,

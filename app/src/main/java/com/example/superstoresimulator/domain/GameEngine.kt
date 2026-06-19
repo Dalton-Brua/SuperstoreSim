@@ -85,9 +85,10 @@ class GameEngine @Inject constructor(
         deltaMilliseconds: Long,
         offlineMode: Boolean = false,
         sampleUtilization: Boolean = true,
+        skipAccumulators: Boolean = false,
     ) {
         val researchedBefore = state.researchState.researchedUpgrades
-        state = tickOrchestrator.tick(state, deltaMilliseconds, offlineMode, sampleUtilization)
+        state = tickOrchestrator.tick(state, deltaMilliseconds, offlineMode, sampleUtilization, skipAccumulators)
         emitNewlyCompletedResearch(researchedBefore)
     }
 
@@ -205,8 +206,8 @@ class GameEngine @Inject constructor(
         )
     }
 
-    fun updateShift(entityId: Int, newStartHour: Int, newDuration: Int = 8) {
-        state = staffManager.updateShift(state, entityId, newStartHour, newDuration)
+    fun updateShift(entityId: Int, newStartHour: Int, newDuration: Int = 8, workDays: Set<Int> = emptySet()) {
+        state = staffManager.updateShift(state, entityId, newStartHour, newDuration, workDays)
     }
 
     fun setAutoHireBudget(budget: Money) { state = state.copy(autoHireBudget = budget) }
@@ -272,13 +273,68 @@ class GameEngine @Inject constructor(
         }
     }
 
+    fun simulateWeek() {
+        if (state.showEndOfDayReport || state.showEndOfWeekReport || isSimulating) return
+        isSimulating = true
+        try {
+            val startingBalance = state.money
+            val startDay = state.currentTime.dayNumber
+            val completedBefore = state.completedDayMetrics.size
+
+            state = state.copy(
+                playerPausedTime = false,
+                playerCashierProgress = 0f,
+                playerStockerProgress = 0f,
+            )
+            val targetMinutes = (state.currentTime.dayNumber + 7).toLong() * 1440L
+            var s = state
+            while (s.currentTime.totalMinutesElapsed < targetMinutes) {
+                if (s.showEndOfDayReport) {
+                    s = dayManager.dismissEndOfDayReport(s)
+                }
+                val dayEnd = (s.currentTime.dayNumber + 1).toLong() * 1440L
+                val stepTarget = minOf(dayEnd, targetMinutes)
+                s = simulateUntil(s, stepTarget)
+            }
+            if (s.showEndOfDayReport) {
+                s = dayManager.dismissEndOfDayReport(s)
+            }
+
+            val weeklyDailyReports = s.completedDayMetrics.drop(completedBefore)
+            val report = com.example.superstoresimulator.domain.metrics.WeeklyReport(
+                startDay = startDay,
+                endDay = s.currentTime.dayNumber,
+                startingBalance = startingBalance,
+                endingBalance = s.money,
+                dailyReports = weeklyDailyReports,
+            )
+            state = s.copy(
+                showEndOfWeekReport = true,
+                lastEndOfWeekReport = report,
+                playerPausedTime = true,
+                pausedByEndOfDay = true,
+            )
+        } finally {
+            isSimulating = false
+        }
+    }
+
+    fun dismissEndOfWeekReport() {
+        state = state.copy(
+            showEndOfWeekReport = false,
+            lastEndOfWeekReport = null,
+            playerPausedTime = if (state.pausedByEndOfDay) false else state.playerPausedTime,
+            pausedByEndOfDay = false,
+        )
+    }
+
     fun simulateUntil(startState: GameState, targetMinutes: Long): GameState {
         var s = startState
-        val simulationDeltaMs = 500L
+        val simulationDeltaMs = 2000L
         while (s.currentTime.totalMinutesElapsed < targetMinutes && !s.showEndOfDayReport) {
-            s = tickOrchestrator.tick(s, simulationDeltaMs)
+            s = tickOrchestrator.tick(s, simulationDeltaMs, skipAccumulators = true)
         }
-        return s
+        return s.copy(simAccumulators = tickOrchestrator.snapshotAccumulators())
     }
 
     // ── Auto-Order Config ──────────────────────────────────────────────────────
@@ -489,5 +545,6 @@ class GameEngine @Inject constructor(
         dayManager.syncDay(effectiveDayNumber)
         trafficManager.accumulatedCustomers = acc.trafficAccumulator
         staffManager.restoreAccumulators(acc)
+        tickOrchestrator.resetTickProcessors()
     }
 }

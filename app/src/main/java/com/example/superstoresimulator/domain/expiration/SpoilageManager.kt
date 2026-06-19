@@ -83,7 +83,6 @@ class SpoilageManager @javax.inject.Inject constructor(
                 expirationEvents.add(
                     ExpiredItemEvent(
                         itemId = itemId,
-                        itemName = metadata.name,
                         quantity = totalExpiredForItem,
                         valueLost = wasteCost
                     )

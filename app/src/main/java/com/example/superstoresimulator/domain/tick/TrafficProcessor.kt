@@ -3,6 +3,7 @@ package com.example.superstoresimulator.domain.tick
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Transactions.TransactionEngine
 import com.example.superstoresimulator.domain.findRegisterById
+import com.example.superstoresimulator.domain.pricing.PricingManager
 import com.example.superstoresimulator.domain.registers.RegisterManager
 import com.example.superstoresimulator.domain.store.StoreState
 import com.example.superstoresimulator.domain.traffic.TrafficManager
@@ -17,7 +18,7 @@ class TrafficProcessor @Inject constructor(
     private val transactionEngine: TransactionEngine,
     private val registerManager: RegisterManager,
 ) {
-    fun process(state: GameState, delta: Double, currentHour: Int): GameState {
+    fun process(state: GameState, delta: Double, currentHour: Int, pricingData: PricingManager.PricingData? = null): GameState {
         var s = state
         if (s.storeState == StoreState.OPEN) {
             val newCustomers = trafficManager.update(s, delta)
@@ -34,7 +35,7 @@ class TrafficProcessor @Inject constructor(
                 val pattern = TrafficSchedule.getPatternForTime(s.currentTime)
                 val baseBasket = pattern.averageBasketSize - 1 + Random.nextInt(3)
                 val basketSize = (baseBasket * s.currentStoreSize.basketSizeMultiplier).toInt().coerceAtLeast(1)
-                s = transactionEngine.generateRandomTransaction(s, basketSize, reg.registerId)
+                s = transactionEngine.generateRandomTransaction(s, basketSize, reg.registerId, pricingData)
                 if (s.registers.findRegisterById(reg.registerId)?.transactionActive == true) {
                     s = s.copy(pendingCustomers = (s.pendingCustomers - 1).coerceAtLeast(0))
                 }

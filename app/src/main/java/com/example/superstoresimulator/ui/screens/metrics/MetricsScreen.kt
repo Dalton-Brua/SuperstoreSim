@@ -44,6 +44,8 @@ fun MetricsScreen(
     modifier: Modifier = Modifier,
     /** Called when the player taps an item name in a report; navigates to Inventory + focuses the item. */
     onFocusInventoryItem: (itemId: Int) -> Unit = {},
+    onLoadArchivedDay: (dayNumber: Int) -> Unit = {},
+    onClearLoadedArchivedDay: () -> Unit = {},
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedDay by remember { mutableStateOf<DailyMetrics?>(null) }
@@ -53,7 +55,20 @@ fun MetricsScreen(
     var showActiveReport by remember { mutableStateOf(false) }
     var showActiveOutOfStock by remember { mutableStateOf(false) }
     var showActiveSoldItems by remember { mutableStateOf(false) }
+    // Tracks which archived report type we're waiting to show
+    var pendingArchivedReport by remember { mutableStateOf<String?>(null) } // "sold", "oos", "full"
     val focusManager = LocalFocusManager.current
+
+    // When loaded archived day arrives, show the pending dialog
+    LaunchedEffect(state.loadedArchivedDay) {
+        val loaded = state.loadedArchivedDay ?: return@LaunchedEffect
+        when (pendingArchivedReport) {
+            "sold" -> soldItemsDay = loaded
+            "oos" -> outOfStockDay = loaded
+            "full" -> selectedDay = loaded
+        }
+        pendingArchivedReport = null
+    }
 
     val filtered = remember(state.completedDays, searchQuery) {
         val q = searchQuery.trim().lowercase()
@@ -156,11 +171,34 @@ fun MetricsScreen(
 
                 // ── Completed days ───────────────────────────────────────
                 items(filtered, key = { "day_${it.dayNumber}" }) { day ->
+                    val isArchived = day.dayNumber in state.archivedDayNumbers
                     DayReportCard(
                         day = day,
-                        onClick = { selectedDay = day },
-                        onOutOfStockClick = { outOfStockDay = day },
-                        onSoldItemsClick = { soldItemsDay = day },
+                        isArchived = isArchived,
+                        onClick = {
+                            if (isArchived) {
+                                pendingArchivedReport = "full"
+                                onLoadArchivedDay(day.dayNumber)
+                            } else {
+                                selectedDay = day
+                            }
+                        },
+                        onOutOfStockClick = {
+                            if (isArchived) {
+                                pendingArchivedReport = "oos"
+                                onLoadArchivedDay(day.dayNumber)
+                            } else {
+                                outOfStockDay = day
+                            }
+                        },
+                        onSoldItemsClick = {
+                            if (isArchived) {
+                                pendingArchivedReport = "sold"
+                                onLoadArchivedDay(day.dayNumber)
+                            } else {
+                                soldItemsDay = day
+                            }
+                        },
                     )
                 }
                 item(key = "bottom_spacer") { Spacer(Modifier.height(16.dp)) }
@@ -172,8 +210,9 @@ fun MetricsScreen(
     selectedDay?.let { day ->
         EndOfDayReportDialog(
             report = day,
-            onDismiss = { selectedDay = null },
+            onDismiss = { selectedDay = null; onClearLoadedArchivedDay() },
             isAutoShown = false,
+            itemNames = state.itemNames,
         )
     }
 
@@ -184,6 +223,7 @@ fun MetricsScreen(
                 report = day,
                 onDismiss = { showActiveReport = false },
                 isAutoShown = false,
+                itemNames = state.itemNames,
             )
         } ?: run { showActiveReport = false }
     }
@@ -192,11 +232,13 @@ fun MetricsScreen(
     outOfStockDay?.let { day ->
         OutOfStockReportDialog(
             report = day,
-            onDismiss = { outOfStockDay = null },
+            onDismiss = { outOfStockDay = null; onClearLoadedArchivedDay() },
             onItemClick = { itemId ->
                 outOfStockDay = null
+                onClearLoadedArchivedDay()
                 onFocusInventoryItem(itemId)
             },
+            itemNames = state.itemNames,
         )
     }
 
@@ -210,6 +252,7 @@ fun MetricsScreen(
                     showActiveOutOfStock = false
                     onFocusInventoryItem(itemId)
                 },
+                itemNames = state.itemNames,
             )
         } ?: run { showActiveOutOfStock = false }
     }
@@ -218,11 +261,13 @@ fun MetricsScreen(
     soldItemsDay?.let { day ->
         SoldItemsReportDialog(
             report = day,
-            onDismiss = { soldItemsDay = null },
+            onDismiss = { soldItemsDay = null; onClearLoadedArchivedDay() },
             onItemClick = { itemId ->
                 soldItemsDay = null
+                onClearLoadedArchivedDay()
                 onFocusInventoryItem(itemId)
             },
+            itemNames = state.itemNames,
         )
     }
 
@@ -236,6 +281,7 @@ fun MetricsScreen(
                     showActiveSoldItems = false
                     onFocusInventoryItem(itemId)
                 },
+                itemNames = state.itemNames,
             )
         } ?: run { showActiveSoldItems = false }
     }
@@ -342,6 +388,7 @@ private fun ActiveDayReportCard(
 @Composable
 private fun DayReportCard(
     day: DailyMetrics,
+    isArchived: Boolean = false,
     onClick: () -> Unit,
     onOutOfStockClick: () -> Unit,
     onSoldItemsClick: () -> Unit,
@@ -397,6 +444,7 @@ private fun DayReportCard(
 
             DayReportCardContent(
                 day = day,
+                isArchived = isArchived,
                 onSoldItemsClick = onSoldItemsClick,
                 onOutOfStockClick = onOutOfStockClick,
             )
@@ -414,6 +462,7 @@ private fun DayReportCard(
 @Composable
 private fun DayReportCardContent(
     day: DailyMetrics,
+    isArchived: Boolean = false,
     onSoldItemsClick: () -> Unit,
     onOutOfStockClick: () -> Unit,
 ) {
@@ -448,7 +497,8 @@ private fun DayReportCardContent(
     Spacer(Modifier.height(8.dp))
 
     // ── Items sold button ─────────────────────────────────────────
-    if (day.soldItemEvents.isNotEmpty()) {
+    val showSoldButton = if (isArchived) day.itemsSold > 0 else day.soldItemEvents.isNotEmpty()
+    if (showSoldButton) {
         OutlinedButton(
             onClick = onSoldItemsClick,
             modifier = Modifier.fillMaxWidth(),
@@ -475,7 +525,8 @@ private fun DayReportCardContent(
     }
 
     // ── Out-of-stock button (only when there were OOS events) ─────
-    if (day.outOfStockEvents.isNotEmpty()) {
+    val showOosButton = if (isArchived) day.itemsLostToOutOfStock > 0 else day.outOfStockEvents.isNotEmpty()
+    if (showOosButton) {
         OutlinedButton(
             onClick = onOutOfStockClick,
             modifier = Modifier.fillMaxWidth(),

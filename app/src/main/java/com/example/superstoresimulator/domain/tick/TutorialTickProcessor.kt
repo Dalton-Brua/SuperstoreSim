@@ -13,6 +13,8 @@ class TutorialTickProcessor @Inject constructor(
 ) {
     private var prevState: GameState? = null
 
+    fun reset() { prevState = null }
+
     fun process(state: GameState): GameState {
         val tutorial = state.tutorialState
         if (tutorial.tutorialComplete) return state

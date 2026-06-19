@@ -64,6 +64,7 @@ fun StoreHomeScreen (
     onOpenStore: () -> Unit = {},
     onSetPlayerRole: (PlayerRole) -> Unit = {},
     onSkipDay: () -> Unit = {},
+    onSkipWeek: () -> Unit = {},
     onUpgradeStore: () -> Unit = {},
     onPurchaseBuilding: () -> Unit = {},
     onSave: () -> Unit = {},
@@ -126,6 +127,7 @@ fun StoreHomeScreen (
                     totalEmployees = state.dashboard.totalStaff,
                     activeEmployees = state.dashboard.activeStaff,
                     avgZoneScore = state.dashboard.avgZoneScore,
+                    reputationUiState = state.reputation,
                 )
             }
 
@@ -186,20 +188,21 @@ fun StoreHomeScreen (
                 }
             }
 
-            // Skip Day button — simulate the rest of the day instantly
+            // Skip Day / Skip Week buttons
             item {
+                val skipDisabled = state.metrics.showEndOfDayReport || state.metrics.showEndOfWeekReport
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center
                 ) {
                     OutlinedButton(
                         onClick = onSkipDay,
-                        enabled = !(state.metrics.showEndOfDayReport),
+                        enabled = !skipDisabled,
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = PrimaryDark,
                             disabledContentColor = DisabledGrey
                         ),
-                        modifier = Modifier.padding(horizontal = 12.dp)
+                        modifier = Modifier.padding(horizontal = 4.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.SkipNext,
@@ -208,6 +211,23 @@ fun StoreHomeScreen (
                         )
                         Spacer(Modifier.width(6.dp))
                         Text("Skip Day", fontWeight = FontWeight.SemiBold)
+                    }
+                    OutlinedButton(
+                        onClick = onSkipWeek,
+                        enabled = !skipDisabled,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = PrimaryDark,
+                            disabledContentColor = DisabledGrey
+                        ),
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Skip Week",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Skip Week", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -262,6 +282,7 @@ fun StoreHomeScreen (
                 onClose = { settingsOpen = false },
                 onSave = onSave,
                 onReset = onReset,
+                reputationUiState = state.reputation,
                 modifier = Modifier.padding(bottom = contentPadding.calculateBottomPadding()),
             )
         }

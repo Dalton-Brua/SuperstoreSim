@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.ui.GameEvent
 import com.example.superstoresimulator.ui.dialogs.EndOfDayReportDialog
+import com.example.superstoresimulator.ui.dialogs.EndOfWeekReportDialog
 import com.example.superstoresimulator.ui.dialogs.FreshBulkOrderDialog
 import com.example.superstoresimulator.ui.dialogs.IncompleteOrdersDialog
 import com.example.superstoresimulator.ui.state.GameUiState
@@ -85,7 +86,17 @@ fun GameDialogs(
     if (state.metrics.showEndOfDayReport && state.metrics.lastReport != null) {
         EndOfDayReportDialog(
             report = state.metrics.lastReport,
-            onDismiss = { onEvent(GameEvent.DismissEndOfDayReport) }
+            onDismiss = { onEvent(GameEvent.DismissEndOfDayReport) },
+            itemNames = state.metrics.itemNames,
+            reputationUiState = state.reputation,
+        )
+    }
+
+    // End-of-week report dialog — shown after skip week
+    if (state.metrics.showEndOfWeekReport && state.metrics.weeklyReport != null) {
+        EndOfWeekReportDialog(
+            report = state.metrics.weeklyReport,
+            onDismiss = { onEvent(GameEvent.DismissEndOfWeekReport) }
         )
     }
 }

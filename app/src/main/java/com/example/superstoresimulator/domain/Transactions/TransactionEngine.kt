@@ -29,6 +29,36 @@ class TransactionEngine(
     private val pricingManager: PricingManager? = null,
     private val vendorManager: VendorManager? = null,
 ) {
+    // Available-item cache (invalidated on research/vendor/inventory changes)
+    private var cachedAvailableIds: List<Int>? = null
+    private var cachedResearchUpgrades: Set<String>? = null
+    private var cachedVendorTier: Int = -1
+    private var cachedInventoryKeySize: Int = -1
+
+    private fun getAvailableItemIds(state: GameState): List<Int> {
+        val upgrades = state.researchState.researchedUpgrades
+        val vendorTier = state.vendorSystem.currentVendorTier
+        val keySize = state.inventory.size
+
+        if (cachedAvailableIds != null &&
+            upgrades === cachedResearchUpgrades &&
+            vendorTier == cachedVendorTier &&
+            keySize == cachedInventoryKeySize) {
+            return cachedAvailableIds!!
+        }
+
+        val result = state.inventory.keys.filter { itemId ->
+            val meta = cache?.get(itemId) ?: return@filter true
+            if (!cache.isItemAccessible(itemId, upgrades)) return@filter false
+            if (meta.isVendorItem && meta.vendorTier > vendorTier) return@filter false
+            true
+        }
+        cachedAvailableIds = result
+        cachedResearchUpgrades = upgrades
+        cachedVendorTier = vendorTier
+        cachedInventoryKeySize = keySize
+        return result
+    }
 
     /** Default register id: the first register in the list (or 0 if empty). */
     private fun defaultRegisterId(state: GameState): Int =
@@ -40,14 +70,7 @@ class TransactionEngine(
     ): GameState {
         val register = state.registers.findRegisterById(registerId) ?: return state
 
-        val researchedUpgrades = state.researchState.researchedUpgrades
-        val currentVendorTier = state.vendorSystem.currentVendorTier
-        val availableItemIds = state.inventory.keys.filter { itemId ->
-            val meta = cache?.get(itemId) ?: return@filter false
-            if (cache != null && !cache.isItemAccessible(itemId, researchedUpgrades)) return@filter false
-            if (meta.isVendorItem && meta.vendorTier > currentVendorTier) return@filter false
-            true
-        }
+        val availableItemIds = getAvailableItemIds(state)
         if (availableItemIds.isEmpty()) return state
 
         val numLines = (1..availableItemIds.size.coerceAtMost(5)).random(random)
@@ -95,19 +118,13 @@ class TransactionEngine(
         state: GameState,
         itemCount: Int,
         registerId: Int = state.registers.firstOrNull()?.registerId ?: 0,
+        cachedPricingData: PricingManager.PricingData? = null,
     ): GameState {
         val register = state.registers.findRegisterById(registerId) ?: return state
         // Don't interrupt an active transaction on this register
         if (register.transactionActive) return state
 
-        val researchedUpgrades = state.researchState.researchedUpgrades
-        val currentVendorTier = state.vendorSystem.currentVendorTier
-        val availableItemIds = state.inventory.keys.filter { itemId ->
-            val meta = cache?.get(itemId) ?: return@filter false
-            if (cache != null && !cache.isItemAccessible(itemId, researchedUpgrades)) return@filter false
-            if (meta.isVendorItem && meta.vendorTier > currentVendorTier) return@filter false
-            true
-        }
+        val availableItemIds = getAvailableItemIds(state)
         if (availableItemIds.isEmpty()) return state
 
         val basketMult = state.pricingState.basketSizeMultiplier
@@ -115,7 +132,7 @@ class TransactionEngine(
             (itemCount * basketMult).toInt().coerceAtLeast(1)
         } else itemCount
         val numLines = adjustedItemCount.coerceIn(1, availableItemIds.size)
-        val pricingData = pricingManager?.computePricingData(state)
+        val pricingData = cachedPricingData ?: pricingManager?.computePricingData(state)
         val chosen = weightedSample(availableItemIds, numLines, state.inventory, pricingData?.multipliers)
         val lines = mutableListOf<TransactionLine>()
 
@@ -272,7 +289,6 @@ class TransactionEngine(
             val oosEvents = lines.map { l ->
                 OutOfStockEvent(
                     itemId = l.itemId,
-                    itemName = cache?.get(l.itemId)?.name ?: "Item ${l.itemId}",
                     quantityLost = l.quantity,
                     revenueLost = l.unitPrice * l.quantity,
                 )
@@ -687,7 +703,6 @@ class TransactionEngine(
         val oosEvents = lostLines.map { l ->
             OutOfStockEvent(
                 itemId = l.itemId,
-                itemName = cache?.get(l.itemId)?.name ?: "Item ${l.itemId}",
                 quantityLost = l.quantity - l.rungQty,
                 revenueLost = l.unitPrice * (l.quantity - l.rungQty),
             )
@@ -698,11 +713,8 @@ class TransactionEngine(
             .map { l ->
                 SoldItemEvent(
                     itemId = l.itemId,
-                    itemName = cache?.get(l.itemId)?.name ?: "Item ${l.itemId}",
                     quantitySold = l.quantity,
                     revenue = l.lineTotal,
-                    effectivePrice = l.unitPrice,
-                    basePrice = l.basePrice,
                 )
             }
 

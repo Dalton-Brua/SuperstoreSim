@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.superstoresimulator.domain.time.GameTime
 import com.example.superstoresimulator.ui.state.StaffScheduleEntryUI
 import com.example.superstoresimulator.ui.theme.Amber
 import com.example.superstoresimulator.ui.theme.CardWhite
@@ -86,7 +87,8 @@ private val COVERAGE_GREEN = Secondary
 @Composable
 fun ScheduleScreen(
     scheduleEntries: List<StaffScheduleEntryUI>,
-    onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int) -> Unit,
+    currentDayOfWeek: Int = 0,
+    onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int, workDays: Set<Int>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var filter by remember { mutableStateOf(ScheduleFilter.ALL) }
@@ -189,6 +191,7 @@ fun ScheduleScreen(
                 GanttEmployeeRow(
                     entry = entry,
                     roleColor = roleColor,
+                    currentDayOfWeek = currentDayOfWeek,
                     onClick = { editingEntry = entry },
                 )
             }
@@ -202,8 +205,8 @@ fun ScheduleScreen(
     if (editing != null) {
         ShiftEditDialog(
             entry = editing,
-            onUpdateShift = { entityId, newStart, newDuration ->
-                onUpdateShift(entityId, newStart, newDuration)
+            onUpdateShift = { entityId, newStart, newDuration, workDays ->
+                onUpdateShift(entityId, newStart, newDuration, workDays)
                 editingEntry = null
             },
             onDismiss = { editingEntry = null },
@@ -266,6 +269,7 @@ private fun CoverageRow(coverage: Map<Int, Int>) {
 private fun GanttEmployeeRow(
     entry: StaffScheduleEntryUI,
     roleColor: Color,
+    currentDayOfWeek: Int = 0,
     onClick: () -> Unit,
 ) {
     Column(
@@ -295,6 +299,39 @@ private fun GanttEmployeeRow(
                 text = subLabel,
                 fontSize = 10.sp,
                 color = TextSecondary,
+            )
+            Spacer(Modifier.weight(1f))
+            // Day-of-week dots
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                GameTime.SHORT_DAY_NAMES.forEachIndexed { index, name ->
+                    val isScheduled = entry.workDays.isEmpty() || index in entry.workDays
+                    val isToday = index == currentDayOfWeek
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .background(
+                                when {
+                                    isScheduled && isToday -> roleColor
+                                    isScheduled -> roleColor.copy(alpha = 0.3f)
+                                    else -> PlaceholderSurface
+                                },
+                                RoundedCornerShape(7.dp),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = name.first().toString(),
+                            fontSize = 7.sp,
+                            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isScheduled) TextWhite else TextMuted,
+                        )
+                    }
+                }
+            }
+            Text(
+                text = "${entry.daysPerWeek}d",
+                fontSize = 9.sp,
+                color = TextMuted,
             )
         }
 
@@ -343,13 +380,16 @@ private fun GanttEmployeeRow(
 @Composable
 private fun ShiftEditDialog(
     entry: StaffScheduleEntryUI,
-    onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int) -> Unit,
+    onUpdateShift: (entityId: Int, newStartHour: Int, newDuration: Int, workDays: Set<Int>) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val initDuration = if (entry.startHour != null && entry.endHour != null)
         (entry.endHour - entry.startHour).coerceIn(2, 8) else 8
     var currentStart by remember(entry.entityId) { mutableStateOf(entry.startHour ?: 8) }
     var currentDuration by remember(entry.entityId) { mutableStateOf(initDuration) }
+    var currentWorkDays by remember(entry.entityId) {
+        mutableStateOf(entry.workDays.ifEmpty { (0..6).toSet() })
+    }
     val maxStart = 21 - currentDuration
 
     Dialog(onDismissRequest = onDismiss) {
@@ -378,10 +418,47 @@ private fun ShiftEditDialog(
                     color = Primary,
                 )
                 Text(
-                    text = "${currentDuration}hr shift",
+                    text = "${currentDuration}hr shift · ${currentWorkDays.size}d/wk",
                     fontSize = 13.sp,
                     color = TextSecondary,
                 )
+                Spacer(Modifier.height(16.dp))
+
+                // Work days toggles
+                Text("Work Days", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    GameTime.SHORT_DAY_NAMES.forEachIndexed { index, name ->
+                        val selected = index in currentWorkDays
+                        FilterChip(
+                            selected = selected,
+                            onClick = {
+                                currentWorkDays = if (selected && currentWorkDays.size > 1) {
+                                    currentWorkDays - index
+                                } else if (!selected) {
+                                    currentWorkDays + index
+                                } else currentWorkDays
+                            },
+                            label = {
+                                Text(
+                                    text = name.take(1),
+                                    fontSize = 11.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                )
+                            },
+                            modifier = Modifier.weight(1f).height(32.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Primary,
+                                selectedLabelColor = TextWhite,
+                                containerColor = PlaceholderSurface,
+                                labelColor = ChipTextDark,
+                            ),
+                        )
+                    }
+                }
                 Spacer(Modifier.height(16.dp))
 
                 // Start time controls
@@ -465,7 +542,10 @@ private fun ShiftEditDialog(
                 Spacer(Modifier.height(20.dp))
 
                 Button(
-                    onClick = { onUpdateShift(entry.entityId, currentStart, currentDuration) },
+                    onClick = {
+                        val days = if (currentWorkDays.size == 7) emptySet() else currentWorkDays
+                        onUpdateShift(entry.entityId, currentStart, currentDuration, days)
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryDark),
                     shape = RoundedCornerShape(10.dp),

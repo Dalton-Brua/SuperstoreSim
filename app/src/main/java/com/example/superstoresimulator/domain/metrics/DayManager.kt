@@ -53,7 +53,10 @@ class DayManager @Inject constructor() {
 
         // Calculate operating costs
         val rentCost = if (processedState.buildingOwned) Money.ZERO else processedState.currentStoreSize.dailyRent
-        val wagesCost = StaffWageCalculator.calculateTotalWages(processedState.hiredEntityRegistry, processedState.staffSchedules)
+        val wagesCost = StaffWageCalculator.calculateTotalWages(
+            processedState.hiredEntityRegistry, processedState.staffSchedules,
+            dayOfWeek = dayNumber % 7,
+        )
 
         // Update metrics with operating costs and pricing snapshot
         val metricsWithCosts = processedState.currentDayMetrics.copy(
@@ -62,8 +65,31 @@ class DayManager @Inject constructor() {
             itemsMarkedDown = processedState.pricingState.activeMarkdowns.size,
         )
 
-        // Snapshot metrics
-        val snapshot = metricsWithCosts.copy(dayOfWeek = dayNumber % 7)
+        // Pre-aggregate per-transaction events by itemId before snapshotting
+        val aggregatedSold = metricsWithCosts.soldItemEvents
+            .groupBy { it.itemId }
+            .map { (itemId, events) ->
+                SoldItemEvent(
+                    itemId = itemId,
+                    quantitySold = events.sumOf { it.quantitySold },
+                    revenue = events.fold(Money.ZERO) { acc, e -> acc + e.revenue },
+                )
+            }
+        val aggregatedOos = metricsWithCosts.outOfStockEvents
+            .groupBy { it.itemId }
+            .map { (itemId, events) ->
+                OutOfStockEvent(
+                    itemId = itemId,
+                    quantityLost = events.sumOf { it.quantityLost },
+                    revenueLost = events.fold(Money.ZERO) { acc, e -> acc + e.revenueLost },
+                )
+            }
+
+        val snapshot = metricsWithCosts.copy(
+            dayOfWeek = dayNumber % 7,
+            soldItemEvents = aggregatedSold,
+            outOfStockEvents = aggregatedOos,
+        )
 
         // Deduct operating costs
         val newCash = processedState.money - rentCost - wagesCost

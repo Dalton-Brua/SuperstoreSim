@@ -12,7 +12,9 @@ import com.example.superstoresimulator.domain.registers.RegisterManager
 import com.example.superstoresimulator.domain.research.ResearchManager
 import com.example.superstoresimulator.domain.staff.StaffManager
 import com.example.superstoresimulator.domain.store.StoreController
+import com.example.superstoresimulator.domain.helpers.FakeArchivedDailyMetricsDao
 import com.example.superstoresimulator.domain.helpers.FakeTransactionDao
+import com.example.superstoresimulator.domain.metrics.MetricsArchiver
 import com.example.superstoresimulator.domain.tick.DayRolloverProcessor
 import com.example.superstoresimulator.domain.tick.PlayerTickProcessor
 import com.example.superstoresimulator.domain.tick.ResearchTickProcessor
@@ -41,7 +43,8 @@ fun createTestGameEngine(cache: ItemMetadataCache): GameEngine {
     val spoilageManager = SpoilageManager(cache)
     val registerManager = RegisterManager()
     val vendorManager = VendorManager(cache)
-    val dayRolloverProcessor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager, FakeTransactionDao(), vendorManager)
+    val metricsArchiver = MetricsArchiver(FakeArchivedDailyMetricsDao())
+    val dayRolloverProcessor = DayRolloverProcessor(staffManager, dayManager, truckManager, inventoryManager, FakeTransactionDao(), vendorManager, metricsArchiver)
     val trafficProcessor = TrafficProcessor(trafficManager, transactionEngine, registerManager)
     val staffTickProcessor = StaffTickProcessor(
         staffManager, inventoryManager, transactionEngine, registerManager, pricingManager, cache,
@@ -59,6 +62,7 @@ fun createTestGameEngine(cache: ItemMetadataCache): GameEngine {
         playerTickProcessor, utilizationTracker,
         staffManager, dayManager,
         researchTickProcessor, tutorialTickProcessor,
+        metricsArchiver,
     )
     val engine = GameEngine(
         itemMetadataCache = cache,

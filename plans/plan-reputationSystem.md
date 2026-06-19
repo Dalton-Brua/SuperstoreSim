@@ -4,7 +4,7 @@
 
 The pricing system makes markups strictly superior to markdowns. This plan adds a **Store Reputation** system — a multi-factor score (0–200%) that tracks overall store quality and converts it into gameplay bonuses. 100% is neutral (baseline behavior). Bonuses and penalties accelerate quadratically at the extremes, creating high stakes at both ends.
 
-Revenue is the primary driver, but out-of-stock events, store appearance (zone scores), and customer service all contribute. This creates meaningful tradeoffs: markup for short-term profit, or invest in volume/quality for long-term compounding benefits.
+Revenue is the primary driver, but out-of-stock events and store appearance (zone scores) also contribute. This creates meaningful tradeoffs: markup for short-term profit, or invest in volume/quality for long-term compounding benefits.
 
 **Gates**: Grocery Store size (3rd tier) + research unlock (`revenue_reputation`).
 
@@ -37,15 +37,15 @@ Markups become profitable above ~125% reputation. Below that, keep prices flat a
 
 ### Reputation Score (0–200%)
 
-A composite score computed daily at rollover from 4 weighted factors. 100% = neutral. Each sub-score is 0–200%.
+A composite score computed daily at rollover from 3 weighted factors. 100% = neutral. Each sub-score is 0–200%.
 
 ```
-dailyScore = (revenueScore × 0.40) + (stockScore × 0.25) + (appearanceScore × 0.20) + (serviceScore × 0.15)
+dailyScore = (revenueScore × 0.50) + (stockScore × 0.30) + (appearanceScore × 0.20)
 ```
 
 The composite nudges the persistent `reputationScore` by 1–3 points per day (see Daily Nudge Smoothing below).
 
-### Factor 1: Revenue Performance (40%)
+### Factor 1: Revenue Performance (50%)
 
 A **dynamic revenue target** that ratchets with performance:
 
@@ -71,7 +71,7 @@ revenueScore = clamp((todayRevenue / currentTarget) × 100, 0, 200)
 ```
 At target = 100%. Double target = 200%. Zero revenue = 0%.
 
-### Factor 2: Stock Availability (25%)
+### Factor 2: Stock Availability (30%)
 
 Measures how well the store avoids out-of-stock events:
 
@@ -99,23 +99,7 @@ appearanceScore = clamp(avgZoneScore × 200, 0, 200)
 - 0.5 zone → 100% (neutral)
 - 0.0 zone → 0% (neglected)
 
-Data source: `GameState.avgZoneScore` — already computed. Sampled at day rollover.
-
-### Factor 4: Customer Service (15%)
-
-Measures checkout efficiency — customers served vs lost to queue overflow:
-
-```
-serviceRate = customersServed / (customersServed + customersLost)
-serviceScore = clamp(serviceRate × 200, 0, 200)
-```
-
-- 100% served → 200% (no lost customers, bonus)
-- 50% served → 100% (neutral)
-- 0% served → 0% (everyone walks away)
-- No customers at all → 100% (neutral, no penalty)
-
-Data source: `DailyMetrics.customersServed` already tracked. Need to add `customersLost` tracking.
+Data source: `GameState.avgZoneScore` — computed property on `GameState` (line 330-341) from inventory zone scores. Also snapshotted in `DailyMetrics.avgZoneScore` (line 148). Use the `DailyMetrics` snapshot at rollover.
 
 ### Daily Nudge Smoothing (Rolling-Average Feel)
 
@@ -236,7 +220,11 @@ fun deriveTrafficMultiplier(rep: Float): Float {
 
 ### 2. Price Tolerance
 
-Modifies the per-item purchase probability elasticity. High rep → customers tolerate higher prices. Low rep → hypersensitive.
+Modifies the per-item purchase probability. High rep → customers tolerate higher prices. Low rep → hypersensitive.
+
+The current pricing system uses a global `smoothedPriceIndex` to derive `priceTrafficMultiplier` and `basketSizeMultiplier` in `PricingState` (line 17-23). Per-item multipliers are computed in `PricingManager.computePricingData()` (line 185-196) using `PricingConfig.priceElasticity` (default 1.5).
+
+Reputation modifies the **effective elasticity** used in per-item probability:
 
 ```kotlin
 fun derivePriceToleranceMultiplier(rep: Float): Float {
@@ -249,10 +237,27 @@ fun derivePriceToleranceMultiplier(rep: Float): Float {
         1f - 0.3f * deficit.pow(1.5f)  // 1.0x → 0.7x
     }
 }
-// Applied: effectiveElasticity = PRICE_ELASTICITY / toleranceMultiplier
 ```
 
-| Rep | Tolerance | Effective Elasticity |
+Applied in `PricingManager.computePricingData()` where per-item multipliers are calculated:
+```kotlin
+// Current (PricingManager.kt:192):
+// (r.basePrice.cents.toDouble() / r.effectivePrice.cents.toDouble())
+//     .pow(config.priceElasticity.toDouble()).toFloat()
+//
+// With reputation:
+val effectiveElasticity = config.priceElasticity / state.reputationState.priceToleranceMultiplier
+// ... .pow(effectiveElasticity.toDouble()).toFloat()
+```
+
+Also applied to the global traffic/basket elasticity in `PricingState`:
+```kotlin
+// PricingState.kt:17-23 — priceTrafficMultiplier and basketSizeMultiplier
+// These use PricingConfig.DEFAULT.trafficElasticity and basketElasticity
+// With reputation, divide those elasticities by priceToleranceMultiplier
+```
+
+| Rep | Tolerance | Effective Elasticity (item) |
 |---|---|---|
 | 0% | 0.70x | 2.14 (brutal) |
 | 50% | 0.89x | 1.68 |
@@ -272,6 +277,17 @@ fun deriveSupplierBonus(rep: Float): Float {
 }
 ```
 
+Applied in `InventoryManager.placeBulkOrder()` (line 413-418) by adding to the tiered `discountFraction`:
+```kotlin
+// Current tiered discount: 0.10/0.15/0.25 based on total cases
+// With reputation:
+val repBonus = state.reputationState.supplierDiscountBonus.toDouble()
+val finalDiscount = discountFraction + repBonus
+val finalCost = Money((baseCost.cents * (1.0 - finalDiscount)).toLong())
+```
+
+Also applied in fresh bulk orders (`placeFreshBulkOrder()` if it exists with similar discount structure).
+
 | Rep | Supplier Bonus |
 |---|---|
 | ≤100% | 0% |
@@ -289,6 +305,7 @@ fun deriveSupplierBonus(rep: Float): Float {
 New data class in `domain/reputation/ReputationState.kt`:
 
 ```kotlin
+@Serializable
 data class ReputationState(
     val reputationScore: Float = 100f,          // EMA-smoothed composite (0–200)
     val currentRevenueTarget: Money = Money.ZERO, // 0 = uninitialized
@@ -311,31 +328,34 @@ data class ReputationState(
     val lastRevenueScore: Float = 0f,
     val lastStockScore: Float = 0f,
     val lastAppearanceScore: Float = 0f,
-    val lastServiceScore: Float = 0f,
     val lastDailyComposite: Float = 0f,
 )
 ```
 
-Added to `GameState`:
+Added to `GameState` (`GameStateData.kt`):
 ```kotlin
 val reputationState: ReputationState = ReputationState(),
 ```
 
 ### StoreSize additions
 
-Add `baseRevenueTarget: Money?` to `StoreSize` enum:
+Add `baseRevenueTarget: Money?` to `StoreSize` enum (`domain/store/StoreSize.kt`):
 
+Current properties (line 7-22): `displayName`, `dailyRent`, `shelfCapacity`, `backroomCapPerItem`, `trafficMultiplier`, `basketSizeMultiplier`, `upgradeCost`, `maxRegisters`, `requiredUpgradeId`.
+
+Add new property:
 ```kotlin
-MOM_AND_POP(     ..., baseRevenueTarget = null)
-SMALL_GROCERY(   ..., baseRevenueTarget = null)
+val baseRevenueTarget: Money? = null,
+```
+
+Values:
+```kotlin
+MOM_AND_POP(     ..., baseRevenueTarget = null)        // reputation inactive
+SMALL_GROCERY(   ..., baseRevenueTarget = null)        // reputation inactive
 GROCERY_STORE(   ..., baseRevenueTarget = Money(80_000))    // $800
 SUPERSTORE(      ..., baseRevenueTarget = Money(300_000))   // $3,000
 SUPERCENTER(     ..., baseRevenueTarget = Money(1_000_000)) // $10,000
 ```
-
-### Customers Lost tracking
-
-Add `customersLost: Int = 0` to `DailyMetricsAccumulator` and `DailyMetrics`. Increment in `GameEngine.tick()` when a customer arrives but can't be queued (all registers full / queue overflow).
 
 ---
 
@@ -345,11 +365,11 @@ New class in `domain/reputation/ReputationManager.kt`. Pure functions:
 
 | Method | Purpose |
 |---|---|
-| `updateReputation(reputationState, snapshot, avgZoneScore, storeSize)` | Full day-rollover: compute sub-scores, composite, EMA smooth, adjust target, derive multipliers. Returns new `ReputationState`. |
+| `updateReputation(reputationState, snapshot, storeSize)` | Full day-rollover: compute sub-scores, composite, EMA smooth, adjust target, derive multipliers. Returns new `ReputationState`. |
 | `computeRevenueScore(todayRevenue, currentTarget)` | Revenue vs target → 0–200 |
 | `computeStockScore(itemsSold, itemsLostToOOS)` | OOS rate → 0–200 |
 | `computeAppearanceScore(avgZoneScore)` | Zone score → 0–200 |
-| `computeServiceScore(customersServed, customersLost)` | Service ratio → 0–200 |
+| `smoothReputation(currentRep, dailyComposite, daysTracked)` | Asymmetric nudge logic |
 | `adjustTarget(currentTarget, todayRevenue, baseTarget)` | Hit/miss ratchet logic |
 | `deriveTrafficMultiplier(score)` | Score → 0.5–2.0 (quadratic) |
 | `derivePriceToleranceMultiplier(score)` | Score → 0.7–1.4 (quadratic) |
@@ -358,16 +378,17 @@ New class in `domain/reputation/ReputationManager.kt`. Pure functions:
 | `checkGoobSaleEligible(reputationState, currentDay)` | Returns true if rep < 30% and cooldown elapsed |
 | `applyGoobSale(reputationState, currentDay)` | Sets `goobSaleActiveToday = true`, updates `lastSaleEventDay` |
 
+Note: `avgZoneScore` is passed via `snapshot.avgZoneScore` (already stored in `DailyMetrics` at line 148).
+
 Companion constants:
 ```kotlin
-const val WEIGHT_REVENUE = 0.40f
-const val WEIGHT_STOCK = 0.25f
+const val WEIGHT_REVENUE = 0.50f
+const val WEIGHT_STOCK = 0.30f
 const val WEIGHT_APPEARANCE = 0.20f
-const val WEIGHT_SERVICE = 0.15f
-const val NUDGE_SMALL = 1f       // daily composite within 25 pts of current rep
-const val NUDGE_MEDIUM = 2f      // daily composite 25–75 pts away
-const val NUDGE_RISE_LARGE = 3f  // rising 75+ pts → max upward nudge
-const val NUDGE_FALL_MAX = 2f    // falling capped at 2 (asymmetric)
+const val NUDGE_SMALL = 1f
+const val NUDGE_MEDIUM = 2f
+const val NUDGE_RISE_LARGE = 3f
+const val NUDGE_FALL_MAX = 2f
 const val NUDGE_THRESHOLD_SMALL = 25f
 const val NUDGE_THRESHOLD_LARGE = 75f
 const val GOOB_SALE_THRESHOLD = 30f
@@ -382,12 +403,20 @@ const val NEUTRAL_REPUTATION = 100f
 
 ## Integration Points
 
-### TrafficManager.update() — line 52–56
+### TrafficManager.update() — `domain/traffic/TrafficManager.kt:47-51`
 
-Add `reputationState.trafficMultiplier`:
+Add `reputationState.trafficMultiplier` to the existing multiplication chain:
 
 ```kotlin
-val goobBoost = if (state.reputationState.goobSaleActiveToday) GOOB_SALE_TRAFFIC_BOOST else 1.0f
+// Current (line 47-51):
+val customerRatePerSecond =
+    (pattern.baseCustomerRate / 60.0) *
+    state.storeConfig.gameSpeedMultiplier *
+    state.currentStoreSize.trafficMultiplier *
+    state.pricingState.priceTrafficMultiplier
+
+// With reputation:
+val goobBoost = if (state.reputationState.goobSaleActiveToday) GOOB_SALE_TRAFFIC_BOOST.toDouble() else 1.0
 val customerRatePerSecond =
     (pattern.baseCustomerRate / 60.0) *
     state.storeConfig.gameSpeedMultiplier *
@@ -397,80 +426,126 @@ val customerRatePerSecond =
     goobBoost
 ```
 
-### PricingManager — price elasticity
+### PricingManager.computePricingData() — `domain/pricing/PricingManager.kt:185-196`
 
-Modify `purchaseProbabilityMultiplier()` to use tolerance:
-
-```kotlin
-fun purchaseProbabilityMultiplier(itemId: Int, state: GameState): Float {
-    val resolved = resolvePrice(itemId, state)
-    if (resolved.basePrice.cents <= 0 || resolved.effectivePrice.cents <= 0) return 1.0f
-    val ratio = resolved.basePrice.cents.toDouble() / resolved.effectivePrice.cents.toDouble()
-    val effectiveElasticity = PRICE_ELASTICITY / state.reputationState.priceToleranceMultiplier
-    return ratio.pow(effectiveElasticity.toDouble()).toFloat()
-}
-```
-
-### InventoryManager — bulk order discount
-
-In `processBulkOrder()`, add `state.reputationState.supplierDiscountBonus` to the discount fraction.
-
-### DayManager.rollOverDay()
-
-After snapshot, before returning:
+Modify per-item purchase probability multiplier to use tolerance:
 
 ```kotlin
-var updatedReputation = ReputationManager.updateReputation(
-    reputationState = processedState.reputationState,
-    snapshot = snapshot,
-    avgZoneScore = processedState.avgZoneScore,
-    storeSize = processedState.currentStoreSize,
-)
+// Current (line 192-193):
+// .pow(config.priceElasticity.toDouble()).toFloat()
 
-// Check GOOB sale eligibility for next day
-if (ReputationManager.checkGoobSaleEligible(updatedReputation, nextDay)) {
-    updatedReputation = ReputationManager.applyGoobSale(updatedReputation, nextDay)
-} else {
-    updatedReputation = updatedReputation.copy(goobSaleActiveToday = false)
-}
-// Include in returned state.copy(reputationState = updatedReputation)
+// With reputation:
+val effectiveElasticity = config.priceElasticity / state.reputationState.priceToleranceMultiplier
+// .pow(effectiveElasticity.toDouble()).toFloat()
 ```
 
-### PricingManager — GOOB Sale override
+### PricingState computed properties — `domain/pricing/PricingState.kt:17-23`
+
+The global `priceTrafficMultiplier` and `basketSizeMultiplier` use hardcoded elasticity from `PricingConfig.DEFAULT`. To apply reputation tolerance here, these need to accept the reputation multiplier. Options:
+1. Pass `priceToleranceMultiplier` into the computed properties (requires refactoring PricingState to non-computed)
+2. Apply tolerance at the call site in `PricingManager.updateSmoothedPriceIndex()`
+3. Store effective elasticities in `PricingState`
+
+**Recommended**: Move the elasticity application to `PricingManager.updateSmoothedPriceIndex()` where `GameState` is available, computing `priceTrafficMultiplier` and `basketSizeMultiplier` there instead of as computed properties on `PricingState`.
+
+### PricingManager.resolvePrice() — GOOB Sale override — `domain/pricing/PricingManager.kt:22-43`
 
 During a GOOB sale, all items sell at base cost (0% effective markup):
 
 ```kotlin
-if (state.reputationState.goobSaleActiveToday) {
-    return resolved.basePrice  // sell at cost during GOOB sale
+fun resolvePrice(itemId: Int, state: GameState): ResolvedPrice {
+    val meta = cache.get(itemId) ?: return ResolvedPrice(Money.ZERO, Money.ZERO, 0)
+
+    // GOOB sale: sell at base price (cost to consumer, no markup)
+    if (state.reputationState.goobSaleActiveToday) {
+        return ResolvedPrice(meta.price, meta.price, 0)
+    }
+
+    // ... existing logic ...
 }
 ```
 
-### GameEngine.tick() — customer lost tracking
+### InventoryManager.placeBulkOrder() — `domain/inventory/InventoryManager.kt:413-419`
 
-When a customer arrives but can't be queued, increment `customersLost` in the daily metrics accumulator. Find the existing pending customer overflow logic and add tracking there.
+Add `supplierDiscountBonus` to the discount fraction:
+
+```kotlin
+// Current (line 413-418):
+val discountFraction = when {
+    totalCases >= 100 -> 0.25
+    totalCases >= 50  -> 0.15
+    totalCases >= 20  -> 0.10
+    else              -> 0.0
+}
+
+// With reputation:
+val repBonus = state.reputationState.supplierDiscountBonus.toDouble()
+val totalDiscount = discountFraction + repBonus
+val finalCost = Money((baseCost.cents * (1.0 - totalDiscount)).toLong())
+```
+
+### DayRolloverProcessor.process() — `domain/tick/DayRolloverProcessor.kt:36-96`
+
+After `dayManager.rollOverDay()` (line 55) and before staff resets, update reputation:
+
+```kotlin
+// After line 55: s = dayManager.rollOverDay(s, dayManager.lastKnownDayNumber)
+// The snapshot is in s.lastEndOfDayReport
+
+val snapshot = s.lastEndOfDayReport
+if (snapshot != null && s.currentStoreSize.baseRevenueTarget != null) {
+    var updatedReputation = ReputationManager.updateReputation(
+        reputationState = s.reputationState,
+        snapshot = snapshot,
+        storeSize = s.currentStoreSize,
+    )
+
+    // Check GOOB sale eligibility for next day
+    val nextDay = s.currentTime.dayNumber
+    if (ReputationManager.checkGoobSaleEligible(updatedReputation, nextDay)) {
+        updatedReputation = ReputationManager.applyGoobSale(updatedReputation, nextDay)
+    } else {
+        updatedReputation = updatedReputation.copy(goobSaleActiveToday = false)
+    }
+
+    s = s.copy(reputationState = updatedReputation)
+}
+```
 
 ### Feature gating
 
 System only active when `storeSize.baseRevenueTarget != null` (Grocery Store+). When inactive, all multipliers stay at default (1.0f traffic, 1.0f tolerance, 0f supplier bonus), and `reputationScore` stays at 100f (neutral). `ReputationManager.updateReputation()` returns state unchanged if gating fails.
 
-`// TODO: gate on research revenue_reputation` comment at check site for future research system.
+`// TODO: gate on research revenue_reputation` comment at check site for future research integration.
 
 ---
 
 ## Research Gate
 
-Add to `plans/plan-researchSystem.md`, under **Pricing** category:
+Add to `ResearchUpgradeRegistry` (`domain/research/ResearchUpgradeRegistry.kt`), under **Pricing** category (after `item_pricing` at line 795):
 
 | ID | Name | Cost | Prerequisites | Gate Check | What it reveals |
 |---|---|---|---|---|---|
 | `revenue_reputation` | "Customer Loyalty Study" | 20 | `category_pricing` | `currentStoreSize >= GROCERY_STORE` | Store Reputation system |
 
+```kotlin
+put("revenue_reputation", ResearchableUpgrade(
+    id = "revenue_reputation",
+    displayName = "Customer Loyalty Study",
+    description = "Unlocks the Store Reputation system — track and improve your store's reputation for traffic and pricing bonuses.",
+    teaserDescription = "A good reputation brings customers back.",
+    category = ResearchCategory.PRICING,
+    researchCost = 20,
+    prerequisites = listOf("category_pricing"),
+    gateCheck = { s -> s.currentStoreSize.ordinal >= StoreSize.GROCERY_STORE.ordinal },
+))
+```
+
 ---
 
 ## UI
 
-### End-of-Day Report (`EndOfDayReportDialog.kt`)
+### End-of-Day Report (`ui/dialogs/EndOfDayReportDialog.kt`)
 
 Add "Store Reputation" section (only when feature active):
 - **Composite score**: "Reputation: 134%" with color indicator (red <75%, yellow 75-100%, green >100%)
@@ -478,18 +553,17 @@ Add "Store Reputation" section (only when feature active):
   - Revenue: "$1,245 / $812 target" ✓ (score: 153%)
   - Stock: "3% OOS rate" (score: 188%)
   - Appearance: "Zone: 0.82" (score: 164%)
-  - Service: "142/148 served" (score: 192%)
 - **Active bonuses**: "Traffic: 1.18x | Tolerance: 1.06x | Supplier: +1.7%"
 - **Target update**: "Tomorrow's target: $825" with ↑/↓ indicator
 - **Streak**: "5-day target streak" or "Target missed (2 days)"
 
-### Home Screen — `StoreOverviewCard.kt`
+### Home Screen — `ui/components/cards/StoreOverviewCard.kt`
 
 Add reputation line (when active):
 - "Reputation: 134%" with color (red/yellow/green)
 - "Traffic +18%" compact bonus indicator
 
-### Pricing Panel (`SettingsPanel.kt`)
+### Pricing Panel (`ui/components/panels/SettingsPanel.kt`)
 
 - "Revenue Target: $825"
 - "Reputation: 134%"
@@ -499,22 +573,21 @@ Add reputation line (when active):
 
 ## Serialization
 
-kotlinx.serialization is already in place (`Json { ignoreUnknownKeys = true; encodeDefaults = true }`).
-No manual serialization code needed.
+kotlinx.serialization is already in place (`GameStateSerializer.kt` — `Json { ignoreUnknownKeys = true; encodeDefaults = true }`).
 
 ### What to do
 
 1. **Annotate `ReputationState` with `@Serializable`** — all fields are primitives or `Money` (value class → flat Long). No custom serializer needed.
 
-2. **Add `reputationState: ReputationState = ReputationState()` to `GameState`** — default value means old saves missing the key deserialize cleanly via `ignoreUnknownKeys = true`.
+2. **Add `reputationState: ReputationState = ReputationState()` to `GameState`** (`GameStateData.kt:218`) — default value means old saves missing the key deserialize cleanly via `ignoreUnknownKeys = true`.
 
-3. **Add `customersLost: Int = 0` to `DailyMetrics` and `DailyMetricsAccumulator`** — both already `@Serializable`. Default `= 0` handles old saves.
+3. **No version bump needed** — all new fields have safe defaults. No migration function required.
 
-4. **No version bump needed** — all new fields have safe defaults. No migration function required.
+4. **Add `baseRevenueTarget` to `StoreSize` enum** — `StoreSize` is `@Serializable` (line 6). New property with default `null` won't break existing saves since enums serialize by name, not by constructor.
 
-5. **Add `customersLost` to `LegacyGameStateDeserializer`** — use `json.optInt("customersLost", 0)` in both `deserializeDailyMetrics()` and `deserializeDailyMetricsAccumulator()`. Legacy saves won't have `reputationState` at all, and `GameState`'s default handles that.
+5. **`LegacyGameStateDeserializer`** (`domain/persistence/LegacyGameStateDeserializer.kt`) — handles pre-`saveVersion` saves. `ReputationState` will be absent from legacy saves; `GameState`'s default handles that. No legacy deserializer changes needed.
 
-**Backward compat:** Missing `reputationState` → `ReputationState()` (score 100f, all multipliers neutral). Missing `customersLost` → 0. No data loss on old saves.
+**Backward compat:** Missing `reputationState` → `ReputationState()` (score 100f, all multipliers neutral). No data loss on old saves.
 
 ---
 
@@ -526,20 +599,18 @@ No manual serialization code needed.
 - `test/.../domain/reputation/ReputationManagerTest.kt`
 
 ### Modified files
-- `domain/GameStateData.kt` — add `reputationState` field to `GameState`
-- `domain/store/StoreSize.kt` — add `baseRevenueTarget: Money?`
-- `domain/traffic/TrafficManager.kt` — multiply by `reputationState.trafficMultiplier`
-- `domain/pricing/PricingManager.kt` — use `priceToleranceMultiplier` in elasticity calc
-- `domain/inventory/InventoryManager.kt` — apply `supplierDiscountBonus` in bulk orders
-- `domain/metrics/DayManager.kt` — call `ReputationManager.updateReputation()` in `rollOverDay()`
-- `domain/metrics/DailyMetrics.kt` — add `customersLost` to `DailyMetrics` and `DailyMetricsAccumulator`
-- `domain/GameEngine.kt` — track customer loss events in metrics accumulator
-- `domain/persistence/GameStateSerializer.kt` — serialize/deserialize `ReputationState` + `customersLost`
-- `ui/dialogs/EndOfDayReportDialog.kt` — reputation section
-- `ui/components/cards/StoreOverviewCard.kt` — reputation line
+- `domain/GameStateData.kt` — add `reputationState` field to `GameState` (line ~320, before `simAccumulators`)
+- `domain/store/StoreSize.kt` — add `baseRevenueTarget: Money?` property (line 7-22) and values per enum entry (lines 24-78)
+- `domain/traffic/TrafficManager.kt` — multiply by `reputationState.trafficMultiplier` + GOOB boost (line 47-51)
+- `domain/pricing/PricingManager.kt` — use `priceToleranceMultiplier` in `computePricingData()` (line 192) and GOOB override in `resolvePrice()` (line 22)
+- `domain/pricing/PricingState.kt` — refactor `priceTrafficMultiplier`/`basketSizeMultiplier` to accept tolerance parameter (lines 17-23)
+- `domain/inventory/InventoryManager.kt` — apply `supplierDiscountBonus` in `placeBulkOrder()` (line 413-419)
+- `domain/tick/DayRolloverProcessor.kt` — call `ReputationManager.updateReputation()` after `dayManager.rollOverDay()` (after line 55)
+- `domain/research/ResearchUpgradeRegistry.kt` — add `revenue_reputation` entry (after line 795)
+- `ui/dialogs/EndOfDayReportDialog.kt` — reputation section in end-of-day report
+- `ui/components/cards/StoreOverviewCard.kt` — reputation line on home screen
 - `ui/components/panels/SettingsPanel.kt` — target + tolerance display
 - `ui/viewmodels/GameViewModel.kt` — expose reputation UI state
-- `plans/plan-researchSystem.md` — add `revenue_reputation` entry
 
 ### Tests
 
@@ -548,8 +619,7 @@ No manual serialization code needed.
 | Revenue score: at target = 100, double = 200, zero = 0 | `computeRevenueScore` math |
 | Stock score: 0% OOS = 200, 25% = 100, 50% = 0 | `computeStockScore` math |
 | Appearance score: zone 1.0 = 200, 0.5 = 100, 0.0 = 0 | `computeAppearanceScore` scaling |
-| Service score: 100% served = 200, 50% = 100, 0% = 0 | `computeServiceScore` math |
-| Composite: weighted sum correct, clamped 0–200 | Factor weights sum to 1.0 |
+| Composite: weighted sum correct, clamped 0–200 | Factor weights sum to 1.0 (0.50 + 0.30 + 0.20) |
 | Nudge: perfect day at 100% → 103% | +3 pt max rise nudge |
 | Nudge: bad day at 100% → 99% | -1 pt small nudge |
 | Nudge: horrific day at 100% → 98% | -2 pt max fall (asymmetric cap) |
@@ -578,10 +648,10 @@ No manual serialization code needed.
 ## Verification
 
 1. **Unit tests**: All ReputationManager pure functions — sub-scores, composite, EMA, target adjustment, multiplier derivation, gating
-2. **Integration**: Play at Grocery Store, verify all 4 sub-scores appear in End-of-Day report, multipliers change
-3. **Balance**: Re-run pricing analysis script with reputation factored in — confirm markdowns become viable when reputation traffic bonus is active
+2. **Integration**: Play at Grocery Store, verify all 3 sub-scores appear in End-of-Day report, multipliers change
+3. **Balance**: Re-run pricing analysis with reputation factored in — confirm markdowns become viable when reputation traffic bonus is active
 4. **Emulator**: Build and install, play ~5 days:
-   - Reputation section in End-of-Day report with breakdown
+   - Reputation section in End-of-Day report with 3-factor breakdown
    - Target ratchets up on hits, down on misses
    - Traffic visibly changes with multiplier
    - Markup tolerance improves at high reputation

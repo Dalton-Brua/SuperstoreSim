@@ -2,6 +2,8 @@ package com.example.superstoresimulator.domain
 
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
+import com.example.superstoresimulator.domain.metrics.WeeklyReport
+import com.example.superstoresimulator.domain.reputation.ReputationState
 import com.example.superstoresimulator.domain.research.ResearchState
 import com.example.superstoresimulator.domain.tutorial.TutorialState
 
@@ -46,6 +48,7 @@ data class StaffShift(
     val entityId: Int,
     val startHour: Int,
     val durationHours: Int = 8,
+    val workDays: Set<Int> = emptySet(),
 ) {
     init {
         require(startHour in 6..20) {
@@ -61,7 +64,12 @@ data class StaffShift(
 
     val endHour: Int get() = startHour + durationHours
 
+    val daysPerWeek: Int get() = if (workDays.isEmpty()) 7 else workDays.size
+
     fun isOnShift(hour: Int): Boolean = hour >= startHour && hour < endHour
+
+    fun isOnShift(hour: Int, dayOfWeek: Int): Boolean =
+        (workDays.isEmpty() || dayOfWeek in workDays) && hour >= startHour && hour < endHour
 }
 
 // ── Truck Delivery System ─────────────────────────────────────────────────────
@@ -163,6 +171,10 @@ data class StoreManagerConfig(
     val autoRebalanceShiftsEnabled: Boolean = true,
     val autoPromoteEnabled: Boolean = true,
     val autoTerminateEnabled: Boolean = true,
+    // Weekly scheduling
+    val autoOptimizeWeeklySchedule: Boolean = true,
+    val minDaysPerWeek: Int = 3,
+    val maxDaysPerWeek: Int = 6,
 )
 
 @Serializable
@@ -259,6 +271,16 @@ data class GameState(
     // Allows dismissEndOfDayReport() to restore the correct paused/running state.
     val pausedByEndOfDay: Boolean = false,
 
+    // Cumulative totals from days archived to Room (not in completedDayMetrics)
+    val archivedCumulativeRevenueCents: Long = 0L,
+    val archivedCumulativeExpiredItems: Int = 0,
+    val archivedCumulativeExpiredWasteCostCents: Long = 0L,
+
+    @kotlinx.serialization.Transient
+    val showEndOfWeekReport: Boolean = false,
+    @kotlinx.serialization.Transient
+    val lastEndOfWeekReport: WeeklyReport? = null,
+
     val objectiveBonusEarned: Money = Money.ZERO,  // Bonus from completed objectives today
 
     // Fresh item auto-ordering
@@ -300,6 +322,9 @@ data class GameState(
 
     // Vendor system
     val vendorSystem: VendorSystemState = VendorSystemState(),
+
+    // Reputation system
+    val reputationState: ReputationState = ReputationState(),
 
     // Simulation accumulators — fractional progress, traffic, day tracking
     val simAccumulators: SimAccumulators = SimAccumulators(),

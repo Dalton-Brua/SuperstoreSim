@@ -11,6 +11,8 @@ class ResearchTickProcessor @Inject constructor(
 ) {
     private var prevState: GameState? = null
 
+    fun reset() { prevState = null }
+
     fun process(state: GameState): GameState {
         val prev = prevState ?: run {
             prevState = state

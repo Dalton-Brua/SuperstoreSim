@@ -40,6 +40,7 @@ data class GameUiState(
     val registers: RegistersUIState = RegistersUIState(),
     val pricing: PricingUIState = PricingUIState(),
     val vendors: VendorUIState = VendorUIState(),
+    val reputation: ReputationUIState = ReputationUIState(),
 )
 
 data class AppUIState(
@@ -129,6 +130,7 @@ data class StaffUIState(
     val scheduleEntries: List<StaffScheduleEntryUI> = emptyList(),
     /** Current game hour (0-23) — used to show on-shift status in schedule view. */
     val currentHour: Int = 8,
+    val currentDayOfWeek: Int = 0,
     val employeeActivities: Map<Int, EmployeeActivity> = emptyMap(),
     val cashierUtilization: Float = 0f,
     val stockerUtilization: Float = 0f,
@@ -164,7 +166,7 @@ data class TimeUIState(
 
 // Phase 3: Daily metrics UI state
 data class MetricsUIState(
-    /** All completed day snapshots, newest first. */
+    /** All completed day snapshots (in-memory + archived summaries), newest first. */
     val completedDays: List<DailyMetrics> = emptyList(),
     /** Live snapshot of the current in-progress day (null before first tick). */
     val activeDay: DailyMetrics? = null,
@@ -172,6 +174,14 @@ data class MetricsUIState(
     val showEndOfDayReport: Boolean = false,
     /** The most recently completed day's snapshot (shown in the dialog). */
     val lastReport: DailyMetrics? = null,
+    val showEndOfWeekReport: Boolean = false,
+    val weeklyReport: com.example.superstoresimulator.domain.metrics.WeeklyReport? = null,
+    /** Item ID → display name, for resolving names in metric events. */
+    val itemNames: Map<Int, String> = emptyMap(),
+    /** Day numbers that are archived in Room (scalar-only, events need on-demand load). */
+    val archivedDayNumbers: Set<Int> = emptySet(),
+    /** Full DailyMetrics loaded on-demand from Room for an archived day. */
+    val loadedArchivedDay: DailyMetrics? = null,
 )
 
 // Research system UI state
@@ -310,12 +320,15 @@ data class StaffScheduleEntryUI(
     val startHour: Int? = null,
     /** Exclusive end of shift (startHour + 8), or null if no schedule defined. */
     val endHour: Int? = null,
-    /** Whether the employee is currently on shift based on the current game hour. */
+    /** Whether the employee is currently on shift based on the current game hour and day. */
     val isOnShift: Boolean = true,
     val tierLabel: String = "",
     val level: Int = 1,
     /** For cashiers: the register they are assigned to, or null if unassigned. */
     val assignedRegisterId: Int? = null,
+    /** Days of the week this employee works (0=Mon..6=Sun). Empty = every day. */
+    val workDays: Set<Int> = emptySet(),
+    val daysPerWeek: Int = 7,
 )
 
 // ── Pricing System UI State ─────────────────────────────────────────────────
@@ -363,5 +376,23 @@ data class VendorUIState(
     val nextTierCost: Money? = null,
     val canUnlockNextTier: Boolean = false,
     val maxTierReached: Boolean = false,
+)
+
+// ── Reputation System UI State ──────────────────────────────────────────────
+
+data class ReputationUIState(
+    val isActive: Boolean = false,
+    val reputationScore: Float = 100f,
+    val trafficMultiplier: Float = 1.0f,
+    val priceToleranceMultiplier: Float = 1.0f,
+    val supplierDiscountBonus: Float = 0f,
+    val currentRevenueTarget: Money = Money.ZERO,
+    val lastRevenueScore: Float = 0f,
+    val lastStockScore: Float = 0f,
+    val lastAppearanceScore: Float = 0f,
+    val lastDailyComposite: Float = 0f,
+    val consecutiveTargetHits: Int = 0,
+    val consecutiveTargetMisses: Int = 0,
+    val goobSaleActiveToday: Boolean = false,
 )
 

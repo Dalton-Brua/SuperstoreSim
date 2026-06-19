@@ -17,6 +17,7 @@ import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.domain.SimAccumulators
 import com.example.superstoresimulator.domain.ZoningState
+import com.example.superstoresimulator.domain.traffic.TrafficSchedule
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -214,6 +215,7 @@ class StaffManager @Inject constructor() {
         hasActionableBackroom: Boolean,
         hasUnzonedItems: Boolean,
         hasFreshWork: Boolean,
+        dayOfWeek: Int = -1,
     ) {
         val registry = state.hiredEntityRegistry
         val schedules = state.staffSchedules
@@ -235,12 +237,17 @@ class StaffManager @Inject constructor() {
             }
         }
 
+        fun StaffShift?.isWorking(): Boolean =
+            if (this == null) false
+            else if (dayOfWeek >= 0) isOnShift(currentHour, dayOfWeek)
+            else isOnShift(currentHour)
+
         val activities = mutableMapOf<Int, EmployeeActivity>()
 
         // Cashiers
         for (entity in registry.getByDef(EntityDef.CASHIER)) {
             val shift = schedules.firstOrNull { it.entityId == entity.id }
-            if (shift == null || !shift.isOnShift(currentHour)) {
+            if (!shift.isWorking()) {
                 activities[entity.id] = EmployeeActivity.OFF_SHIFT
                 continue
             }
@@ -271,7 +278,7 @@ class StaffManager @Inject constructor() {
         // Stockers
         for (entity in registry.getByDef(EntityDef.STOCKER)) {
             val shift = schedules.firstOrNull { it.entityId == entity.id }
-            if (shift == null || !shift.isOnShift(currentHour)) {
+            if (!shift.isWorking()) {
                 activities[entity.id] = EmployeeActivity.OFF_SHIFT
                 cleanUpZoningForEntity(entity.id)
                 continue
@@ -290,7 +297,7 @@ class StaffManager @Inject constructor() {
         // Fresh handlers
         for (entity in registry.getByDef(EntityDef.FRESH_HANDLER)) {
             val shift = schedules.firstOrNull { it.entityId == entity.id }
-            if (shift == null || !shift.isOnShift(currentHour)) {
+            if (!shift.isWorking()) {
                 activities[entity.id] = EmployeeActivity.OFF_SHIFT
                 continue
             }
@@ -306,7 +313,7 @@ class StaffManager @Inject constructor() {
         // Managers
         for (entity in registry.getByDef(EntityDef.MANAGER)) {
             val shift = schedules.firstOrNull { it.entityId == entity.id }
-            if (shift == null || !shift.isOnShift(currentHour)) {
+            if (!shift.isWorking()) {
                 activities[entity.id] = EmployeeActivity.OFF_SHIFT
             } else {
                 activities[entity.id] = EmployeeActivity.IDLE
@@ -316,7 +323,7 @@ class StaffManager @Inject constructor() {
         // Market Analysts
         for (entity in registry.getByDef(EntityDef.MARKET_ANALYST)) {
             val shift = schedules.firstOrNull { it.entityId == entity.id }
-            if (shift == null || !shift.isOnShift(currentHour)) {
+            if (!shift.isWorking()) {
                 activities[entity.id] = EmployeeActivity.OFF_SHIFT
                 continue
             }
@@ -591,8 +598,7 @@ class StaffManager @Inject constructor() {
             }
         }
 
-        // 4. Auto-terminate excess idle employees (based on 3-day average)
-        // Skip if any hiring happened today — hiring and firing are mutually exclusive
+        // 4. Auto-terminate excess idle employees (graduated: reduce days first, fire as last resort)
         val hiredToday = result.currentDayMetrics.autoHireEvents.any { it.action == com.example.superstoresimulator.domain.metrics.AutoHireAction.HIRED }
         if (config.autoTerminateEnabled && !hiredToday) {
             val currentDay = result.currentTime.dayNumber
@@ -602,6 +608,7 @@ class StaffManager @Inject constructor() {
                 val avgStockerUtil = recentDays.map { it.avgStockerUtilization }.average().toFloat()
                 val avgFreshUtil = recentDays.map { it.avgFreshUtilization }.average().toFloat()
                 val avgZone = recentDays.map { it.avgZoneScore }.average().toFloat()
+                val minDays = config.minDaysPerWeek
 
                 fun canTerminate(def: EntityDef): Boolean {
                     val lastDay = result.lastTerminationDayByType[def.key] ?: return true
@@ -614,42 +621,77 @@ class StaffManager @Inject constructor() {
                     )
                 }
 
-                // Cashiers: fire if more cashiers than registers and utilization consistently low
+                val weekdayDemand = TrafficSchedule.WEEKDAY.sumOf { it.baseCustomerRate.toDouble() }.toFloat()
+                val weekendDemand = TrafficSchedule.WEEKEND.sumOf { it.baseCustomerRate.toDouble() }.toFloat()
+
+                fun tryReduceDays(victim: HiredEntity, def: EntityDef, reason: String): Boolean {
+                    val shift = result.staffSchedules.firstOrNull { it.entityId == victim.id } ?: return false
+                    val currentDays = shift.daysPerWeek
+                    if (currentDays <= minDays) return false
+                    val daysSet = if (shift.workDays.isEmpty()) (0..6).toSet() else shift.workDays
+                    val lowestDemandDay = daysSet.minByOrNull { day ->
+                        val isWeekend = day in 5..6
+                        if (isWeekend) weekendDemand else weekdayDemand
+                    } ?: return false
+                    result = result.copy(
+                        staffSchedules = result.staffSchedules.map { s ->
+                            if (s.entityId == victim.id) s.copy(workDays = daysSet - lowestDemandDay) else s
+                        }
+                    )
+                    recordTermination(def)
+                    events += AutoHireEvent(
+                        def.displayName,
+                        "Reduced hours",
+                        detail = "Store Manager reduced ${victim.name} to ${currentDays - 1}d/wk — $reason",
+                        action = com.example.superstoresimulator.domain.metrics.AutoHireAction.REDUCED_HOURS,
+                    )
+                    return true
+                }
+
+                // Cashiers
                 val cashiers = result.hiredEntityRegistry.getByDef(EntityDef.CASHIER)
                 if (canTerminate(EntityDef.CASHIER) && cashiers.size > 1 && cashiers.size > result.registers.size && avgCashierUtil < 0.5f) {
                     val assignedIds = result.registers.mapNotNull { it.assignedCashierId }.toSet()
                     val unassigned = cashiers.filter { it.id !in assignedIds }
                     val victim = unassigned.minByOrNull { it.level * 100 + it.xp }
                     if (victim != null) {
-                        result = fireEntity(result, victim.id)
-                        recordTermination(EntityDef.CASHIER)
-                        events += AutoHireEvent(
-                            EntityDef.CASHIER.displayName,
-                            "Overstaffed",
-                            detail = "Terminated ${victim.name} — ${cashiers.size} cashiers for ${result.registers.size} registers, ${TERMINATE_LOOKBACK_DAYS}-day avg util ${(avgCashierUtil * 100).toInt()}%",
-                            action = com.example.superstoresimulator.domain.metrics.AutoHireAction.TERMINATED,
-                        )
+                        val reduced = tryReduceDays(victim, EntityDef.CASHIER,
+                            "${cashiers.size} cashiers for ${result.registers.size} registers, util ${(avgCashierUtil * 100).toInt()}%")
+                        if (!reduced) {
+                            result = fireEntity(result, victim.id)
+                            recordTermination(EntityDef.CASHIER)
+                            events += AutoHireEvent(
+                                EntityDef.CASHIER.displayName,
+                                "Overstaffed",
+                                detail = "Terminated ${victim.name} — already at ${minDays}d/wk min, util ${(avgCashierUtil * 100).toInt()}%",
+                                action = com.example.superstoresimulator.domain.metrics.AutoHireAction.TERMINATED,
+                            )
+                        }
                     }
                 }
 
-                // Stockers: fire if zone score consistently high and utilization consistently low
+                // Stockers
                 val stockers = result.hiredEntityRegistry.getByDef(EntityDef.STOCKER)
                     .filter { !it.isDeptManager }
                 if (canTerminate(EntityDef.STOCKER) && stockers.size > 1 && avgZone >= 0.95f && avgStockerUtil < 0.3f) {
                     val victim = stockers.minByOrNull { it.level * 100 + it.xp }
                     if (victim != null) {
-                        result = fireEntity(result, victim.id)
-                        recordTermination(EntityDef.STOCKER)
-                        events += AutoHireEvent(
-                            EntityDef.STOCKER.displayName,
-                            "Overstaffed",
-                            detail = "Terminated ${victim.name} — ${TERMINATE_LOOKBACK_DAYS}-day avg zone ${(avgZone * 100).toInt()}%, util ${(avgStockerUtil * 100).toInt()}%",
-                            action = com.example.superstoresimulator.domain.metrics.AutoHireAction.TERMINATED,
-                        )
+                        val reduced = tryReduceDays(victim, EntityDef.STOCKER,
+                            "zone ${(avgZone * 100).toInt()}%, util ${(avgStockerUtil * 100).toInt()}%")
+                        if (!reduced) {
+                            result = fireEntity(result, victim.id)
+                            recordTermination(EntityDef.STOCKER)
+                            events += AutoHireEvent(
+                                EntityDef.STOCKER.displayName,
+                                "Overstaffed",
+                                detail = "Terminated ${victim.name} — already at ${minDays}d/wk min, util ${(avgStockerUtil * 100).toInt()}%",
+                                action = com.example.superstoresimulator.domain.metrics.AutoHireAction.TERMINATED,
+                            )
+                        }
                     }
                 }
 
-                // Fresh handlers: fire if utilization consistently low and no recent fresh OOS
+                // Fresh handlers
                 val freshHandlers = result.hiredEntityRegistry.getByDef(EntityDef.FRESH_HANDLER)
                     .filter { !it.isDeptManager }
                 val recentFreshOos = recentDays.any { day ->
@@ -661,14 +703,18 @@ class StaffManager @Inject constructor() {
                 if (canTerminate(EntityDef.FRESH_HANDLER) && freshHandlers.size > 1 && !recentFreshOos && avgFreshUtil < 0.3f) {
                     val victim = freshHandlers.minByOrNull { it.level * 100 + it.xp }
                     if (victim != null) {
-                        result = fireEntity(result, victim.id)
-                        recordTermination(EntityDef.FRESH_HANDLER)
-                        events += AutoHireEvent(
-                            EntityDef.FRESH_HANDLER.displayName,
-                            "Overstaffed",
-                            detail = "Terminated ${victim.name} — no fresh OOS in ${TERMINATE_LOOKBACK_DAYS} days, avg util ${(avgFreshUtil * 100).toInt()}%",
-                            action = com.example.superstoresimulator.domain.metrics.AutoHireAction.TERMINATED,
-                        )
+                        val reduced = tryReduceDays(victim, EntityDef.FRESH_HANDLER,
+                            "no fresh OOS in ${TERMINATE_LOOKBACK_DAYS} days, util ${(avgFreshUtil * 100).toInt()}%")
+                        if (!reduced) {
+                            result = fireEntity(result, victim.id)
+                            recordTermination(EntityDef.FRESH_HANDLER)
+                            events += AutoHireEvent(
+                                EntityDef.FRESH_HANDLER.displayName,
+                                "Overstaffed",
+                                detail = "Terminated ${victim.name} — already at ${minDays}d/wk min, util ${(avgFreshUtil * 100).toInt()}%",
+                                action = com.example.superstoresimulator.domain.metrics.AutoHireAction.TERMINATED,
+                            )
+                        }
                     }
                 }
             }
@@ -682,6 +728,71 @@ class StaffManager @Inject constructor() {
             )
         }
 
+        return result
+    }
+
+    fun optimizeWeeklySchedules(state: GameState): GameState {
+        val config = state.storeManagerConfig
+        if (!config.autoOptimizeWeeklySchedule) return state
+        if (state.currentTime.dayOfWeek != 0) return state
+
+        val weekdayDemand = TrafficSchedule.WEEKDAY.sumOf { it.baseCustomerRate.toDouble() }.toFloat()
+        val weekendDemand = TrafficSchedule.WEEKEND.sumOf { it.baseCustomerRate.toDouble() }.toFloat()
+        val deliveryDays = state.truckConfig.deliveryDays
+
+        fun demandScores(role: String): List<Pair<Int, Float>> {
+            return (0..6).map { day ->
+                val isWeekend = day in 5..6
+                val score = when (role) {
+                    "cashier" -> if (isWeekend) weekendDemand else weekdayDemand
+                    "stocker" -> {
+                        val base = if (isWeekend) weekendDemand * 0.5f else weekdayDemand * 0.5f
+                        if (day in deliveryDays) base * 2f else base
+                    }
+                    else -> {
+                        val base = 1f
+                        if (day in deliveryDays) base * 1.5f else base
+                    }
+                }
+                day to score
+            }
+        }
+
+        var schedules = state.staffSchedules
+        val events = mutableListOf<AutoHireEvent>()
+
+        for (def in listOf(EntityDef.CASHIER, EntityDef.STOCKER, EntityDef.FRESH_HANDLER)) {
+            val entities = state.hiredEntityRegistry.getByDef(def)
+            if (entities.isEmpty()) continue
+
+            val scores = demandScores(def.key).sortedByDescending { it.second }
+            val maxDays = config.maxDaysPerWeek.coerceIn(config.minDaysPerWeek, 7)
+
+            for (entity in entities) {
+                val daysToAssign = maxDays.coerceAtMost(7)
+                val assignedDays = scores.take(daysToAssign).map { it.first }.toSet()
+
+                schedules = schedules.map { s ->
+                    if (s.entityId == entity.id) s.copy(workDays = assignedDays) else s
+                }
+            }
+
+            events += AutoHireEvent(
+                def.displayName,
+                "Schedule optimized",
+                detail = "Store Manager optimized ${entities.size} ${def.displayName}(s) — ${maxDays}d/wk",
+                action = com.example.superstoresimulator.domain.metrics.AutoHireAction.SCHEDULE_OPTIMIZED,
+            )
+        }
+
+        var result = state.copy(staffSchedules = schedules)
+        if (events.isNotEmpty()) {
+            result = result.copy(
+                currentDayMetrics = result.currentDayMetrics.copy(
+                    autoHireEvents = result.currentDayMetrics.autoHireEvents + events,
+                ),
+            )
+        }
         return result
     }
 
@@ -768,15 +879,17 @@ class StaffManager @Inject constructor() {
         )
     }
 
-    fun updateShift(state: GameState, entityId: Int, newStartHour: Int, newDuration: Int = 8): GameState {
+    fun updateShift(state: GameState, entityId: Int, newStartHour: Int, newDuration: Int = 8, workDays: Set<Int> = emptySet()): GameState {
         val duration = newDuration.coerceIn(2, 8)
         val start = newStartHour.coerceIn(6, 21 - duration)
+        val validDays = workDays.filter { it in 0..6 }.toSet()
+        val newShift = StaffShift(entityId = entityId, startHour = start, durationHours = duration, workDays = validDays)
         val updatedSchedules = if (state.staffSchedules.any { it.entityId == entityId }) {
             state.staffSchedules.map { shift ->
-                if (shift.entityId == entityId) StaffShift(entityId = entityId, startHour = start, durationHours = duration) else shift
+                if (shift.entityId == entityId) newShift else shift
             }
         } else {
-            state.staffSchedules + StaffShift(entityId = entityId, startHour = start, durationHours = duration)
+            state.staffSchedules + newShift
         }
         return state.copy(staffSchedules = updatedSchedules)
     }
@@ -854,20 +967,26 @@ class StaffManager @Inject constructor() {
             currentHour: Int,
             schedules: List<StaffShift>,
             registry: HiredEntityRegistry,
-        ): Float = activeWeightedCountWithIds(def, currentHour, schedules, registry).weight
+            dayOfWeek: Int = -1,
+        ): Float = activeWeightedCountWithIds(def, currentHour, schedules, registry, dayOfWeek).weight
 
         fun activeWeightedCountWithIds(
             def: EntityDef,
             currentHour: Int,
             schedules: List<StaffShift>,
             registry: HiredEntityRegistry,
+            dayOfWeek: Int = -1,
         ): ActiveWeightResult {
             var weight = 0.0
             val ids = mutableListOf<Int>()
             val weights = mutableListOf<Float>()
             for (entity in registry.getByDef(def)) {
                 val shift = schedules.firstOrNull { it.entityId == entity.id }
-                if (shift != null && shift.isOnShift(currentHour)) {
+                val onShift = if (dayOfWeek >= 0)
+                    shift != null && shift.isOnShift(currentHour, dayOfWeek)
+                else
+                    shift != null && shift.isOnShift(currentHour)
+                if (onShift) {
                     val w = entity.throughputWeight * entity.levelMultiplier * entity.trait.throughputMultiplier
                     weight += w
                     ids.add(entity.id)
@@ -889,6 +1008,7 @@ class StaffManager @Inject constructor() {
             currentHour: Int,
             schedules: List<StaffShift>,
             registry: HiredEntityRegistry,
+            dayOfWeek: Int = -1,
         ): TickBonuses {
             var managerBonusSum = 0.0
             var hasCashierDeptMgr = false
@@ -897,7 +1017,10 @@ class StaffManager @Inject constructor() {
             val onShiftManagerIds = mutableListOf<Int>()
 
             for (entity in registry.hiredEntities) {
-                val isOnShift = schedules.any { s -> s.entityId == entity.id && s.isOnShift(currentHour) }
+                val isOnShift = if (dayOfWeek >= 0)
+                    schedules.any { s -> s.entityId == entity.id && s.isOnShift(currentHour, dayOfWeek) }
+                else
+                    schedules.any { s -> s.entityId == entity.id && s.isOnShift(currentHour) }
                 if (!isOnShift) continue
 
                 if (entity.entityDefinition == EntityDef.MANAGER) {

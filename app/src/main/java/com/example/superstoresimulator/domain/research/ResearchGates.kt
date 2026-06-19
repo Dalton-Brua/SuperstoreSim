@@ -44,6 +44,9 @@ object ResearchGates {
     /** Per-item price override sliders on the item detail screen. */
     const val ITEM_PRICING = "item_pricing"
 
+    /** Store Reputation system. */
+    const val REVENUE_REPUTATION = "revenue_reputation"
+
     /** Building purchase — eliminates daily rent permanently. */
     const val BUILDING_PURCHASE = "building_purchase"
 
@@ -78,7 +81,7 @@ object ResearchGates {
     private fun referencedUpgradeIds(): Set<String> =
         FRESH_SUBSYSTEM_GATES +
             FEATURE_UPGRADE.values +
-            setOf(CATEGORY_PRICING, DEFAULT_MARKUP, ITEM_PRICING) +
+            setOf(CATEGORY_PRICING, DEFAULT_MARKUP, ITEM_PRICING, REVENUE_REPUTATION) +
             setOf(BUILDING_PURCHASE, TRUCK_UPGRADE_ENHANCED, TRUCK_UPGRADE_HEAVY) +
             StoreSize.entries.mapNotNull { it.requiredUpgradeId }
 
