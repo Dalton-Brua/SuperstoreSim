@@ -543,6 +543,12 @@ class GameEngine @Inject constructor(
 
     fun dropIntoStore(storeId: Int) {
         state = com.example.superstoresimulator.domain.empire.OperateStoreController.dropIn(state, storeId)
+        // Resume loop-1 timing from the empire-advanced clock so the first scoped tick
+        // doesn't trigger a spurious day rollover (empire days advance without DayManager).
+        timeManager.syncTime(state.currentTime)
+        timeManager.config = state.storeConfig.copy()
+        dayManager.syncDay(state.currentTime.dayNumber)
+        tickOrchestrator.resetTickProcessors()
     }
 
     fun exitOperatedStore() {
