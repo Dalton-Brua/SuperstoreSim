@@ -54,7 +54,6 @@ fun FreshScreen(
     incompleteFreshOrdersCount: Int = 0,
     hasFreshHandler: Boolean = false,
     freshAutoOrderConfig: com.example.superstoresimulator.domain.FreshAutoOrderConfig = com.example.superstoresimulator.domain.FreshAutoOrderConfig(),
-    freshAutoOrderResearched: Boolean = false,
     onItemClick: (Int) -> Unit = {},
     onFreshBulkOrder: () -> Unit = {},
     onViewIncompleteOrders: () -> Unit = {},
@@ -138,25 +137,23 @@ fun FreshScreen(
                     Text("Fresh Bulk Order", fontSize = 12.sp, color = TextWhite)
                 }
 
-                if (freshAutoOrderResearched) {
-                    Button(
-                        onClick = { showAutoOrderConfigDialog = true },
-                        enabled = hasFreshHandler,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Primary,
-                            disabledContainerColor = ProgressBarTrack,
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            "Auto-Order",
-                            fontSize = 12.sp,
-                            color = if (hasFreshHandler) TextWhite else TextMuted
-                        )
-                    }
+                Button(
+                    onClick = { showAutoOrderConfigDialog = true },
+                    enabled = hasFreshHandler,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Primary,
+                        disabledContainerColor = ProgressBarTrack,
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        "Auto-Order",
+                        fontSize = 12.sp,
+                        color = if (hasFreshHandler) TextWhite else TextMuted
+                    )
                 }
             }
 

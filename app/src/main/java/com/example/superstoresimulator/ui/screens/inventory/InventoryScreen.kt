@@ -720,7 +720,6 @@ fun InventoryAndFreshScreen(
                     incompleteFreshOrdersCount = incompleteFreshOrdersCount,
                     hasFreshHandler = hasFreshHandler,
                     freshAutoOrderConfig = freshAutoOrderConfig,
-                    freshAutoOrderResearched = ResearchGates.isResearched(researchedUpgrades, "fresh_auto_order"),
                     onItemClick = onItemClick,
                     onFreshBulkOrder = onFreshBulkOrder,
                     onViewIncompleteOrders = onViewIncompleteOrders,

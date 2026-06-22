@@ -768,15 +768,6 @@ object ResearchUpgradeRegistry {
             prerequisites = listOf("truck_upgrade_enhanced"),
             requiredStoreSize = StoreSize.SUPERCENTER,
         ))
-        put("fresh_auto_order", ResearchableUpgrade(
-            id = "fresh_auto_order",
-            displayName = "Fresh Inventory Automation",
-            description = "Unlocks fresh item auto-ordering configuration.",
-            teaserDescription = "Never run out of fresh items again.",
-            category = ResearchCategory.OPERATIONS,
-            researchCost = 18,
-            prerequisites = listOf("prod_frozen_basics"),
-        ))
         put("early_truck", ResearchableUpgrade(
             id = "early_truck",
             displayName = "Express Delivery Research",
