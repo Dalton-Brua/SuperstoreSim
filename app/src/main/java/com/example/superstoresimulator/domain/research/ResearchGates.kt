@@ -50,6 +50,9 @@ object ResearchGates {
     /** Building purchase — eliminates daily rent permanently. */
     const val BUILDING_PURCHASE = "building_purchase"
 
+    /** Second location — unlocks empire mode (the one-way "go corporate" transition). */
+    const val SECOND_LOCATION = "second_location"
+
     /** Truck fleet upgrade tier 1 (Enhanced Fleet — 3,000/750). */
     const val TRUCK_UPGRADE_ENHANCED = "truck_upgrade_enhanced"
 
@@ -82,7 +85,7 @@ object ResearchGates {
         FRESH_SUBSYSTEM_GATES +
             FEATURE_UPGRADE.values +
             setOf(CATEGORY_PRICING, DEFAULT_MARKUP, ITEM_PRICING, REVENUE_REPUTATION) +
-            setOf(BUILDING_PURCHASE, TRUCK_UPGRADE_ENHANCED, TRUCK_UPGRADE_HEAVY) +
+            setOf(BUILDING_PURCHASE, SECOND_LOCATION, TRUCK_UPGRADE_ENHANCED, TRUCK_UPGRADE_HEAVY) +
             StoreSize.entries.mapNotNull { it.requiredUpgradeId }
 
     /**

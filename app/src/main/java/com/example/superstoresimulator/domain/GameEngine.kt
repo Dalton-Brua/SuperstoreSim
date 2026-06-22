@@ -492,6 +492,63 @@ class GameEngine @Inject constructor(
         state = vendorManager.investInVendor(state, vendorId)
     }
 
+    // ── Empire mode (loop 2) ────────────────────────────────────────────────────
+    // Delegates to stateless controller objects in domain.empire. Each Wave-1 track
+    // owns one object; GameEngine only routes.
+
+    fun enterEmpireMode() {
+        state = com.example.superstoresimulator.domain.empire.EmpireTransitionActions.enterEmpireMode(state)
+    }
+
+    fun unlockRegion(regionId: Int) {
+        state = com.example.superstoresimulator.domain.empire.EmpireTransitionActions.unlockRegion(state, regionId)
+    }
+
+    fun openLocation(regionId: Int) {
+        state = com.example.superstoresimulator.domain.empire.EmpireTransitionActions.openLocation(state, regionId)
+    }
+
+    fun setStoreDirection(storeId: Int, direction: com.example.superstoresimulator.domain.empire.StoreDirection) {
+        state = com.example.superstoresimulator.domain.empire.EmpireTransitionActions.setStoreDirection(state, storeId, direction)
+    }
+
+    fun buyStoreUpgrade(storeId: Int, upgrade: com.example.superstoresimulator.domain.empire.StoreUpgrade) {
+        state = com.example.superstoresimulator.domain.empire.EmpireTransitionActions.buyStoreUpgrade(state, storeId, upgrade)
+    }
+
+    fun expandStoreSize(storeId: Int) {
+        state = com.example.superstoresimulator.domain.empire.EmpireTransitionActions.expandStoreSize(state, storeId)
+    }
+
+    fun hireRegionalManager(personality: com.example.superstoresimulator.domain.empire.ManagerPersonality) {
+        state = com.example.superstoresimulator.domain.empire.RegionalManagerManager.hire(state, personality)
+    }
+
+    fun fireRegionalManager() {
+        state = com.example.superstoresimulator.domain.empire.RegionalManagerManager.fire(state)
+    }
+
+    fun setEmpireSpeed(speed: com.example.superstoresimulator.domain.empire.EmpireSpeed) {
+        state = com.example.superstoresimulator.domain.empire.EmpireClockController.setSpeed(state, speed)
+    }
+
+    /** Empire clock real-ms driver, called from the ViewModel tick loop in empire mode. */
+    fun empireTick(deltaMs: Long) {
+        state = com.example.superstoresimulator.domain.empire.EmpireClockController.tick(state, deltaMs)
+    }
+
+    fun advanceToNextDecision() {
+        state = com.example.superstoresimulator.domain.empire.EmpireClockController.advanceToNextDecision(state)
+    }
+
+    fun dropIntoStore(storeId: Int) {
+        state = com.example.superstoresimulator.domain.empire.OperateStoreController.dropIn(state, storeId)
+    }
+
+    fun exitOperatedStore() {
+        state = com.example.superstoresimulator.domain.empire.OperateStoreController.dropOut(state)
+    }
+
     private fun buildDebugRichState(): GameState {
         val baseState = GameState()
         if (itemMetadataCache.getAllItems().isEmpty()) return baseState

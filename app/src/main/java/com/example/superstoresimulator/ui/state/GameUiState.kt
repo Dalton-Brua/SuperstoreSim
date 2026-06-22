@@ -41,6 +41,7 @@ data class GameUiState(
     val pricing: PricingUIState = PricingUIState(),
     val vendors: VendorUIState = VendorUIState(),
     val reputation: ReputationUIState = ReputationUIState(),
+    val empire: EmpireUIState = EmpireUIState(),
 )
 
 data class AppUIState(

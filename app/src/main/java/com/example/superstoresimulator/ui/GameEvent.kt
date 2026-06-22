@@ -165,4 +165,39 @@ sealed interface GameEvent {
     // Archived metrics on-demand loading
     data class LoadArchivedDayDetail(val dayNumber: Int) : GameEvent
     data object ClearLoadedArchivedDay : GameEvent
+
+    // ── Empire mode (loop 2) ────────────────────────────────────────────────────
+    /** Confirm the irreversible "go corporate" transition (opens the 2nd location). */
+    data object EnterEmpireMode : GameEvent
+    /** Unlock a region, paying its one-time entry fee. */
+    data class UnlockRegion(val regionId: Int) : GameEvent
+    /** Open a new location in an unlocked region (pays the scaling cost). */
+    data class OpenLocation(val regionId: Int) : GameEvent
+    /** Player sets a store's strategic direction (ignored if manager-managed). */
+    data class SetStoreDirection(
+        val storeId: Int,
+        val direction: com.example.superstoresimulator.domain.empire.StoreDirection,
+    ) : GameEvent
+    /** Buy a per-store upgrade flag. */
+    data class BuyStoreUpgrade(
+        val storeId: Int,
+        val upgrade: com.example.superstoresimulator.domain.empire.StoreUpgrade,
+    ) : GameEvent
+    /** Bump a store's size to the next tier. */
+    data class ExpandStoreSize(val storeId: Int) : GameEvent
+    /** Hire a regional manager of the given personality. */
+    data class HireRegionalManager(
+        val personality: com.example.superstoresimulator.domain.empire.ManagerPersonality,
+    ) : GameEvent
+    data object FireRegionalManager : GameEvent
+    /** Empire clock speed control. */
+    data class SetEmpireSpeed(
+        val speed: com.example.superstoresimulator.domain.empire.EmpireSpeed,
+    ) : GameEvent
+    /** Skip-ahead until the next decision point. */
+    data object AdvanceToNextDecision : GameEvent
+    /** Drop into a store to run it by hand (loop 1). */
+    data class DropIntoStore(val storeId: Int) : GameEvent
+    /** Leave the hands-on store and return to empire mode. */
+    data object ExitOperatedStore : GameEvent
 }

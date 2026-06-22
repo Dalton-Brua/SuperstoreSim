@@ -392,7 +392,15 @@ class GameViewModel @Inject constructor(
             }
 
             GameEvent.Tick -> {
-                if (!gameEngine.isSimulating) gameEngine.tick(tickDelta)
+                if (gameEngine.isSimulating) return
+                val s = gameEngine.currentState()
+                // Empire mode suspends the minute tick — unless the player is hands-on
+                // operating a store, in which case loop 1 runs for that one store.
+                if (s.empireModeActive && s.operatingStoreId == null) {
+                    gameEngine.empireTick(tickDelta)
+                } else {
+                    gameEngine.tick(tickDelta)
+                }
             }
 
             is GameEvent.LoadArchivedDayDetail -> {
@@ -406,6 +414,20 @@ class GameViewModel @Inject constructor(
             GameEvent.ClearLoadedArchivedDay -> {
                 loadedArchivedDay = null
             }
+
+            // ── Empire mode (loop 2) ──────────────────────────────────────────
+            GameEvent.EnterEmpireMode -> gameEngine.enterEmpireMode()
+            is GameEvent.UnlockRegion -> gameEngine.unlockRegion(event.regionId)
+            is GameEvent.OpenLocation -> gameEngine.openLocation(event.regionId)
+            is GameEvent.SetStoreDirection -> gameEngine.setStoreDirection(event.storeId, event.direction)
+            is GameEvent.BuyStoreUpgrade -> gameEngine.buyStoreUpgrade(event.storeId, event.upgrade)
+            is GameEvent.ExpandStoreSize -> gameEngine.expandStoreSize(event.storeId)
+            is GameEvent.HireRegionalManager -> gameEngine.hireRegionalManager(event.personality)
+            GameEvent.FireRegionalManager -> gameEngine.fireRegionalManager()
+            is GameEvent.SetEmpireSpeed -> gameEngine.setEmpireSpeed(event.speed)
+            GameEvent.AdvanceToNextDecision -> gameEngine.advanceToNextDecision()
+            is GameEvent.DropIntoStore -> gameEngine.dropIntoStore(event.storeId)
+            GameEvent.ExitOperatedStore -> gameEngine.exitOperatedStore()
         }
 
         refreshUiState()
@@ -527,6 +549,7 @@ class GameViewModel @Inject constructor(
             pricing = buildPricingUiState(domain),
             vendors = buildVendorUiState(domain, itemMetadataCache),
             reputation = buildReputationUiState(domain),
+            empire = com.example.superstoresimulator.ui.state.mappers.buildEmpireUiState(domain),
         )
     }
 

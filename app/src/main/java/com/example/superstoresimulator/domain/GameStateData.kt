@@ -16,6 +16,10 @@ import com.example.superstoresimulator.domain.pricing.PricingState
 import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreState
 import com.example.superstoresimulator.domain.vendor.VendorSystemState
+import com.example.superstoresimulator.domain.empire.EmpireClock
+import com.example.superstoresimulator.domain.empire.Region
+import com.example.superstoresimulator.domain.empire.RegionalManager
+import com.example.superstoresimulator.domain.empire.SecondaryStore
 import kotlinx.serialization.Serializable
 import java.util.Locale
 
@@ -328,6 +332,18 @@ data class GameState(
 
     // Simulation accumulators — fractional progress, traffic, day tracking
     val simAccumulators: SimAccumulators = SimAccumulators(),
+
+    // ── Empire mode (loop 2) — additive, all defaulted; off until the player goes corporate ──
+    /** One-way flag: once true, the home store is an abstract directed store and loop 1 is retired. */
+    val empireModeActive: Boolean = false,
+    /** Unlocked/known markets (seeded from RegionRegistry on entering empire mode). */
+    val regions: List<Region> = emptyList(),
+    val secondaryStores: List<SecondaryStore> = emptyList(),
+    val nextSecondaryStoreId: Int = 1,
+    val regionalManager: RegionalManager? = null,
+    val empireClock: EmpireClock = EmpireClock(),
+    /** When non-null, the player is hands-on operating this store; loop-1 fields hold its state. */
+    val operatingStoreId: Int? = null,
 ) {
     val ownedRegisterCount: Int get() = registers.size
 
