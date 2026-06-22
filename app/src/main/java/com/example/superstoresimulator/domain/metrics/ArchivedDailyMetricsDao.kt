@@ -14,16 +14,9 @@ interface ArchivedDailyMetricsDao {
     @Query("SELECT * FROM archived_daily_metrics WHERE dayNumber = :dayNumber")
     suspend fun getDay(dayNumber: Int): ArchivedDailyMetricsEntity?
 
-    @Query(
-        """SELECT dayNumber, dayOfWeek, subtotalCents, taxCollectedCents, transactionsCompleted,
-        rentPaidCents, wagesPaidCents, refundsProcessed, refundAmountCents, customersServed,
-        itemsSold, itemsStocked, itemsOrdered, lostRevenueCents, itemsLostToOutOfStock,
-        itemsExpired, expiredWasteCostCents, avgCashierUtilization, avgStockerUtilization,
-        avgFreshUtilization, avgZoneScore, markdownsSavedCents, markupExtraRevenueCents,
-        itemsMarkedDown, vendorCommissionPaidCents, vendorItemsSold, vendorRevenueCents
-        FROM archived_daily_metrics ORDER BY dayNumber DESC"""
-    )
-    suspend fun getAllSummaries(): List<ArchivedDailyMetricsSummary>
+    // ponytail: SELECT * decodes the JSON event lists too; add a column-list projection back if that decode measurably hurts the history list.
+    @Query("SELECT * FROM archived_daily_metrics ORDER BY dayNumber DESC")
+    suspend fun getAllSummaries(): List<ArchivedDailyMetricsEntity>
 
     @Query("SELECT COUNT(*) FROM archived_daily_metrics")
     suspend fun count(): Int

@@ -9,11 +9,6 @@ data class ReputationState(
     val currentRevenueTarget: Money = Money.ZERO,
     val daysTracked: Int = 0,
 
-    // Cached multipliers (recomputed from score at day rollover)
-    val trafficMultiplier: Float = 1.0f,
-    val priceToleranceMultiplier: Float = 1.0f,
-    val supplierDiscountBonus: Float = 0f,
-
     // Streak counters (UI display)
     val consecutiveTargetHits: Int = 0,
     val consecutiveTargetMisses: Int = 0,
@@ -27,4 +22,9 @@ data class ReputationState(
     val lastStockScore: Float = 0f,
     val lastAppearanceScore: Float = 0f,
     val lastDailyComposite: Float = 0f,
-)
+) {
+    // Derived from reputationScore — pure functions, so compute on read instead of caching/serializing.
+    val trafficMultiplier: Float get() = ReputationManager.deriveTrafficMultiplier(reputationScore)
+    val priceToleranceMultiplier: Float get() = ReputationManager.derivePriceToleranceMultiplier(reputationScore)
+    val supplierDiscountBonus: Float get() = ReputationManager.deriveSupplierBonus(reputationScore)
+}
