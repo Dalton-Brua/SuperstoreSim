@@ -20,26 +20,80 @@ object EmpireClockController {
 
     /** Set empire speed (PAUSED/NORMAL/FAST); clears any pending decision reason on resume. */
     fun setSpeed(state: GameState, speed: EmpireSpeed): GameState {
-        // TODO(Track C)
         return state.copy(empireClock = state.empireClock.copy(speed = speed, pendingDecisionReason = null))
     }
 
     /** Real-ms driver. Advances whole sim days as elapsed time allows. */
     fun tick(state: GameState, deltaMs: Long): GameState {
-        // TODO(Track C)
-        return state
+        val clock = state.empireClock
+        if (!state.empireModeActive ||
+            state.operatingStoreId != null ||
+            clock.speed == EmpireSpeed.PAUSED ||
+            clock.pendingDecisionReason != null
+        ) {
+            return state
+        }
+
+        val msPerDay =
+            if (clock.speed == EmpireSpeed.FAST) EmpireTuning.MS_PER_DAY_FAST else EmpireTuning.MS_PER_DAY_NORMAL
+
+        var acc = clock.msAccumulator + deltaMs
+        var s = state
+        while (acc >= msPerDay) {
+            acc -= msPerDay
+            s = advanceOneDay(s)
+            if (s.empireClock.pendingDecisionReason != null) break
+        }
+        return s.copy(empireClock = s.empireClock.copy(msAccumulator = acc))
     }
 
     /** Advance exactly one simulated day: bump GameTime by 1440 min, run the sim, check pauses. */
     fun advanceOneDay(state: GameState): GameState {
-        // TODO(Track C): currentTime += 1440 min; SecondaryStoreSimManager.simulateDay; decision-pause.
-        return state
+        val newTime = state.currentTime.addMinutes(1440)
+        var s = state.copy(currentTime = newTime)
+        s = SecondaryStoreSimManager.simulateDay(s)
+        val decisionReason = evaluateDecisionPause(s)
+        if (decisionReason != null) {
+            s = s.copy(
+                empireClock = s.empireClock.copy(
+                    speed = EmpireSpeed.PAUSED,
+                    pendingDecisionReason = decisionReason,
+                )
+            )
+        }
+        return s
+    }
+
+    /** First matching anti-boredom auto-pause trigger, or null if none fire. */
+    private fun evaluateDecisionPause(state: GameState): String? {
+        if (state.secondaryStores.any { it.currentDayMetrics.netProfit.cents < 0 }) {
+            return "A store is operating at a loss."
+        }
+
+        val saturated = state.regions.any { region ->
+            val weight = state.secondaryStores
+                .filter { it.regionId == region.regionId }
+                .map { SecondaryStoreSimManager.storeWeight(it) }
+                .sum()
+            region.capacity > 0f && weight / region.capacity > 1.0f
+        }
+        if (saturated) return "A region has tipped into saturation."
+
+        val nextCost = EmpireTuning.locationCost(state.secondaryStores.size + 1)
+        if (state.money >= nextCost) return "You can afford a new location."
+
+        return null
     }
 
     /** Skip-ahead: advance days until a decision-pause condition fires (bounded). */
     fun advanceToNextDecision(state: GameState): GameState {
-        // TODO(Track C)
-        return state
+        if (!state.empireModeActive) return state
+        var s = state.copy(empireClock = state.empireClock.copy(pendingDecisionReason = null))
+        repeat(365) {
+            s = advanceOneDay(s)
+            if (s.empireClock.pendingDecisionReason != null) return s
+        }
+        return s
     }
 
     /**
@@ -47,8 +101,39 @@ object EmpireClockController {
      * batched-reporting UI. Returns a value object Track E renders (define as needed).
      */
     fun buildDigest(state: GameState): EmpireDigest {
-        // TODO(Track C)
-        return EmpireDigest()
+        val stores = state.secondaryStores
+        if (stores.isEmpty()) return EmpireDigest(periodLabel = "Last 7 days")
+
+        var totalRevenue = 0L
+        var totalNetProfit = 0L
+        var bestStoreName: String? = null
+        var worstStoreName: String? = null
+        var bestNet = Long.MIN_VALUE
+        var worstNet = Long.MAX_VALUE
+
+        for (store in stores) {
+            val window = store.completedDayMetrics.takeLast(7)
+            val storeNet = window.sumOf { it.netProfit.cents }
+            totalRevenue += window.sumOf { it.revenue.cents }
+            totalNetProfit += storeNet
+
+            if (storeNet > bestNet) {
+                bestNet = storeNet
+                bestStoreName = store.storeName
+            }
+            if (storeNet < worstNet) {
+                worstNet = storeNet
+                worstStoreName = store.storeName
+            }
+        }
+
+        return EmpireDigest(
+            periodLabel = "Last 7 days",
+            totalRevenueCents = totalRevenue,
+            totalNetProfitCents = totalNetProfit,
+            bestStoreName = bestStoreName,
+            worstStoreName = worstStoreName,
+        )
     }
 }
 

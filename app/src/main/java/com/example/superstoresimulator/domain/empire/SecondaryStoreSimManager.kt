@@ -25,21 +25,154 @@ import com.example.superstoresimulator.domain.Money
  */
 object SecondaryStoreSimManager {
 
+    /** Most recent completed-day metrics retained per store. */
+    private const val MAX_COMPLETED_METRICS = 60
+
     /** Advance every secondary store one simulated day and fold net profit into money. */
     fun simulateDay(state: GameState): GameState {
-        // TODO(Track A): implement the daily sim described above.
-        return state
+        if (!state.empireModeActive || state.secondaryStores.isEmpty()) return state
+
+        // 1. Manager owns direction if hired.
+        var working = RegionalManagerManager.assignDirections(state)
+
+        // 2. Current day index.
+        val currentDay = working.currentTime.dayNumber
+
+        // 3. Apply hands-on-performance decay to each store.
+        val decayedStores = working.secondaryStores.map { store ->
+            OperateStoreController.decayOperatingPerformance(store, currentDay)
+        }
+
+        // 4. Per region saturation factor at current weights.
+        val satByRegion: Map<Int, Float> = working.regions.associate { region ->
+            val totalWeight = decayedStores
+                .filter { it.regionId == region.regionId }
+                .map { storeWeight(it) }
+                .sum()
+            region.regionId to saturationFactor(totalWeight, region.capacity)
+        }
+
+        // 5/6. Compute today's metrics and roll the per-store metric windows.
+        var totalNet = Money.ZERO
+        val updatedStores = decayedStores.map { store ->
+            val region = working.regions.firstOrNull { it.regionId == store.regionId }
+            val satFactor = satByRegion[store.regionId] ?: 1.0f
+            val mods = EmpireTuning.modifiersFor(store.direction)
+
+            if (region == null) {
+                // No region → no output this day, but still roll metrics forward.
+                val empty = SimStoreMetrics(dayIndex = currentDay)
+                store.copy(
+                    completedDayMetrics = rollCompleted(store, currentDay),
+                    currentDayMetrics = empty,
+                )
+            } else {
+                val customers = (
+                    EmpireTuning.BASE_DAILY_CUSTOMERS *
+                        store.storeSize.trafficMultiplier *
+                        mods.trafficMult *
+                        upgradeTrafficFactor(store) *
+                        region.demandProfile.baseTraffic *
+                        satFactor *
+                        globalFactor(working)
+                    ).toInt()
+
+                val avgBasketCents = EmpireTuning.BASE_AVG_BASKET.cents *
+                    store.storeSize.basketSizeMultiplier *
+                    region.demandProfile.baseSpendingPower *
+                    mods.priceMult
+
+                val revenue = Money((customers * avgBasketCents).toLong())
+                val operatingCost = Money(
+                    (EmpireTuning.BASE_OPERATING_COST.cents *
+                        EmpireTuning.sizeWeight(store.storeSize) *
+                        mods.costMult *
+                        upgradeCostFactor(store)
+                        ).toLong()
+                )
+                val netProfit = Money((revenue.cents * store.operatingPerformance).toLong()) - operatingCost
+                totalNet += netProfit
+
+                val metrics = SimStoreMetrics(
+                    dayIndex = currentDay,
+                    customers = customers,
+                    revenue = revenue,
+                    operatingCost = operatingCost,
+                    netProfit = netProfit,
+                    avgPriceLevel = mods.priceMult,
+                    trafficVsGoal = satFactor * mods.trafficMult,
+                )
+                store.copy(
+                    completedDayMetrics = rollCompleted(store, currentDay),
+                    currentDayMetrics = metrics,
+                )
+            }
+        }
+
+        // 7. Subtract manager salary if hired.
+        if (working.regionalManager != null) {
+            totalNet -= EmpireTuning.MANAGER_SALARY_PER_DAY
+        }
+
+        // Drift each region's capacity by its growth rate.
+        val driftedRegions = working.regions.map { region ->
+            region.copy(capacity = region.capacity * (1f + region.demandProfile.growthRate))
+        }
+
+        working = working.copy(
+            money = working.money + totalNet,
+            secondaryStores = updatedStores,
+            regions = driftedRegions,
+        )
+        return working
+    }
+
+    /**
+     * Push the store's EXISTING currentDayMetrics into the completed window when it
+     * belongs to a prior day (avoids duplicating the seed metrics on the first run),
+     * keeping only the most recent [MAX_COMPLETED_METRICS] entries.
+     */
+    private fun rollCompleted(store: SecondaryStore, currentDay: Int): List<SimStoreMetrics> {
+        if (store.currentDayMetrics.dayIndex >= currentDay) return store.completedDayMetrics
+        val combined = store.completedDayMetrics + store.currentDayMetrics
+        return if (combined.size > MAX_COMPLETED_METRICS) {
+            combined.subList(combined.size - MAX_COMPLETED_METRICS, combined.size)
+        } else {
+            combined
+        }
     }
 
     /** Store weight contributed to its region (size + marketing). Used by saturation + manager. */
     fun storeWeight(store: SecondaryStore): Float {
-        // TODO(Track A): EmpireTuning.sizeWeight(size) * (1 + marketing bonus)
-        return EmpireTuning.sizeWeight(store.storeSize)
+        val marketingBonus =
+            if (StoreUpgrade.MARKETING in store.upgrades) EmpireTuning.MARKETING_WEIGHT_BONUS else 0f
+        return EmpireTuning.sizeWeight(store.storeSize) * (1f + marketingBonus)
     }
 
     /** Saturation factor for a region given its total store weight. 1.0 at/under capacity. */
     fun saturationFactor(totalWeight: Float, capacity: Float): Float {
-        // TODO(Track A): smooth falloff above capacity using SATURATION_STEEPNESS.
+        val load = if (capacity > 0f) totalWeight / capacity else 0f
+        return if (load <= 1f) 1f else 1f / (1f + (load - 1f) * EmpireTuning.SATURATION_STEEPNESS)
+    }
+
+    /** Traffic multiplier from per-store upgrade flags. */
+    private fun upgradeTrafficFactor(store: SecondaryStore): Float {
+        var factor = 1f
+        if (StoreUpgrade.EXTRA_REGISTERS in store.upgrades) factor += EmpireTuning.EXTRA_REGISTERS_TRAFFIC_BONUS
+        if (StoreUpgrade.MARKETING in store.upgrades) factor += EmpireTuning.MARKETING_TRAFFIC_BONUS
+        return factor
+    }
+
+    /** Operating-cost multiplier from per-store upgrade flags (LOGISTICS reduces cost). */
+    private fun upgradeCostFactor(store: SecondaryStore): Float {
+        var factor = 1f
+        if (StoreUpgrade.LOGISTICS in store.upgrades) factor -= EmpireTuning.LOGISTICS_COST_REDUCTION
+        return factor
+    }
+
+    /** Global sim multiplier (research/reputation/vendor). */
+    private fun globalFactor(state: GameState): Float {
+        // ponytail: hook for research/reputation/vendor multipliers, 1.0 baseline
         return 1.0f
     }
 
@@ -54,7 +187,33 @@ object SecondaryStoreSimManager {
         saturationFactor: Float,
         overrideDirection: StoreDirection? = null,
     ): Money {
-        // TODO(Track A): closed-form estimate matching simulateDay's math.
-        return Money.ZERO
+        val dir = overrideDirection ?: store.direction
+        val mods = EmpireTuning.modifiersFor(dir)
+        val region = state.regions.firstOrNull { it.regionId == store.regionId } ?: return Money.ZERO
+
+        val customers = (
+            EmpireTuning.BASE_DAILY_CUSTOMERS *
+                store.storeSize.trafficMultiplier *
+                mods.trafficMult *
+                upgradeTrafficFactor(store) *
+                region.demandProfile.baseTraffic *
+                saturationFactor *
+                globalFactor(state)
+            ).toInt()
+
+        val avgBasketCents = EmpireTuning.BASE_AVG_BASKET.cents *
+            store.storeSize.basketSizeMultiplier *
+            region.demandProfile.baseSpendingPower *
+            mods.priceMult
+
+        val revenue = Money((customers * avgBasketCents).toLong())
+        val operatingCost = Money(
+            (EmpireTuning.BASE_OPERATING_COST.cents *
+                EmpireTuning.sizeWeight(store.storeSize) *
+                mods.costMult *
+                upgradeCostFactor(store)
+                ).toLong()
+        )
+        return Money((revenue.cents * store.operatingPerformance).toLong()) - operatingCost
     }
 }

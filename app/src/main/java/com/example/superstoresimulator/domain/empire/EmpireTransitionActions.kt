@@ -1,6 +1,7 @@
 package com.example.superstoresimulator.domain.empire
 
 import com.example.superstoresimulator.domain.GameState
+import com.example.superstoresimulator.domain.store.StoreSize
 
 /**
  * TRACK B (Opening & Transition) — fill the bodies. Wave-0 stub: no-ops that compile.
@@ -23,14 +24,60 @@ object EmpireTransitionActions {
      *  3. Pay the 2nd-location scaling cost ([EmpireTuning.locationCost] with locationNumber=2).
      */
     fun enterEmpireMode(state: GameState): GameState {
-        // TODO(Track B)
-        return state
+        if (state.empireModeActive) return state
+        val cost = EmpireTuning.locationCost(2)
+        if (state.money < cost) return state
+
+        val convertedHome = SecondaryStore(
+            storeId = state.nextSecondaryStoreId,
+            storeName = state.storeName,
+            regionId = RegionRegistry.HOME_REGION_ID,
+            storeSize = state.currentStoreSize,
+            direction = StoreDirection.BALANCED,
+            openedAtTime = state.currentTime,
+            currentDayMetrics = SimStoreMetrics(dayIndex = state.currentTime.dayNumber),
+            operatingState = StoreOperatingState(
+                inventory = state.inventory,
+                registers = state.registers,
+                hiredEntityRegistry = state.hiredEntityRegistry,
+                staffSchedules = state.staffSchedules,
+                truckConfig = state.truckConfig,
+            ),
+        )
+
+        val newSecond = SecondaryStore(
+            storeId = state.nextSecondaryStoreId + 1,
+            storeName = "Store #2",
+            regionId = RegionRegistry.HOME_REGION_ID,
+            storeSize = StoreSize.MOM_AND_POP,
+            direction = StoreDirection.BALANCED,
+            openedAtTime = state.currentTime,
+            currentDayMetrics = SimStoreMetrics(dayIndex = state.currentTime.dayNumber),
+            operatingState = null,
+        )
+
+        return state.copy(
+            empireModeActive = true,
+            regions = RegionRegistry.authored,
+            secondaryStores = listOf(convertedHome, newSecond),
+            nextSecondaryStoreId = state.nextSecondaryStoreId + 2,
+            money = state.money - cost,
+            empireClock = state.empireClock.copy(speed = EmpireSpeed.PAUSED),
+        )
     }
 
     /** Unlock [regionId], paying its [Region.unlockCost] from money (no-op if already unlocked). */
     fun unlockRegion(state: GameState, regionId: Int): GameState {
-        // TODO(Track B)
-        return state
+        val region = state.regions.firstOrNull { it.regionId == regionId } ?: return state
+        if (region.unlocked) return state
+        val cost = region.unlockCost
+        if (state.money < cost) return state
+        return state.copy(
+            money = state.money - cost,
+            regions = state.regions.map {
+                if (it.regionId == regionId) it.copy(unlocked = true) else it
+            },
+        )
     }
 
     /**
@@ -38,25 +85,68 @@ object EmpireTransitionActions {
      * cost (locationNumber = secondaryStores.size + 1). New store: base size, BALANCED.
      */
     fun openLocation(state: GameState, regionId: Int): GameState {
-        // TODO(Track B)
-        return state
+        if (!state.empireModeActive) return state
+        val region = state.regions.firstOrNull { it.regionId == regionId } ?: return state
+        if (!region.unlocked) return state
+        val locationNumber = state.secondaryStores.size + 1
+        val cost = EmpireTuning.locationCost(locationNumber)
+        if (state.money < cost) return state
+
+        val newStore = SecondaryStore(
+            storeId = state.nextSecondaryStoreId,
+            storeName = "Store #${state.secondaryStores.size + 1}",
+            regionId = regionId,
+            storeSize = StoreSize.MOM_AND_POP,
+            direction = StoreDirection.BALANCED,
+            openedAtTime = state.currentTime,
+            currentDayMetrics = SimStoreMetrics(dayIndex = state.currentTime.dayNumber),
+        )
+
+        return state.copy(
+            secondaryStores = state.secondaryStores + newStore,
+            nextSecondaryStoreId = state.nextSecondaryStoreId + 1,
+            money = state.money - cost,
+        )
     }
 
     /** Player sets a store's direction manually (ignored if managedByRegionalManager). */
     fun setStoreDirection(state: GameState, storeId: Int, direction: StoreDirection): GameState {
-        // TODO(Track B)
-        return state
+        val store = state.secondaryStores.firstOrNull { it.storeId == storeId } ?: return state
+        if (store.managedByRegionalManager) return state
+        return state.copy(
+            secondaryStores = mapStore(state, storeId) { it.copy(direction = direction) },
+        )
     }
 
     /** Buy a [StoreUpgrade] flag for a store, paying [EmpireTuning.upgradeCost]. */
     fun buyStoreUpgrade(state: GameState, storeId: Int, upgrade: StoreUpgrade): GameState {
-        // TODO(Track B)
-        return state
+        val store = state.secondaryStores.firstOrNull { it.storeId == storeId } ?: return state
+        if (upgrade in store.upgrades) return state
+        val cost = EmpireTuning.upgradeCost(upgrade)
+        if (state.money < cost) return state
+        return state.copy(
+            money = state.money - cost,
+            secondaryStores = mapStore(state, storeId) { it.copy(upgrades = it.upgrades + upgrade) },
+        )
     }
 
     /** Bump a store's StoreSize to the next tier, paying StoreSize.upgradeCost. */
     fun expandStoreSize(state: GameState, storeId: Int): GameState {
-        // TODO(Track B)
-        return state
+        val store = state.secondaryStores.firstOrNull { it.storeId == storeId } ?: return state
+        val next = StoreSize.nextSize(store.storeSize) ?: return state
+        val cost = next.upgradeCost ?: return state
+        if (state.money < cost) return state
+        return state.copy(
+            money = state.money - cost,
+            secondaryStores = mapStore(state, storeId) { it.copy(storeSize = next) },
+        )
     }
+
+    /** Replace the single store matching [storeId] in secondaryStores via [transform]. */
+    private inline fun mapStore(
+        state: GameState,
+        storeId: Int,
+        transform: (SecondaryStore) -> SecondaryStore,
+    ): List<SecondaryStore> =
+        state.secondaryStores.map { if (it.storeId == storeId) transform(it) else it }
 }

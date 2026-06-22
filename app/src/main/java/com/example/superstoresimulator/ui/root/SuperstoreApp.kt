@@ -26,6 +26,9 @@ import com.example.superstoresimulator.domain.offline.OfflineState
 import com.example.superstoresimulator.ui.GameEvent
 import com.example.superstoresimulator.ui.navigation.BottomNavBar
 import com.example.superstoresimulator.ui.navigation.rememberGameNavigationState
+import com.example.superstoresimulator.ui.screens.empire.EmpireEntryCard
+import com.example.superstoresimulator.ui.screens.empire.EmpireRootScreen
+import com.example.superstoresimulator.ui.screens.empire.OperatingStoreBanner
 import com.example.superstoresimulator.ui.screens.offline.OfflineCatchUpScreen
 import com.example.superstoresimulator.ui.viewmodels.GameViewModel
 
@@ -85,7 +88,9 @@ fun SuperstoreApp(
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
-                BottomNavBar(
+                // Empire mode (loop 2) replaces the loop-1 bottom navigation.
+                val showLoop1Nav = !(state.empire.active && state.empire.operatingStoreId == null)
+                if (showLoop1Nav) BottomNavBar(
                     current = navState.mainScreens[navState.pagerState.currentPage],
                     onSelect = { screen ->
                         // Disable navigation when overlay screens are open
@@ -121,25 +126,49 @@ fun SuperstoreApp(
             }
         ) { paddingValues ->
             Box(modifier = Modifier.fillMaxSize()) {
-                MainScreenPager(
-                    state = state,
-                    navState = navState,
-                    itemDao = itemDao,
-                    paddingValues = paddingValues,
-                    onEvent = onEvent,
-                    onFreshBulkOrder = { showFreshBulkOrderDialog = true },
-                    onViewIncompleteOrders = { showIncompleteOrdersDialog = true },
-                    onViewIncompleteNormalOrders = { showIncompleteNormalOrdersDialog = true },
-                )
-
-                // Persistent tutorial guidance, pinned just above the bottom nav.
-                if (!state.tutorial.tutorialComplete && !navState.isOverlayOpen) {
-                    TutorialBanner(
-                        tutorial = state.tutorial,
-                        currentScreen = navState.currentScreen,
-                        onGoToScreen = { navState.navigateTo(it) },
-                        onSkip = { onEvent(GameEvent.SkipTutorial) },
+                if (state.empire.active && state.empire.operatingStoreId == null) {
+                    // Loop 2: empire dashboard replaces the whole loop-1 experience.
+                    EmpireRootScreen(
+                        empire = state.empire,
+                        onEvent = onEvent,
                         modifier = Modifier.padding(paddingValues),
+                    )
+                } else {
+                    MainScreenPager(
+                        state = state,
+                        navState = navState,
+                        itemDao = itemDao,
+                        paddingValues = paddingValues,
+                        onEvent = onEvent,
+                        onFreshBulkOrder = { showFreshBulkOrderDialog = true },
+                        onViewIncompleteOrders = { showIncompleteOrdersDialog = true },
+                        onViewIncompleteNormalOrders = { showIncompleteNormalOrdersDialog = true },
+                    )
+
+                    // Hands-on operation of a secondary store — banner to return to empire mode.
+                    if (state.empire.operatingStoreId != null) {
+                        OperatingStoreBanner(
+                            onExit = { onEvent(GameEvent.ExitOperatedStore) },
+                            modifier = Modifier.align(Alignment.TopCenter).padding(paddingValues),
+                        )
+                    }
+
+                    // Persistent tutorial guidance, pinned just above the bottom nav.
+                    if (!state.tutorial.tutorialComplete && !navState.isOverlayOpen) {
+                        TutorialBanner(
+                            tutorial = state.tutorial,
+                            currentScreen = navState.currentScreen,
+                            onGoToScreen = { navState.navigateTo(it) },
+                            onSkip = { onEvent(GameEvent.SkipTutorial) },
+                            modifier = Modifier.padding(paddingValues),
+                        )
+                    }
+
+                    // Loop 1: "go corporate" entry card (self-gates on research + not-yet-empire).
+                    EmpireEntryCard(
+                        empire = state.empire,
+                        onEvent = onEvent,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(paddingValues),
                     )
                 }
             }
