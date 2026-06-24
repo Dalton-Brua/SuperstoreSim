@@ -26,6 +26,7 @@ import com.example.superstoresimulator.domain.tick.TickOrchestrator
 import com.example.superstoresimulator.domain.time.TimeManager
 import com.example.superstoresimulator.domain.traffic.TrafficManager
 import com.example.superstoresimulator.domain.vendor.VendorManager
+import com.example.superstoresimulator.domain.empire.EmpireTransitionActions
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -497,23 +498,31 @@ class GameEngine @Inject constructor(
     // owns one object; GameEngine only routes.
 
     fun enterEmpireMode() {
-        state = com.example.superstoresimulator.domain.empire.EmpireTransitionActions.enterEmpireMode(state)
+        state = EmpireTransitionActions.enterEmpireMode(state)
     }
 
     fun unlockRegion(regionId: Int) {
-        state = com.example.superstoresimulator.domain.empire.EmpireTransitionActions.unlockRegion(state, regionId)
+        state = EmpireTransitionActions.unlockRegion(state, regionId)
     }
 
     fun openLocation(regionId: Int) {
-        state = com.example.superstoresimulator.domain.empire.EmpireTransitionActions.openLocation(state, regionId)
+        state = EmpireTransitionActions.openLocation(state, regionId)
     }
 
     fun setStoreDirection(storeId: Int, direction: com.example.superstoresimulator.domain.empire.StoreDirection) {
-        state = com.example.superstoresimulator.domain.empire.EmpireTransitionActions.setStoreDirection(state, storeId, direction)
+        state = EmpireTransitionActions.setStoreDirection(state, storeId, direction)
+    }
+
+    fun closeStore(storeId: Int) {
+        state = EmpireTransitionActions.closeStore(state, storeId)
+    }
+
+    fun setRegionInvesting(regionId: Int, investing: Boolean) {
+        state = EmpireTransitionActions.setRegionInvesting(state, regionId, investing)
     }
 
     fun buyStoreUpgrade(storeId: Int, upgrade: com.example.superstoresimulator.domain.empire.StoreUpgrade) {
-        state = com.example.superstoresimulator.domain.empire.EmpireTransitionActions.buyStoreUpgrade(state, storeId, upgrade)
+        state = EmpireTransitionActions.buyStoreUpgrade(state, storeId, upgrade)
     }
 
     fun expandStoreSize(storeId: Int) {
@@ -559,15 +568,15 @@ class GameEngine @Inject constructor(
         val baseState = GameState()
         if (itemMetadataCache.getAllItems().isEmpty()) return baseState
 
-        val storeSize = StoreSize.GROCERY_STORE
-        val inventory = seedInventory(starterOnly = false, quantity = 20, baseState.currentTime.dayNumber)
+        val storeSize = StoreSize.SUPERCENTER
+        val inventory = seedInventory(starterOnly = false, quantity = 50, baseState.currentTime.dayNumber)
 
         var registry = baseState.hiredEntityRegistry
-        // Hire staff: 2 cashiers, 2 stockers, 1 fresh handler, 1 manager
+        // Hire staff: 8 cashiers, 6 stockers, 2 fresh handlers, 1 manager
         val hireList = listOf(
-            EntityDef.CASHIER, EntityDef.CASHIER,
-            EntityDef.STOCKER, EntityDef.STOCKER,
-            EntityDef.FRESH_HANDLER,
+            EntityDef.CASHIER, EntityDef.CASHIER, EntityDef.CASHIER, EntityDef.CASHIER, EntityDef.CASHIER, EntityDef.CASHIER, EntityDef.CASHIER, EntityDef.CASHIER, 
+            EntityDef.STOCKER, EntityDef.STOCKER, EntityDef.STOCKER, EntityDef.STOCKER, EntityDef.STOCKER, EntityDef.STOCKER,
+            EntityDef.FRESH_HANDLER, EntityDef.FRESH_HANDLER,
             EntityDef.MANAGER,
         )
         val staffShifts = mutableListOf<StaffShift>()
@@ -577,9 +586,13 @@ class GameEngine @Inject constructor(
             staffShifts.add(StaffShift(entityId = newId, startHour = 6, durationHours = 8))
         }
 
+        val research = baseState.researchState.copy(
+            researchedUpgrades = ResearchUpgradeRegistry.allUpgrades.keys.toSet()
+        )
+
         return baseState.copy(
             inventory = inventory,
-            money = Money(50_000_000),
+            money = Money(500_000_000),
             currentStoreSize = storeSize,
             storeConfig = StoreConfig(backroomCapPerItem = storeSize.backroomCapPerItem),
             hiredEntityRegistry = registry,
@@ -588,7 +601,13 @@ class GameEngine @Inject constructor(
                 RegisterState(registerId = 0),
                 RegisterState(registerId = 1),
                 RegisterState(registerId = 2),
+                RegisterState(registerId = 3),
+                RegisterState(registerId = 4),
+                RegisterState(registerId = 5),
+                RegisterState(registerId = 6),
+                RegisterState(registerId = 7),
             ),
+            researchState = research,
         )
     }
 

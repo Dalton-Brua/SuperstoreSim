@@ -34,6 +34,8 @@ data class RegionUI(
     val overCapacity: Boolean,
     val baseSpendingPower: Float,
     val baseTraffic: Float,
+    val investing: Boolean,
+    val investDailyCost: Money,   // current per-day cost if investing here (scales with population)
     val stores: List<StoreUI> = emptyList(),
 )
 

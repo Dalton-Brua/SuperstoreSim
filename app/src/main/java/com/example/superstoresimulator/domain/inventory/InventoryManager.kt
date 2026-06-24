@@ -107,41 +107,18 @@ class InventoryManager(
     }
 
     /**
-     * Find the item with the lowest shelf stock that still has backroom inventory,
-     * then stock one full case-pack of it onto the shelf.
-     * Excludes fresh/perishable items (those with shelfLifeDays).
-     *
-     * Returns the state unchanged when every non-fresh item's backroom is empty.
+     * Find the [freshOnly]-matching item with the lowest shelf stock that still has
+     * backroom inventory, then stock one full case-pack of it onto the shelf.
+     * Returns the state unchanged when no matching item has backroom stock.
      */
-    fun stockRandomItemFromBackroom(state: GameState): GameState {
-        val candidates = state.inventory.filter { (itemId, dyn) -> 
-            dyn.backroomStock > 0 && !isFreshItem(itemId)
+    fun stockRandomFromBackroom(state: GameState, freshOnly: Boolean = false): GameState {
+        val candidates = state.inventory.filter { (itemId, dyn) ->
+            dyn.backroomStock > 0 && isFreshItem(itemId) == freshOnly
         }
         if (candidates.isEmpty()) return state
 
         val lowestShelf = candidates.minOf { it.value.shelfStock }
-        val lowestGroup = candidates.filter { it.value.shelfStock == lowestShelf }
-        val targetId = lowestGroup.keys.random()
-
-        return stockCasePackFromBackroom(state, targetId)
-    }
-
-    /**
-     * Find the fresh/perishable item with the lowest shelf stock that still has backroom inventory,
-     * then stock one full case-pack of it onto the shelf.
-     *
-     * Returns the state unchanged when every fresh item's backroom is empty.
-     */
-    fun stockRandomFreshItemFromBackroom(state: GameState): GameState {
-        val candidates = state.inventory.filter { (itemId, dyn) -> 
-            dyn.backroomStock > 0 && isFreshItem(itemId)
-        }
-        if (candidates.isEmpty()) return state
-
-        val lowestShelf = candidates.minOf { it.value.shelfStock }
-        val lowestGroup = candidates.filter { it.value.shelfStock == lowestShelf }
-        val targetId = lowestGroup.keys.random()
-
+        val targetId = candidates.filter { it.value.shelfStock == lowestShelf }.keys.random()
         return stockCasePackFromBackroom(state, targetId)
     }
 
@@ -172,32 +149,41 @@ class InventoryManager(
         )
     }
 
+    /**
+     * Drain up to [count] units from the oldest backroom batches (FIFO).
+     * Returns the moved batches plus the remaining backroom batches.
+     */
+    private fun drainBackroomFifo(
+        backroomBatches: List<ItemBatch>,
+        count: Int,
+    ): Pair<List<ItemBatch>, List<ItemBatch>> {
+        var remaining = count
+        var remainingBatches = backroomBatches
+        val moved = mutableListOf<ItemBatch>()
+        while (remaining > 0 && remainingBatches.isNotEmpty()) {
+            val oldest = remainingBatches.minByOrNull { it.receivedDay } ?: break
+            val takeQty = minOf(remaining, oldest.quantity)
+            moved.add(ItemBatch(oldest.receivedDay, takeQty, oldest.expirationDay))
+            remainingBatches = remainingBatches.mapNotNull { batch ->
+                if (batch.receivedDay == oldest.receivedDay && batch.expirationDay == oldest.expirationDay) {
+                    if (batch.quantity > takeQty) batch.copy(quantity = batch.quantity - takeQty) else null
+                } else batch
+            }
+            remaining -= takeQty
+        }
+        return moved to remainingBatches
+    }
+
     private fun stockCasePackInPlace(map: MutableMap<Int, InventoryState>, itemId: Int): Int {
         val inv = map[itemId] ?: return 0
         val dbItem = cache.getItem(itemId) ?: return 0
         if (inv.backroomStock <= 0) return 0
 
         val itemsToStock = minOf(dbItem.casePack, inv.backroomStock)
-        var remaining = itemsToStock
-        var updatedBackroomBatches = inv.backroomBatches
-        val batchesToMove = mutableListOf<ItemBatch>()
-
-        while (remaining > 0 && updatedBackroomBatches.isNotEmpty()) {
-            val oldestBatch = updatedBackroomBatches.minByOrNull { it.receivedDay } ?: break
-            val takeQty = minOf(remaining, oldestBatch.quantity)
-            batchesToMove.add(ItemBatch(oldestBatch.receivedDay, takeQty, oldestBatch.expirationDay))
-            updatedBackroomBatches = updatedBackroomBatches.mapNotNull { batch ->
-                if (batch.receivedDay == oldestBatch.receivedDay && batch.expirationDay == oldestBatch.expirationDay) {
-                    if (batch.quantity > takeQty) batch.copy(quantity = batch.quantity - takeQty) else null
-                } else batch
-            }
-            remaining -= takeQty
-        }
-
-        val updatedShelfBatches = inv.mergeBatches(inv.shelfBatches + batchesToMove)
+        val (moved, remainingBackroom) = drainBackroomFifo(inv.backroomBatches, itemsToStock)
         map[itemId] = inv.copy(
-            shelfBatches = updatedShelfBatches,
-            backroomBatches = updatedBackroomBatches,
+            shelfBatches = inv.mergeBatches(inv.shelfBatches + moved),
+            backroomBatches = remainingBackroom,
             zoneScore = 1.0f,
         )
         return itemsToStock
@@ -214,38 +200,10 @@ class InventoryManager(
         if (inv.backroomStock <= 0) return state
 
         val itemsToStock = minOf(dbItem.casePack, inv.backroomStock)
-        var remaining = itemsToStock
-        var updatedBackroomBatches = inv.backroomBatches
-        val batchesToMove = mutableListOf<ItemBatch>()
-        
-        // Take from oldest batches first (FIFO) until we have itemsToStock
-        while (remaining > 0 && updatedBackroomBatches.isNotEmpty()) {
-            val oldestBatch = updatedBackroomBatches.minByOrNull { it.receivedDay } ?: break
-            val takeQty = minOf(remaining, oldestBatch.quantity)
-            
-            batchesToMove.add(ItemBatch(
-                receivedDay = oldestBatch.receivedDay,
-                quantity = takeQty,
-                expirationDay = oldestBatch.expirationDay
-            ))
-            
-            updatedBackroomBatches = updatedBackroomBatches.mapNotNull { batch ->
-                if (batch.receivedDay == oldestBatch.receivedDay && batch.expirationDay == oldestBatch.expirationDay) {
-                    if (batch.quantity > takeQty) batch.copy(quantity = batch.quantity - takeQty) else null
-                } else {
-                    batch
-                }
-            }
-            
-            remaining -= takeQty
-        }
-        
-        // Add batches to shelf (merge with existing batches if same expirationDay)
-        val updatedShelfBatches = inv.mergeBatches(inv.shelfBatches + batchesToMove)
-        
+        val (moved, remainingBackroom) = drainBackroomFifo(inv.backroomBatches, itemsToStock)
         val updated = inv.copy(
-            shelfBatches = updatedShelfBatches,
-            backroomBatches = updatedBackroomBatches,
+            shelfBatches = inv.mergeBatches(inv.shelfBatches + moved),
+            backroomBatches = remainingBackroom,
             zoneScore = 1.0f,
         )
 
@@ -271,33 +229,10 @@ class InventoryManager(
         state: GameState,
         itemId: Int,
         precomputedPendingCasePacks: Map<Int, Int>? = null,
-    ): BuyResult {
-        val inv = state.inventory[itemId] ?: return BuyResult(state, emptyList())
-        val dbItem = cache.getItem(itemId) ?: return BuyResult(state, emptyList())
-        val metadata = cache.get(itemId) ?: return BuyResult(state, emptyList())
-        if (metadata.isVendorItem) return BuyResult(state, emptyList())
-
-        val casePackCost = dbItem.getCasePackCostAsMoney()
-        if (state.money < casePackCost) return BuyResult(state, emptyList())
-
-        val currentDay = state.currentTime.dayNumber
-        val line = PendingOrderLine(
-            itemId = itemId,
-            quantity = dbItem.casePack,
-            casePacksCount = 1,
-            unitCost = dbItem.unitCost.toMoney(),
-            orderedOnDay = currentDay,
-            isFresh = metadata.isPerishable,
-        )
-
-        val newState = state.copy(
-            money = state.money - casePackCost,
-            currentDayMetrics = state.currentDayMetrics.copy(
-                itemsOrdered = state.currentDayMetrics.itemsOrdered + dbItem.casePack,
-            ),
-        )
-        return BuyResult(newState, listOf(line))
-    }
+    ): BuyResult =
+        // ponytail: ordering one case pack == buyItemCasePacks(.., 1). Assumes
+        // backroomCapPerItem >= 1 (always true); cap == 0 would mean no backroom anyway.
+        buyItemCasePacks(state, itemId, 1, precomputedPendingCasePacks)
 
     /**
      * Order [numCasePacks] case-packs of [itemId], capped at [backroomCapPerItem].
@@ -307,6 +242,7 @@ class InventoryManager(
         state: GameState,
         itemId: Int,
         numCasePacks: Int,
+        // reserved for immediate auto-order; see buildPendingCasePacksMap TODO
         precomputedPendingCasePacks: Map<Int, Int>? = null,
     ): BuyResult {
         val inv = state.inventory[itemId] ?: return BuyResult(state, emptyList())
@@ -646,6 +582,12 @@ class InventoryManager(
 
     data class AutoOrderResult(val state: GameState, val itemsOrdered: Int)
 
+    // TODO(auto-order/immediate): The pending-case-pack maps (built here and threaded
+    // through processAutoOrderItem -> buyItemCasePacks via precomputedPendingCasePacks)
+    // are groundwork for making auto-ordering fire IMMEDIATELY within a tick. To do that
+    // safely, the cap check in buyItemCasePacks must count in-transit cases (this map) so a
+    // same-tick re-order can't blow past backroomCapPerItem. Until that's wired the maps are
+    // computed but not yet consumed in the buy path — intentionally kept, do NOT delete.
     private fun buildPendingCasePacksMap(state: GameState): MutableMap<Int, Int> {
         val map = mutableMapOf<Int, Int>()
         for (truck in state.scheduledTrucks) {

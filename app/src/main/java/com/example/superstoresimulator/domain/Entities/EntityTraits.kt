@@ -5,7 +5,6 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class EntityTrait(val description: String) {
     EFFICIENT("-10% wage cost"),
-    FRIENDLY("+5% customer patience"),
     HARDWORKER("+10% action speed"),
     QUICK_LEARNER("1.5× XP gain"),
     VETERAN("Starts at level 3");

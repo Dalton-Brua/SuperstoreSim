@@ -178,7 +178,7 @@ data class StoreManagerConfig(
     // Weekly scheduling
     val autoOptimizeWeeklySchedule: Boolean = true,
     val minDaysPerWeek: Int = 3,
-    val maxDaysPerWeek: Int = 6,
+    val maxDaysPerWeek: Int = 5,
 )
 
 @Serializable
@@ -375,7 +375,7 @@ value class Money(val cents: Long) {
     operator fun minus(other: Money) = Money(cents - other.cents)
     operator fun compareTo(other: Money) = cents.compareTo(other.cents)
     operator fun times(multiplier: Int) = Money(cents * multiplier)
-    operator fun times(multiplier: Double) = Money(cents/100 * (multiplier*100).toLong())
+    operator fun times(multiplier: Double) = Money((cents * multiplier).toLong())
     operator fun times(multiplier: Long) = Money(cents * multiplier)
     operator fun unaryMinus() = Money(-cents)
     fun toDouble() = cents / 100.0

@@ -109,6 +109,33 @@ object EmpireTransitionActions {
         )
     }
 
+    /**
+     * Close (sell off) a store. Removes its weight from the region, which lowers regional
+     * saturation and lifts traffic for the remaining stores. Refused while the store is being
+     * operated hands-on. No salvage refund.
+     */
+    // ponytail: no salvage payout; add a size-based refund here if closing should return cash.
+    fun closeStore(state: GameState, storeId: Int): GameState {
+        if (!state.empireModeActive) return state
+        if (state.operatingStoreId == storeId) return state
+        if (state.secondaryStores.none { it.storeId == storeId }) return state
+        return state.copy(secondaryStores = state.secondaryStores.filterNot { it.storeId == storeId })
+    }
+
+    /**
+     * Turn ongoing region investment on or off. While on, the daily sim compounds the region's
+     * capacity and demand (see [EmpireTuning.REGION_INVEST_DAILY_GROWTH]) and charges a daily
+     * cost that scales with the region's growing population — easing saturation and raising sales
+     * over months, not days. No upfront lump; the spend is recurring.
+     */
+    fun setRegionInvesting(state: GameState, regionId: Int, investing: Boolean): GameState {
+        val region = state.regions.firstOrNull { it.regionId == regionId } ?: return state
+        if (!region.unlocked || region.investing == investing) return state
+        return state.copy(
+            regions = state.regions.map { if (it.regionId == regionId) it.copy(investing = investing) else it },
+        )
+    }
+
     /** Player sets a store's direction manually (ignored if managedByRegionalManager). */
     fun setStoreDirection(state: GameState, storeId: Int, direction: StoreDirection): GameState {
         val store = state.secondaryStores.firstOrNull { it.storeId == storeId } ?: return state

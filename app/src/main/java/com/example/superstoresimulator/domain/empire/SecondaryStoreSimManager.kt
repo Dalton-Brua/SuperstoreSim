@@ -114,9 +114,25 @@ object SecondaryStoreSimManager {
             totalNet -= EmpireTuning.MANAGER_SALARY_PER_DAY
         }
 
-        // Drift each region's capacity by its growth rate.
+        // 7b. Charge ongoing region-investment cost (scales with the region's population).
+        working.regions.filter { it.investing }.forEach { region ->
+            totalNet -= EmpireTuning.regionInvestDailyCost(region.demandProfile.baseTraffic)
+        }
+
+        // Drift each region's capacity by its growth rate, then compound any active investment
+        // into both capacity (saturation headroom) and demand (traffic + spending).
         val driftedRegions = working.regions.map { region ->
-            region.copy(capacity = region.capacity * (1f + region.demandProfile.growthRate))
+            val grown = region.copy(capacity = region.capacity * (1f + region.demandProfile.growthRate))
+            if (!region.investing) grown else {
+                val g = EmpireTuning.REGION_INVEST_DAILY_GROWTH
+                grown.copy(
+                    capacity = grown.capacity * g,
+                    demandProfile = grown.demandProfile.copy(
+                        baseTraffic = grown.demandProfile.baseTraffic * g,
+                        baseSpendingPower = grown.demandProfile.baseSpendingPower * g,
+                    ),
+                )
+            }
         }
 
         working = working.copy(

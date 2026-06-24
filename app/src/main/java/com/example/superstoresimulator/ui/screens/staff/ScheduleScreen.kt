@@ -384,11 +384,11 @@ private fun ShiftEditDialog(
     onDismiss: () -> Unit,
 ) {
     val initDuration = if (entry.startHour != null && entry.endHour != null)
-        (entry.endHour - entry.startHour).coerceIn(2, 8) else 8
+        (entry.endHour - entry.startHour).coerceIn(4, 8) else 8
     var currentStart by remember(entry.entityId) { mutableStateOf(entry.startHour ?: 8) }
     var currentDuration by remember(entry.entityId) { mutableStateOf(initDuration) }
     var currentWorkDays by remember(entry.entityId) {
-        mutableStateOf(entry.workDays.ifEmpty { (0..6).toSet() })
+        mutableStateOf(entry.workDays.ifEmpty { (0..4).toSet() })
     }
     val maxStart = 21 - currentDuration
 
@@ -438,7 +438,7 @@ private fun ShiftEditDialog(
                             onClick = {
                                 currentWorkDays = if (selected && currentWorkDays.size > 1) {
                                     currentWorkDays - index
-                                } else if (!selected) {
+                                } else if (!selected && currentWorkDays.size < 5) {
                                     currentWorkDays + index
                                 } else currentWorkDays
                             },
@@ -508,18 +508,18 @@ private fun ShiftEditDialog(
                 ) {
                     IconButton(
                         onClick = {
-                            if (currentDuration > 2) currentDuration--
+                            if (currentDuration > 4) currentDuration--
                         },
-                        enabled = currentDuration > 2,
+                        enabled = currentDuration > 4,
                         modifier = Modifier
                             .size(44.dp)
                             .background(
-                                if (currentDuration > 2) Primary.copy(alpha = 0.1f) else PlaceholderSurface,
+                                if (currentDuration > 4) Primary.copy(alpha = 0.1f) else PlaceholderSurface,
                                 RoundedCornerShape(12.dp),
                             ),
                     ) {
                         Icon(Icons.Default.Remove, contentDescription = "Shorter",
-                            tint = if (currentDuration > 2) Primary else TextMuted)
+                            tint = if (currentDuration > 4) Primary else TextMuted)
                     }
 
                     IconButton(

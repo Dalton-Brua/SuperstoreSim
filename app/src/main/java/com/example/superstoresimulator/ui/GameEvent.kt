@@ -173,6 +173,10 @@ sealed interface GameEvent {
     data class UnlockRegion(val regionId: Int) : GameEvent
     /** Open a new location in an unlocked region (pays the scaling cost). */
     data class OpenLocation(val regionId: Int) : GameEvent
+    /** Close (sell off) a store, dropping its weight from the region to ease saturation. */
+    data class CloseStore(val storeId: Int) : GameEvent
+    /** Toggle ongoing region investment (recurring cost, slowly compounds capacity + demand). */
+    data class SetRegionInvesting(val regionId: Int, val investing: Boolean) : GameEvent
     /** Player sets a store's strategic direction (ignored if manager-managed). */
     data class SetStoreDirection(
         val storeId: Int,

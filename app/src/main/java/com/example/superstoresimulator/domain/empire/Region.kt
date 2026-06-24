@@ -20,6 +20,7 @@ data class Region(
     val capacity: Float,           // total store-weight absorbed before saturation bites
     val unlockCost: Money,         // one-time entry fee to open the first store here
     val unlocked: Boolean = false,
+    val investing: Boolean = false,  // ongoing paid investment slowly compounding capacity + demand
 )
 
 /** Authored fixed region list. The home region (id 0) is unlocked on entering empire mode. */

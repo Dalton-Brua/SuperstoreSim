@@ -171,7 +171,7 @@ class InventoryManagerTest {
             1 to inv(10, 0),
             2 to inv(5, 0),
         )
-        val result = manager.stockRandomItemFromBackroom(state)
+        val result = manager.stockRandomFromBackroom(state)
         assertEquals(state, result)
     }
 
@@ -182,7 +182,7 @@ class InventoryManagerTest {
             1 to inv(2, 10),
             2 to inv(10, 10),
         )
-        val result = manager.stockRandomItemFromBackroom(state)
+        val result = manager.stockRandomFromBackroom(state)
         // Item 1 shelf should increase; item 2 shelf should be unchanged
         assertTrue(result.inventory[1]!!.shelfStock > state.inventory[1]!!.shelfStock)
         assertEquals(state.inventory[2]!!.shelfStock, result.inventory[2]!!.shelfStock)
@@ -192,7 +192,7 @@ class InventoryManagerTest {
     fun `stockRandomItemFromBackroom stocks a full case-pack not just one unit`() {
         // Item 1 casePack = 6; backroom has 10 → should move 6 to shelf
         val state = stateWith(1 to inv(0, 10))
-        val result = manager.stockRandomItemFromBackroom(state)
+        val result = manager.stockRandomFromBackroom(state)
         assertEquals(6, result.inventory[1]!!.shelfStock)
         assertEquals(4, result.inventory[1]!!.backroomStock)
     }
@@ -200,7 +200,7 @@ class InventoryManagerTest {
     @Test
     fun `stockRandomItemFromBackroom increments itemsStocked by casePack amount`() {
         val state = stateWith(1 to inv(0, 10))
-        val result = manager.stockRandomItemFromBackroom(state)
+        val result = manager.stockRandomFromBackroom(state)
         assertEquals(6, result.currentDayMetrics.itemsStocked) // casePack = 6
     }
 

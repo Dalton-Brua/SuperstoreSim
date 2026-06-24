@@ -5,6 +5,7 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.empire.EmpireTransitionActions
 import com.example.superstoresimulator.domain.empire.EmpireTuning
 import com.example.superstoresimulator.domain.empire.RegionRegistry
+import com.example.superstoresimulator.domain.empire.SecondaryStoreSimManager
 import com.example.superstoresimulator.domain.empire.StoreDirection
 import com.example.superstoresimulator.domain.empire.StoreUpgrade
 import com.example.superstoresimulator.domain.store.StoreSize
@@ -195,6 +196,65 @@ class EmpireTransitionTest {
         val result = EmpireTransitionActions.setStoreDirection(state, storeId, StoreDirection.AGGRESSIVE)
         val store = result.secondaryStores.first { it.storeId == storeId }
         assertEquals(StoreDirection.AGGRESSIVE, store.direction)
+    }
+
+    // ── closeStore ──────────────────────────────────────────────────────────────
+
+    @Test
+    fun closeStore_removesStore_andDropsRegionWeight() {
+        val state = empireState()
+        val storeId = state.secondaryStores[1].storeId
+        val result = EmpireTransitionActions.closeStore(state, storeId)
+
+        assertEquals("one store removed", state.secondaryStores.size - 1, result.secondaryStores.size)
+        assertFalse("closed store is gone", result.secondaryStores.any { it.storeId == storeId })
+        assertEquals("no refund — money unchanged", state.money, result.money)
+    }
+
+    @Test
+    fun closeStore_isNoOp_whileOperatingThatStore() {
+        val state = empireState()
+        val storeId = state.secondaryStores[0].storeId
+        val operating = state.copy(operatingStoreId = storeId)
+        val result = EmpireTransitionActions.closeStore(operating, storeId)
+        assertSame("cannot close the store being operated hands-on", operating, result)
+    }
+
+    // ── region investment (ongoing) ──────────────────────────────────────────────
+
+    @Test
+    fun setRegionInvesting_togglesFlag_noUpfrontCharge() {
+        val state = empireState()
+        val on = EmpireTransitionActions.setRegionInvesting(state, RegionRegistry.HOME_REGION_ID, true)
+        assertTrue(on.regions.first { it.regionId == RegionRegistry.HOME_REGION_ID }.investing)
+        assertEquals("no upfront cost — money unchanged", state.money, on.money)
+
+        val off = EmpireTransitionActions.setRegionInvesting(on, RegionRegistry.HOME_REGION_ID, false)
+        assertFalse(off.regions.first { it.regionId == RegionRegistry.HOME_REGION_ID }.investing)
+    }
+
+    @Test
+    fun investingRegion_compoundsDemandAndCapacity_andChargesDailyCost_overOneSimDay() {
+        val base = empireState()
+        val investing = EmpireTransitionActions.setRegionInvesting(base, RegionRegistry.HOME_REGION_ID, true)
+
+        val before = investing.regions.first { it.regionId == RegionRegistry.HOME_REGION_ID }
+        val afterDayInvesting = SecondaryStoreSimManager.simulateDay(investing)
+        val afterDayIdle = SecondaryStoreSimManager.simulateDay(base)
+
+        val grown = afterDayInvesting.regions.first { it.regionId == RegionRegistry.HOME_REGION_ID }
+        assertTrue("capacity compounds up", grown.capacity > before.capacity)
+        assertTrue("traffic demand compounds up", grown.demandProfile.baseTraffic > before.demandProfile.baseTraffic)
+        // Same store profits both runs; the only delta is the ongoing investment cost.
+        assertTrue("investing costs money vs idle", afterDayInvesting.money < afterDayIdle.money)
+    }
+
+    @Test
+    fun regionInvestDailyCost_scales20PercentPer10PercentPopulation() {
+        val atBaseline = EmpireTuning.regionInvestDailyCost(1.0f).cents.toDouble()
+        val at10PercentMore = EmpireTuning.regionInvestDailyCost(1.1f).cents.toDouble()
+        val ratio = at10PercentMore / atBaseline
+        assertEquals("10% more population → ~20% more cost", 1.20, ratio, 0.01)
     }
 
     @Test

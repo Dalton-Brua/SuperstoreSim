@@ -32,6 +32,30 @@ object EmpireTuning {
     /** Steepness of the per-region saturation falloff above capacity. Key tuning knob. */
     const val SATURATION_STEEPNESS = 0.5f
 
+    // ── Region investment (ongoing — slowly compounds capacity + demand) ───────
+    /**
+     * Ongoing region investment. While active it grows the region's capacity and demand by
+     * [REGION_INVEST_MONTHLY_GROWTH] per (30-day) month, compounded each simulated day, and
+     * charges a daily cost that scales super-linearly with the region's population.
+     */
+    const val REGION_INVEST_MONTHLY_GROWTH = 0.01f   // +1% per month
+    const val DAYS_PER_MONTH = 30
+    /** Daily multiplier that compounds to [REGION_INVEST_MONTHLY_GROWTH] over [DAYS_PER_MONTH]. */
+    val REGION_INVEST_DAILY_GROWTH: Float =
+        Math.pow((1.0 + REGION_INVEST_MONTHLY_GROWTH), 1.0 / DAYS_PER_MONTH).toFloat()
+
+    /** Daily cost to invest in a baseline (population 1.0) region before the elasticity scaling. */
+    val REGION_INVEST_BASE_DAILY_COST = Money.fromDollars(5_000.0)
+    /**
+     * Cost elasticity to population: a 10% larger population costs 20% more to invest in.
+     * cost ∝ population^elasticity, so the exponent solves 1.10^e = 1.20.
+     */
+    val REGION_INVEST_COST_ELASTICITY: Double = Math.log(1.20) / Math.log(1.10) // ≈ 1.914
+
+    /** Per-day investment cost for a region whose population proxy (baseTraffic) is [population]. */
+    fun regionInvestDailyCost(population: Float): Money =
+        Money((REGION_INVEST_BASE_DAILY_COST.cents * Math.pow(population.toDouble(), REGION_INVEST_COST_ELASTICITY)).toLong())
+
     // ── Store weight (region crowding) ─────────────────────────────────────────
     /** Weight a store of [size] contributes to its region. */
     fun sizeWeight(size: StoreSize): Float = when (size) {

@@ -37,6 +37,8 @@ fun buildEmpireUiState(domain: GameState): EmpireUIState {
                 overCapacity = load > 1.0f,
                 baseSpendingPower = region.demandProfile.baseSpendingPower,
                 baseTraffic = region.demandProfile.baseTraffic,
+                investing = region.investing,
+                investDailyCost = EmpireTuning.regionInvestDailyCost(region.demandProfile.baseTraffic),
                 stores = stores.map { it.toStoreUI(currentDay) },
             )
         }

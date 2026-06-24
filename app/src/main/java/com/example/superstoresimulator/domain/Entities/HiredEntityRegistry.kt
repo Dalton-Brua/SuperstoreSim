@@ -83,15 +83,6 @@ data class HiredEntityRegistry(
         return copy(entities = updatedList)
     }
 
-    fun grantXpDistributed(entityIds: List<Int>, totalRawAmount: Int): HiredEntityRegistry {
-        if (entityIds.isEmpty()) return this
-        val perEntity = totalRawAmount / entityIds.size
-        if (perEntity <= 0) return this
-        var updated = this
-        entityIds.forEach { id -> updated = updated.grantXp(id, perEntity) }
-        return updated
-    }
-
     private fun computeLevel(xp: Int, thresholds: List<Int> = HiredEntity.XP_THRESHOLDS): Int {
         var level = 1
         for (threshold in thresholds) {

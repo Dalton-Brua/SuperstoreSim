@@ -71,7 +71,6 @@ import com.example.superstoresimulator.ui.theme.ProgressBarTrack
 import com.example.superstoresimulator.ui.theme.TextMuted
 import com.example.superstoresimulator.ui.theme.TextSecondary
 import com.example.superstoresimulator.ui.theme.TextWhite
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -79,7 +78,6 @@ fun InventoryScreen(
     state: InventoryUIState,
     money: Money,
     researchedUpgrades: Set<String> = emptySet(),
-    metricsData: List<DailyMetrics> = emptyList(),
     resetTrigger: Int = 0,
     hasFastStocker: Boolean = false,
     hasStockingManager: Boolean = false,
@@ -93,29 +91,13 @@ fun InventoryScreen(
     onItemClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // Item names derived from UIState items (no cache access needed)
-    val itemNames = remember(state.items) { state.items.associate { it.id to it.name } }
-
     // State to hold search query (preserved across navigation)
     val searchQuery = remember { mutableStateOf("") }
-
-    // State for debounced search query
-    val debouncedSearchQuery = remember { mutableStateOf("") }
 
     // Dialog state
     var showBulkOrderDialog by remember { mutableStateOf(false) }
     var showAutoOrderConfigDialog by remember { mutableStateOf(false) }
 
-    // Debounce search query with 200ms delay
-    LaunchedEffect(searchQuery.value) {
-        if (searchQuery.value.isEmpty()) {
-            debouncedSearchQuery.value = ""
-        } else {
-            delay(200)
-            debouncedSearchQuery.value = searchQuery.value
-        }
-    }
-    
     // Reset local state when resetTrigger changes (triggered by clicking nav button on current screen)
     LaunchedEffect(resetTrigger) {
         if (resetTrigger > 0) {  // Only reset if trigger is positive (not initial value)
@@ -126,7 +108,7 @@ fun InventoryScreen(
     val listState = rememberLazyListState()
     
     // Recompute filtered items whenever category, focused item, or debounced search query changes
-    val filteredItems = remember(state.items, state.selectedCategory, state.focusedItemId, debouncedSearchQuery.value) {
+    val filteredItems = remember(state.items, state.selectedCategory, state.focusedItemId, searchQuery.value) {
         var filtered = if (state.focusedItemId != null) {
             // If an item is focused, show only that item
             state.items.filter { item -> item.id == state.focusedItemId }
@@ -140,10 +122,10 @@ fun InventoryScreen(
         // Exclude fresh items (those with shelfLifeDays) - they only appear in Fresh tab
         filtered = filtered.filter { item -> item.shelfLifeDays == null }
         
-        // Apply search filter if debounced search query is not empty
-        if (debouncedSearchQuery.value.isNotEmpty()) {
+        // Apply search filter if search query is not empty
+        if (searchQuery.value.isNotEmpty()) {
             filtered = filtered.filter { item ->
-                item.name.contains(debouncedSearchQuery.value, ignoreCase = true)
+                item.name.contains(searchQuery.value, ignoreCase = true)
             }
         }
         
@@ -198,8 +180,6 @@ fun InventoryScreen(
         money = money,
         researchedUpgrades = researchedUpgrades,
         searchQuery = searchQuery,
-        debouncedSearchQuery = debouncedSearchQuery,
-        itemNames = itemNames,
         filteredItems = filteredItems,
         listState = listState,
         hasFastStocker = hasFastStocker,
@@ -221,8 +201,6 @@ private fun InventoryListScreen(
     money: Money,
     researchedUpgrades: Set<String>,
     searchQuery: MutableState<String>,
-    debouncedSearchQuery: MutableState<String>,
-    itemNames: Map<Int, String>,
     filteredItems: List<InventoryItemUI>,
     listState: androidx.compose.foundation.lazy.LazyListState,
     hasFastStocker: Boolean = false,
@@ -297,11 +275,9 @@ private fun InventoryListScreen(
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            when {
-                                hasStockingManager -> "Auto-Order"
-                                hasFastStocker -> "Auto-Order"
-                                else -> "Auto-Order (T2)"
-                            },
+                            // hasStockingManager always implies hasFastStocker (a dept-manager
+                            // stocker is tier MANAGER >= FAST = canAutoReorder), so one branch suffices.
+                            if (hasFastStocker) "Auto-Order" else "Auto-Order (T2)",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (hasFastStocker) TextWhite else TextMuted
@@ -372,7 +348,7 @@ private fun InventoryListScreen(
         ) {
             items(filteredItems) { item ->
                 InventoryItemCard(
-                    item = item.copy(name = itemNames[item.id] ?: item.name),
+                    item = item,
                     canAffordBuy = money >= item.casePackCost,
                     onBuy = { onBuyItem(item.id) },
                     onClick = { onItemClick(item.id) }
@@ -590,7 +566,6 @@ fun InventoryAndFreshScreen(
     money: Money,
     researchedUpgrades: Set<String> = emptySet(),
     currentDay: Int,
-    metricsData: List<DailyMetrics> = emptyList(),
     resetTrigger: Int = 0,
     initialTab: Int = 0,
     incompleteFreshOrdersCount: Int = 0,
@@ -700,7 +675,6 @@ fun InventoryAndFreshScreen(
                     state = state,
                     money = money,
                     researchedUpgrades = researchedUpgrades,
-                    metricsData = metricsData,
                     resetTrigger = resetTrigger,
                     hasFastStocker = hasFastStocker,
                     hasStockingManager = hasStockingManager,

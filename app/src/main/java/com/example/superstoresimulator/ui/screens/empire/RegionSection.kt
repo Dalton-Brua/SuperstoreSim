@@ -112,6 +112,33 @@ fun RegionSection(
                 ) {
                     Text("Open location here", fontWeight = FontWeight.SemiBold)
                 }
+                if (region.investing) {
+                    OutlinedButton(
+                        onClick = { onEvent(GameEvent.SetRegionInvesting(region.regionId, false)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Destructive),
+                    ) {
+                        Text("Stop investing — ${region.investDailyCost}/day", fontWeight = FontWeight.SemiBold)
+                    }
+                    Text(
+                        text = "Investing: capacity + demand grow ~1%/month, compounding daily.",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                    )
+                } else {
+                    OutlinedButton(
+                        onClick = { onEvent(GameEvent.SetRegionInvesting(region.regionId, true)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary),
+                    ) {
+                        Text("Invest in region — ${region.investDailyCost}/day", fontWeight = FontWeight.SemiBold)
+                    }
+                    Text(
+                        text = "Ongoing spend grows capacity + demand over months — eases saturation, raises traffic.",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                    )
+                }
             } else {
                 Text(
                     text = "Unlock cost: ${region.unlockCost}",

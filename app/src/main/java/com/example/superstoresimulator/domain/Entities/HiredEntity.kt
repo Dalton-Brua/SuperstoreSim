@@ -11,7 +11,7 @@ private data class HiredEntitySurrogate(
     val id: Int,
     val name: String,
     val entityDefKey: String,
-    val trait: EntityTrait,
+    val trait: String,
     val tier: Tier,
     val xp: Int,
     val level: Int,
@@ -26,7 +26,7 @@ object HiredEntitySerializer : KSerializer<HiredEntity> {
             HiredEntitySurrogate(
                 id = value.id, name = value.name,
                 entityDefKey = value.entityDefinition.key,
-                trait = value.trait, tier = value.tier,
+                trait = value.trait.name, tier = value.tier,
                 xp = value.xp, level = value.level,
             )
         )
@@ -36,7 +36,9 @@ object HiredEntitySerializer : KSerializer<HiredEntity> {
         val s = decoder.decodeSerializableValue(HiredEntitySurrogate.serializer())
         val def = EntityDef.allEntities.find { it.key == s.entityDefKey }
             ?: error("Unknown EntityDef key: ${s.entityDefKey}")
-        return HiredEntity(s.id, s.name, def, s.trait, s.tier, s.xp, s.level)
+        // Tolerate removed/unknown traits in old saves (mirrors LegacyGameStateDeserializer).
+        val trait = EntityTrait.entries.firstOrNull { it.name == s.trait } ?: EntityTrait.EFFICIENT
+        return HiredEntity(s.id, s.name, def, trait, s.tier, s.xp, s.level)
     }
 }
 

@@ -69,10 +69,10 @@ class PlayerTickProcessor @Inject constructor(
             while (actionsRemaining > 0 && s.inventory.any { (itemId, inv) ->
                     inv.backroomStock > 0 && itemMetadataCache.get(itemId)?.isPerishable == true
                 }) {
-                s = inventoryManager.stockRandomFreshItemFromBackroom(s)
+                s = inventoryManager.stockRandomFromBackroom(s, freshOnly = true)
                 actionsRemaining--
             }
-            repeat(actionsRemaining) { s = inventoryManager.stockRandomItemFromBackroom(s) }
+            repeat(actionsRemaining) { s = inventoryManager.stockRandomFromBackroom(s) }
             return s.copy(playerStockerProgress = result.newProgress)
         } else {
             val unzonedItems = s.inventory.entries

@@ -337,9 +337,11 @@ class GameViewModel @Inject constructor(
             }
 
             is GameEvent.UpdateShift -> {
-                val duration = event.newDuration.coerceIn(2, 8)
+                val duration = event.newDuration.coerceIn(4, 8)
                 val clampedHour = event.newStartHour.coerceIn(6, 21 - duration)
-                gameEngine.updateShift(event.entityId, clampedHour, duration, event.workDays)
+                // Cap scheduled days at 5 (empty = legacy "every day", left untouched).
+                val days = if (event.workDays.size > 5) event.workDays.take(5).toSet() else event.workDays
+                gameEngine.updateShift(event.entityId, clampedHour, duration, days)
             }
 
             // Register System (Phase 3)
@@ -419,6 +421,8 @@ class GameViewModel @Inject constructor(
             GameEvent.EnterEmpireMode -> gameEngine.enterEmpireMode()
             is GameEvent.UnlockRegion -> gameEngine.unlockRegion(event.regionId)
             is GameEvent.OpenLocation -> gameEngine.openLocation(event.regionId)
+            is GameEvent.CloseStore -> gameEngine.closeStore(event.storeId)
+            is GameEvent.SetRegionInvesting -> gameEngine.setRegionInvesting(event.regionId, event.investing)
             is GameEvent.SetStoreDirection -> gameEngine.setStoreDirection(event.storeId, event.direction)
             is GameEvent.BuyStoreUpgrade -> gameEngine.buyStoreUpgrade(event.storeId, event.upgrade)
             is GameEvent.ExpandStoreSize -> gameEngine.expandStoreSize(event.storeId)

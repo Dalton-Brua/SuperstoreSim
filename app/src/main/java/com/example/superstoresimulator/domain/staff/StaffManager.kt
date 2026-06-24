@@ -732,6 +732,10 @@ class StaffManager @Inject constructor() {
     }
 
     fun optimizeWeeklySchedules(state: GameState): GameState {
+        val hasStoreManager = state.hiredEntityRegistry.getByDef(EntityDef.MANAGER)
+            .any { it.isStoreManager }
+        if (!hasStoreManager) return state
+
         val config = state.storeManagerConfig
         if (!config.autoOptimizeWeeklySchedule) return state
         if (state.currentTime.dayOfWeek != 0) return state
@@ -765,12 +769,22 @@ class StaffManager @Inject constructor() {
             val entities = state.hiredEntityRegistry.getByDef(def)
             if (entities.isEmpty()) continue
 
-            val scores = demandScores(def.key).sortedByDescending { it.second }
-            val maxDays = config.maxDaysPerWeek.coerceIn(config.minDaysPerWeek, 7)
+            // Days ranked high→low demand; days off come from the low-priority tail.
+            val ranked = demandScores(def.key).sortedByDescending { it.second }.map { it.first }
+            val maxDays = config.maxDaysPerWeek.coerceIn(config.minDaysPerWeek.coerceIn(1, 5), 5)
+            val daysOff = (7 - maxDays).coerceIn(0, 7)
 
-            for (entity in entities) {
-                val daysToAssign = maxDays.coerceAtMost(7)
-                val assignedDays = scores.take(daysToAssign).map { it.first }.toSet()
+            // Stagger off-days across workers so no single day loses all coverage
+            // (otherwise every worker shares the same off-day, e.g. all off Friday).
+            entities.forEachIndexed { idx, entity ->
+                val assignedDays = if (daysOff == 0) {
+                    (0..6).toSet()
+                } else {
+                    val offDays = (0 until daysOff)
+                        .map { ranked[ranked.size - 1 - ((idx + it) % ranked.size)] }
+                        .toSet()
+                    (0..6).toSet() - offDays
+                }
 
                 schedules = schedules.map { s ->
                     if (s.entityId == entity.id) s.copy(workDays = assignedDays) else s
@@ -831,9 +845,9 @@ class StaffManager @Inject constructor() {
             val gapSpan = gapEnd - gapStart
             // Only short-shift if the gap is contiguous and compact
             if (gapSpan == uncoveredHours.size && gapSpan <= 4) {
-                val duration = gapSpan.coerceIn(2, 8)
+                val duration = gapSpan.coerceIn(4, 8)
                 val start = gapStart.coerceIn(6, 21 - duration)
-                return StaffShift(entityId = entityId, startHour = start, durationHours = duration)
+                return StaffShift(entityId = entityId, startHour = start, durationHours = duration, workDays = DEFAULT_WORK_DAYS)
             }
         }
 
@@ -845,7 +859,7 @@ class StaffManager @Inject constructor() {
             val totalGap = shiftHours.sumOf { h -> 1.0 / ((coverageByHour[h] ?: 0) + 1) }
             zeroCoverage * 100 + totalGap
         } ?: SHIFT_MORNING
-        return StaffShift(entityId = entityId, startHour = bestPreset)
+        return StaffShift(entityId = entityId, startHour = bestPreset, workDays = DEFAULT_WORK_DAYS)
     }
 
     fun promoteEntity(state: GameState, entityId: Int): GameState {
@@ -939,6 +953,10 @@ class StaffManager @Inject constructor() {
         const val SHIFT_MORNING = 6
         const val SHIFT_MID     = 10
         const val SHIFT_CLOSING = 13
+
+        // Default work days for a new shift: Mon–Fri (5 = max days/week). Avoids the
+        // emptySet "every day" (7) default which would exceed the 5-day cap.
+        val DEFAULT_WORK_DAYS = (0..4).toSet()
 
         // XP constants
         const val XP_PER_STOCK_ACTION = 1

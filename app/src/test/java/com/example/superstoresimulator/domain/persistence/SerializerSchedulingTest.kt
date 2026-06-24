@@ -161,7 +161,7 @@ class SerializerSchedulingTest {
     fun `nextEntityId is preserved across round-trip`() {
         val entity = HiredEntity(
             id = 5, name = "Five", entityDefinition = EntityDef.STOCKER,
-            trait = EntityTrait.FRIENDLY,
+            trait = EntityTrait.HARDWORKER,
         )
         val registry = HiredEntityRegistry(entities = listOf(entity), nextEntityId = 10)
         val state = GameState(hiredEntityRegistry = registry)
