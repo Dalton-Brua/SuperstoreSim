@@ -50,7 +50,6 @@ class StaffManager @Inject constructor() {
     private var stockerTotalTicks: Int = 0
     private var freshBusyTicks: Int = 0
     private var freshTotalTicks: Int = 0
-    private var peakPendingCustomers: Int = 0
     private var hadUnstaffedRegisters: Boolean = false
     private var lastSampledHour: Int = -1
     private val pendingCustomersByHour: MutableMap<Int, Int> = mutableMapOf()
@@ -222,10 +221,6 @@ class StaffManager @Inject constructor() {
         val registers = state.registers
         val assignedIds = registers.mapNotNull { it.assignedCashierId }.toSet()
 
-        if (state.pendingCustomers > peakPendingCustomers) {
-            peakPendingCustomers = state.pendingCustomers
-        }
-
         // Sample pending customers once per hour (keep max seen that hour)
         if (currentHour != lastSampledHour) {
             lastSampledHour = currentHour
@@ -347,15 +342,12 @@ class StaffManager @Inject constructor() {
     fun currentFreshUtilization(): Float = utilization(freshBusyTicks, freshTotalTicks)
 
     fun snapshotDailyMetrics(): DailyStaffMetrics = DailyStaffMetrics(
-        peakPendingCustomers = peakPendingCustomers,
         avgHourlyPendingCustomers = if (pendingCustomersByHour.isNotEmpty())
             pendingCustomersByHour.values.sum().toFloat() / pendingCustomersByHour.size else 0f,
         avgCashierUtilization = utilization(cashierBusyTicks, cashierTotalTicks),
         avgStockerUtilization = utilization(stockerBusyTicks, stockerTotalTicks),
         avgFreshUtilization = utilization(freshBusyTicks, freshTotalTicks),
         hasUnstaffedRegisters = hadUnstaffedRegisters,
-        freshItemsOutOfStock = 0,
-        freshOrdersAttempted = 0,
     )
 
     // ── Auto-Hire (Phase 5B) ─────────────────────────────────────────────────
@@ -937,7 +929,6 @@ class StaffManager @Inject constructor() {
         stockerTotalTicks = 0
         freshBusyTicks = 0
         freshTotalTicks = 0
-        peakPendingCustomers = 0
         hadUnstaffedRegisters = false
         lastSampledHour = -1
         pendingCustomersByHour.clear()

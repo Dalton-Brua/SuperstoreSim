@@ -17,8 +17,6 @@ class FakeArchivedDailyMetricsDao : ArchivedDailyMetricsDao {
     override suspend fun getAllSummaries(): List<ArchivedDailyMetricsEntity> =
         inserted.sortedByDescending { it.dayNumber }
 
-    override suspend fun count(): Int = inserted.size
-
     override suspend fun deleteAll() {
         inserted.clear()
     }

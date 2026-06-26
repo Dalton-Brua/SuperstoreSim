@@ -209,14 +209,11 @@ data class IncompleteOrderRequest(
 
 @Serializable
 data class DailyStaffMetrics(
-    val peakPendingCustomers: Int = 0,
     val avgHourlyPendingCustomers: Float = 0f,
     val avgCashierUtilization: Float = 0f,
     val avgStockerUtilization: Float = 0f,
     val avgFreshUtilization: Float = 0f,
     val hasUnstaffedRegisters: Boolean = false,
-    val freshItemsOutOfStock: Int = 0,
-    val freshOrdersAttempted: Int = 0,
 )
 
 @Serializable

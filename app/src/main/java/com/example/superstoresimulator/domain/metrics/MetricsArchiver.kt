@@ -53,7 +53,5 @@ class MetricsArchiver @Inject constructor(
         return toArchive.size
     }
 
-    suspend fun archivedCount(): Int = dao.count()
-
     suspend fun clearAll() = dao.deleteAll()
 }
