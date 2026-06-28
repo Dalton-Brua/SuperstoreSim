@@ -96,13 +96,6 @@ fun EndOfDayReportDialog(
                 StatRow(Icons.Default.ShoppingCart, "Transactions",      report.transactionsCompleted.toString())
                 StatRow(Icons.AutoMirrored.Filled.TrendingUp, "Avg. Sale Value", report.averageTransactionValue.toString())
 
-                if (report.refundsProcessed > 0) {
-                    Spacer(Modifier.height(4.dp))
-                    StatRow(Icons.AutoMirrored.Filled.Undo, "Refunds Issued",
-                        "${report.refundsProcessed} (${report.refundAmount})",
-                        tint = ClosedRed)
-                }
-
                 if (report.lostRevenue.cents > 0) {
                     Spacer(Modifier.height(4.dp))
                     StatRow(

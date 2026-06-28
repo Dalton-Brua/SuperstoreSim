@@ -232,11 +232,6 @@ data class GameState(
 
     val totalTaxCollected: Money = Money(0),
 
-    // Pending refunds that must be handled manually (by player or staff)
-    val pendingRefunds: List<RefundRequest> = emptyList(),
-    // Counter for assigning refund IDs
-    val nextRefundId: Int = 1,
-
     val inventory: Map<Int, InventoryState> = emptyMap(),
 
     // Time and store state

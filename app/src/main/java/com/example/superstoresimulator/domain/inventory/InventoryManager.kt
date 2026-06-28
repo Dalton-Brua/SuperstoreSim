@@ -235,14 +235,18 @@ class InventoryManager(
         buyItemCasePacks(state, itemId, 1, precomputedPendingCasePacks)
 
     /**
-     * Order [numCasePacks] case-packs of [itemId], capped at [backroomCapPerItem].
-     * Deducts money immediately. Does NOT add to backroom — overflow is handled at delivery time.
+     * Order up to [numCasePacks] case-packs of [itemId], capped so that committed stock
+     * (backroom + in-transit case-packs) never exceeds [backroomCapPerItem].
+     * Deducts money immediately only for the case-packs that will actually fit at delivery.
+     * Does NOT add to backroom — caller schedules the returned lines via TruckManager.
+     *
+     * [precomputedPendingCasePacks] supplies in-transit case-packs per item (from
+     * [buildPendingCasePacksMap]); when null it is computed on demand.
      */
     fun buyItemCasePacks(
         state: GameState,
         itemId: Int,
         numCasePacks: Int,
-        // reserved for immediate auto-order; see buildPendingCasePacksMap TODO
         precomputedPendingCasePacks: Map<Int, Int>? = null,
     ): BuyResult {
         val inv = state.inventory[itemId] ?: return BuyResult(state, emptyList())
@@ -251,8 +255,14 @@ class InventoryManager(
         if (metadata.isVendorItem) return BuyResult(state, emptyList())
         if (numCasePacks <= 0) return BuyResult(state, emptyList())
 
+        // Cap to remaining room: backroomCapPerItem minus what is already committed
+        // (current backroom case-packs + in-transit case-packs). Mirrors the clamp in
+        // TruckManager.processArrivals so we never charge for stock that can't land.
         val capInCasePacks = state.storeConfig.backroomCapPerItem
-        val actualCasePacks = minOf(numCasePacks, capInCasePacks)
+        val inTransit = (precomputedPendingCasePacks ?: buildPendingCasePacksMap(state))[itemId] ?: 0
+        val committed = inv.backroomStock / dbItem.casePack + inTransit
+        val remainingCap = (capInCasePacks - committed).coerceAtLeast(0)
+        val actualCasePacks = minOf(numCasePacks, remainingCap)
         if (actualCasePacks <= 0) return BuyResult(state, emptyList())
 
         val totalCost = dbItem.getCasePackCostAsMoney() * actualCasePacks
@@ -261,24 +271,15 @@ class InventoryManager(
         val currentDay = state.currentTime.dayNumber
         val totalItems = dbItem.casePack * actualCasePacks
 
-        // Split order into lines of at most capInCasePacks each so TruckManager can distribute
-        // them across separate trucks (enforcing per-item backroom cap per delivery).
-        val lines = mutableListOf<PendingOrderLine>()
-        var remaining = actualCasePacks
-        while (remaining > 0) {
-            val batch = minOf(capInCasePacks, remaining)
-            lines.add(
-                PendingOrderLine(
-                    itemId = itemId,
-                    quantity = dbItem.casePack * batch,
-                    casePacksCount = batch,
-                    unitCost = dbItem.unitCost.toMoney(),
-                    orderedOnDay = currentDay,
-                    isFresh = metadata.isPerishable,
-                )
-            )
-            remaining -= batch
-        }
+        // actualCasePacks <= capInCasePacks, so a single line never exceeds the per-delivery cap.
+        val line = PendingOrderLine(
+            itemId = itemId,
+            quantity = totalItems,
+            casePacksCount = actualCasePacks,
+            unitCost = dbItem.unitCost.toMoney(),
+            orderedOnDay = currentDay,
+            isFresh = metadata.isPerishable,
+        )
 
         val newState = state.copy(
             money = state.money - totalCost,
@@ -286,7 +287,7 @@ class InventoryManager(
                 itemsOrdered = state.currentDayMetrics.itemsOrdered + totalItems,
             ),
         )
-        return BuyResult(newState, lines)
+        return BuyResult(newState, listOf(line))
     }
 
     /**
@@ -297,13 +298,10 @@ class InventoryManager(
      *  1. It is accessible (research gate unlocked or no gate)
      *  2. Its category matches [categoryFilter] (or filter is null)
      *  3. Its combined shelf + backroom stock ≤ [maxTotalQuantity]
-     *  4. Its committed stock (backroom + in-transit) < [backroomCapPerItem]
-     *  5. It is NOT a fresh/perishable item
+     *  4. It is NOT a fresh/perishable item and NOT a vendor item
      *
-     * Volume discount tiers (applied to the total actual case-packs):
-     *  ≥ 20 cases → 10% off
-     *  ≥ 50 cases → 15% off
-     *  ≥ 100 cases → 25% off
+     * Per item the order is capped so committed stock (backroom + in-transit) stays within
+     * [backroomCapPerItem]. Volume discount on total case-packs: ≥20→10%, ≥50→15%, ≥100→25%.
      */
     fun placeBulkOrder(
         state: GameState,
@@ -311,145 +309,112 @@ class InventoryManager(
         casePacksPerItem: Int,
         categoryFilter: ItemCategory?,
     ): BuyResult {
-        if (casePacksPerItem <= 0) return BuyResult(state, emptyList())
-
-        val capInCasePacks = state.storeConfig.backroomCapPerItem
-        val currentDay = state.currentTime.dayNumber
-
-        val researchedUpgrades = state.researchState.researchedUpgrades
-        val matchingEntries = state.inventory.filter { (itemId, inv) ->
-            val meta = cache.get(itemId) ?: return@filter false
-            val accessible = meta.researchGate == null || meta.researchGate in researchedUpgrades
-            val categoryOk = categoryFilter == null || meta.category == categoryFilter
-            val qtyOk = inv.shelfStock + inv.backroomStock <= maxTotalQuantity
-            val notFresh = !isFreshItem(itemId)
-            val notVendor = !meta.isVendorItem
-            accessible && categoryOk && qtyOk && notFresh && notVendor
-        }
-        if (matchingEntries.isEmpty()) return BuyResult(state, emptyList())
-
-        val itemsToAddMap = mutableMapOf<Int, OrderInfo>()
-        var totalCases = 0
-        var baseCost = Money.ZERO
-
-        matchingEntries.forEach { (itemId, _) ->
-            val dbItem = cache.getItem(itemId) ?: return@forEach
-            val actualCasePacks = minOf(casePacksPerItem, capInCasePacks)
-            if (actualCasePacks <= 0) return@forEach
-
-            itemsToAddMap[itemId] = OrderInfo(
-                itemsToAdd = dbItem.casePack * actualCasePacks,
-                actualCasePacks = actualCasePacks,
-            )
-            totalCases += actualCasePacks
-            baseCost += dbItem.getCasePackCostAsMoney() * actualCasePacks
-        }
-        if (itemsToAddMap.isEmpty()) return BuyResult(state, emptyList())
-
-        val discountFraction = when {
-            totalCases >= 100 -> 0.25
-            totalCases >= 50  -> 0.15
-            totalCases >= 20  -> 0.10
-            else              -> 0.0
-        }
-        val repBonus = state.reputationState.supplierDiscountBonus.toDouble()
-        val totalDiscount = (discountFraction + repBonus).coerceAtMost(0.99)
-        val finalCost = Money((baseCost.cents * (1.0 - totalDiscount)).toLong())
-        if (state.money < finalCost) return BuyResult(state, emptyList())
-
-        val lines = mutableListOf<PendingOrderLine>()
-        var totalItemsAdded = 0
-        itemsToAddMap.forEach { (itemId, orderInfo) ->
-            val dbItem = cache.getItem(itemId) ?: return@forEach
-            lines.add(
-                PendingOrderLine(
-                    itemId = itemId,
-                    quantity = orderInfo.itemsToAdd,
-                    casePacksCount = orderInfo.actualCasePacks,
-                    unitCost = dbItem.unitCost.toMoney(),
-                    orderedOnDay = currentDay,
-                    isFresh = false,
-                )
-            )
-            totalItemsAdded += orderInfo.itemsToAdd
-        }
-
-        val newState = state.copy(
-            money = state.money - finalCost,
-            currentDayMetrics = state.currentDayMetrics.copy(
-                itemsOrdered = state.currentDayMetrics.itemsOrdered + totalItemsAdded,
-            ),
+        val researched = state.researchState.researchedUpgrades
+        return placeBulkOrderInternal(
+            state, casePacksPerItem, isFresh = false,
+            discountFor = { cases ->
+                when {
+                    cases >= 100 -> 0.25
+                    cases >= 50  -> 0.15
+                    cases >= 20  -> 0.10
+                    else         -> 0.0
+                }
+            },
+            eligible = { itemId, inv ->
+                val meta = cache.get(itemId)
+                meta != null &&
+                    (meta.researchGate == null || meta.researchGate in researched) &&
+                    (categoryFilter == null || meta.category == categoryFilter) &&
+                    inv.shelfStock + inv.backroomStock <= maxTotalQuantity &&
+                    !isFreshItem(itemId) &&
+                    !meta.isVendorItem
+            },
         )
-        return BuyResult(newState, lines)
     }
-
-    private data class OrderInfo(
-        val itemsToAdd: Int,
-        val actualCasePacks: Int,
-    )
 
     /**
      * Place a fresh bulk order — deducts money, does NOT add to backroom.
      * Returns [BuyResult] with order lines (all fresh) to be scheduled on the fresh truck.
+     * Eligibility: accessible, fresh/perishable, and combined shelf + backroom < [maxTotalQuantity].
      */
     fun placeFreshBulkOrder(
         state: GameState,
         maxTotalQuantity: Int,
         casePacksPerItem: Int,
     ): BuyResult {
+        val researched = state.researchState.researchedUpgrades
+        return placeBulkOrderInternal(
+            state, casePacksPerItem, isFresh = true,
+            discountFor = { cases ->
+                when {
+                    cases >= 50 -> 0.15
+                    cases >= 30 -> 0.10
+                    cases >= 15 -> 0.05
+                    else        -> 0.0
+                }
+            },
+            eligible = { itemId, inv ->
+                val meta = cache.get(itemId)
+                meta != null &&
+                    isFreshItem(itemId) &&
+                    (meta.researchGate == null || meta.researchGate in researched) &&
+                    inv.shelfStock + inv.backroomStock < maxTotalQuantity
+            },
+        )
+    }
+
+    /**
+     * Shared body for [placeBulkOrder]/[placeFreshBulkOrder]. Per eligible item, orders
+     * [casePacksPerItem] case-packs capped to remaining room (cap − backroom − in-transit),
+     * applies the volume + reputation discount, and deducts money for what will actually fit.
+     */
+    private fun placeBulkOrderInternal(
+        state: GameState,
+        casePacksPerItem: Int,
+        isFresh: Boolean,
+        discountFor: (totalCases: Int) -> Double,
+        eligible: (itemId: Int, inv: InventoryState) -> Boolean,
+    ): BuyResult {
+        if (casePacksPerItem <= 0) return BuyResult(state, emptyList())
+
+        val capInCasePacks = state.storeConfig.backroomCapPerItem
         val currentDay = state.currentTime.dayNumber
-        val researchedUpgrades = state.researchState.researchedUpgrades
-        val itemsToAddMap = mutableMapOf<Int, OrderInfo>()
-        var totalCases = 0
-        var baseCost = Money(0)
-
-        for ((itemId, inv) in state.inventory) {
-            val dbItem = cache.getItem(itemId) ?: continue
-            val metadata = cache.get(itemId) ?: continue
-
-            if (!isFreshItem(itemId)) continue
-            if (metadata.researchGate != null && metadata.researchGate !in researchedUpgrades) continue
-
-            val currentTotal = inv.shelfStock + inv.backroomStock
-            if (currentTotal >= maxTotalQuantity) continue
-
-            val actualCasePacks = casePacksPerItem
-            itemsToAddMap[itemId] = OrderInfo(
-                itemsToAdd = dbItem.casePack * actualCasePacks,
-                actualCasePacks = actualCasePacks,
-            )
-            totalCases += actualCasePacks
-            baseCost += dbItem.getCasePackCostAsMoney() * actualCasePacks
-        }
-        if (itemsToAddMap.isEmpty()) return BuyResult(state, emptyList())
-
-        val discountFraction = when {
-            totalCases >= 50  -> 0.15
-            totalCases >= 30  -> 0.10
-            totalCases >= 15  -> 0.05
-            else              -> 0.0
-        }
-        val repBonus = state.reputationState.supplierDiscountBonus.toDouble()
-        val totalDiscount = (discountFraction + repBonus).coerceAtMost(0.99)
-        val finalCost = Money((baseCost.cents * (1.0 - totalDiscount)).toLong())
-        if (state.money < finalCost) return BuyResult(state, emptyList())
+        val pending = buildPendingCasePacksMap(state)
 
         val lines = mutableListOf<PendingOrderLine>()
+        var totalCases = 0
+        var baseCost = Money.ZERO
         var totalItemsAdded = 0
-        itemsToAddMap.forEach { (itemId, orderInfo) ->
-            val dbItem = cache.getItem(itemId) ?: return@forEach
+
+        for ((itemId, inv) in state.inventory) {
+            if (!eligible(itemId, inv)) continue
+            val dbItem = cache.getItem(itemId) ?: continue
+            val committed = inv.backroomStock / dbItem.casePack + (pending[itemId] ?: 0)
+            val remainingCap = (capInCasePacks - committed).coerceAtLeast(0)
+            val actualCasePacks = minOf(casePacksPerItem, remainingCap)
+            if (actualCasePacks <= 0) continue
+
+            val itemsToAdd = dbItem.casePack * actualCasePacks
             lines.add(
                 PendingOrderLine(
                     itemId = itemId,
-                    quantity = orderInfo.itemsToAdd,
-                    casePacksCount = orderInfo.actualCasePacks,
+                    quantity = itemsToAdd,
+                    casePacksCount = actualCasePacks,
                     unitCost = dbItem.unitCost.toMoney(),
                     orderedOnDay = currentDay,
-                    isFresh = true,
+                    isFresh = isFresh,
                 )
             )
-            totalItemsAdded += orderInfo.itemsToAdd
+            totalCases += actualCasePacks
+            baseCost += dbItem.getCasePackCostAsMoney() * actualCasePacks
+            totalItemsAdded += itemsToAdd
         }
+        if (lines.isEmpty()) return BuyResult(state, emptyList())
+
+        val repBonus = state.reputationState.supplierDiscountBonus.toDouble()
+        val totalDiscount = (discountFor(totalCases) + repBonus).coerceAtMost(0.99)
+        val finalCost = Money((baseCost.cents * (1.0 - totalDiscount)).toLong())
+        if (state.money < finalCost) return BuyResult(state, emptyList())
 
         val newState = state.copy(
             money = state.money - finalCost,
@@ -582,12 +547,10 @@ class InventoryManager(
 
     data class AutoOrderResult(val state: GameState, val itemsOrdered: Int)
 
-    // TODO(auto-order/immediate): The pending-case-pack maps (built here and threaded
-    // through processAutoOrderItem -> buyItemCasePacks via precomputedPendingCasePacks)
-    // are groundwork for making auto-ordering fire IMMEDIATELY within a tick. To do that
-    // safely, the cap check in buyItemCasePacks must count in-transit cases (this map) so a
-    // same-tick re-order can't blow past backroomCapPerItem. Until that's wired the maps are
-    // computed but not yet consumed in the buy path — intentionally kept, do NOT delete.
+    // Sum of in-transit case-packs per item across all scheduled trucks. Threaded into
+    // buyItemCasePacks (via precomputedPendingCasePacks) and the bulk-order path so the
+    // committed-stock cap counts in-transit cases and a re-order can't blow past
+    // backroomCapPerItem while deliveries are pending.
     private fun buildPendingCasePacksMap(state: GameState): MutableMap<Int, Int> {
         val map = mutableMapOf<Int, Int>()
         for (truck in state.scheduledTrucks) {

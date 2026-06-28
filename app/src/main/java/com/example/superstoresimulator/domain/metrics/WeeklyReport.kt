@@ -19,9 +19,6 @@ data class WeeklyReport(
     val totalRentPaid: Money get() = dailyReports.fold(Money.ZERO) { acc, d -> acc + d.rentPaid }
     val totalWagesPaid: Money get() = dailyReports.fold(Money.ZERO) { acc, d -> acc + d.wagesPaid }
 
-    val totalRefundsProcessed: Int get() = dailyReports.sumOf { it.refundsProcessed }
-    val totalRefundAmount: Money get() = dailyReports.fold(Money.ZERO) { acc, d -> acc + d.refundAmount }
-
     val totalCustomersServed: Int get() = dailyReports.sumOf { it.customersServed }
     val totalItemsSold: Int get() = dailyReports.sumOf { it.itemsSold }
     val totalItemsStocked: Int get() = dailyReports.sumOf { it.itemsStocked }

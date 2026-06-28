@@ -20,8 +20,6 @@ sealed interface GameEvent {
     data class PromoteStaff(val entityId: Int) : GameEvent
     data class FireStaff(val entityId: Int) : GameEvent
     data class ChangeStoreName(val name: String) : GameEvent
-    data class ProcessRefund(val refundId: Int) : GameEvent
-    data class ProcessRefundLine(val refundId: Int, val itemId: Int, val quantity: Int) : GameEvent
 
     data class SetGameSpeed(val multiplier: Float) : GameEvent
     data object ToggleStore : GameEvent

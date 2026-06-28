@@ -17,10 +17,6 @@ data class ArchivedDailyMetricsEntity(
     val rentPaidCents: Long = 0,
     val wagesPaidCents: Long = 0,
 
-    // Refunds
-    val refundsProcessed: Int = 0,
-    val refundAmountCents: Long = 0,
-
     // Customers
     val customersServed: Int = 0,
 

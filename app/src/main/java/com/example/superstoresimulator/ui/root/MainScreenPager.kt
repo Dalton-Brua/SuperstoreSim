@@ -43,7 +43,6 @@ fun MainScreenPager(
             Screen.GAME -> StoreHomeScreen(
                 state = state,
                 onStoreNameChange = { onEvent(GameEvent.ChangeStoreName(it)) },
-                onProcessRefundLine = { refundId: Int, itemId: Int, qty: Int -> onEvent(GameEvent.ProcessRefundLine(refundId, itemId, qty)) },
                 onViewItem = { itemId: Int -> onEvent(GameEvent.FocusInventoryItem(itemId)) },
                 itemDao = itemDao,
                 onNavigateToInventory = { navState.navigateTo(Screen.INVENTORY) },

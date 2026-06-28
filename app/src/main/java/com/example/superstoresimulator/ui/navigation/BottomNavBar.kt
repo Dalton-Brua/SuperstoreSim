@@ -41,11 +41,10 @@ private data class NavItem(
     val icon: ImageVector,
     val contentDescription: String,
     val label: String,
-    val showsRefundBadge: Boolean = false,
 )
 
 private val navItems = listOf(
-    NavItem(Screen.GAME, Icons.Default.AddShoppingCart, "Transactions", "Store", showsRefundBadge = true),
+    NavItem(Screen.GAME, Icons.Default.AddShoppingCart, "Transactions", "Store"),
     NavItem(Screen.INVENTORY, Icons.Default.Inbox, "Inventory", "Inventory"),
     NavItem(Screen.STAFF, Icons.Default.People, "Manage", "Manage"),
     NavItem(Screen.HISTORY, Icons.Default.History, "History", "History"),
@@ -56,7 +55,6 @@ private val navItems = listOf(
 fun BottomNavBar(
     current: Screen,
     onSelect: (Screen) -> Unit,
-    pendingRefundsCount: Int = 0,
     hintScreen: Screen? = null,
 ) {
     NavigationBar(containerColor = NavBarBackground) {
@@ -67,18 +65,10 @@ fun BottomNavBar(
                 selected = current == item.screen,
                 onClick = { onSelect(item.screen) },
                 icon = {
-                    if (item.showsRefundBadge || showsTutorialHint) {
+                    if (showsTutorialHint) {
                         Box {
-                            Icon(
-                                item.icon,
-                                contentDescription = item.contentDescription,
-                                tint = if (item.showsRefundBadge) Color.Unspecified else LocalContentColor.current
-                            )
-                            if (pendingRefundsCount > 0 && item.showsRefundBadge) {
-                                RefundCountBadge(pendingRefundsCount)
-                            } else if (showsTutorialHint) {
-                                TutorialHintDot()
-                            }
+                            Icon(item.icon, contentDescription = item.contentDescription)
+                            TutorialHintDot()
                         }
                     } else {
                         Icon(item.icon, contentDescription = item.contentDescription)
@@ -108,22 +98,3 @@ private fun BoxScope.TutorialHintDot() {
     )
 }
 
-@Composable
-private fun BoxScope.RefundCountBadge(count: Int) {
-    Box(
-        modifier = Modifier
-            .size(18.dp)
-            .align(Alignment.TopEnd)
-            .offset(x = 8.dp, y = (-6).dp)
-            .background(color = Color(0xFFEF4444), shape = CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = count.coerceAtMost(99).toString(),
-            color = Color.White,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(1.dp)
-        )
-    }
-}

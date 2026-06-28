@@ -27,7 +27,6 @@ import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.player.PlayerRole
 import com.example.superstoresimulator.ui.components.PlayerRoleButtons
-import com.example.superstoresimulator.ui.components.buttons.PendingRefundsButton
 import com.example.superstoresimulator.ui.components.panels.SettingsPanel
 import com.example.superstoresimulator.ui.components.cards.RegistersCard
 import com.example.superstoresimulator.ui.components.cards.StaffActivityCard
@@ -35,7 +34,6 @@ import com.example.superstoresimulator.ui.components.cards.StoreSizeCard
 import com.example.superstoresimulator.ui.components.cards.StoreOverviewCard
 import com.example.superstoresimulator.ui.components.cards.StorePricingCard
 import com.example.superstoresimulator.ui.components.common.TimeDisplayBar
-import com.example.superstoresimulator.ui.dialogs.PendingRefundsDialog
 import com.example.superstoresimulator.ui.dialogs.RegisterDetailDialog
 import com.example.superstoresimulator.domain.tutorial.TutorialManager
 import com.example.superstoresimulator.ui.state.GameUiState
@@ -59,7 +57,6 @@ fun StoreHomeScreen (
     itemDao: ItemDao,
     onNavigateToInventory: () -> Unit,
     modifier: Modifier = Modifier,
-    onProcessRefundLine: (refundId: Int, itemId: Int, qty: Int) -> Unit = { _, _, _ -> },
     onSpeedChanged: (Float) -> Unit = {},
     onOpenStore: () -> Unit = {},
     onSetPlayerRole: (PlayerRole) -> Unit = {},
@@ -76,7 +73,6 @@ fun StoreHomeScreen (
     onSetCategoryMarkup: (com.example.superstoresimulator.domain.items.ItemCategory, Int) -> Unit = { _, _ -> },
     contentPadding: PaddingValues = PaddingValues(),
 ) {
-    var showPendingRefunds by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
     var selectedRegisterId by remember { mutableStateOf<Int?>(null) }
 
@@ -232,16 +228,6 @@ fun StoreHomeScreen (
                 }
             }
 
-            // Pending refunds button - only show when there are pending refunds
-            if (state.transactions.pendingRefunds.isNotEmpty()) {
-                item {
-                    PendingRefundsButton(
-                        onClick = { showPendingRefunds = true },
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    )
-                }
-            }
-
             item { Spacer(Modifier.height(12.dp)) }
         }
 
@@ -319,15 +305,6 @@ fun StoreHomeScreen (
                 onDismiss = { selectedRegisterId = null },
                 onAssignCashier = onAssignCashierToRegister,
                 onAssignPlayer = onAssignPlayerToRegister,
-            )
-        }
-
-        if (showPendingRefunds) {
-            PendingRefundsDialog(
-                pending = state.transactions.pendingRefunds,
-                itemDao = itemDao,
-                onDismiss = { showPendingRefunds = false },
-                onProcessLine = onProcessRefundLine
             )
         }
     }

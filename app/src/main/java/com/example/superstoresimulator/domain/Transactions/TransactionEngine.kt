@@ -3,8 +3,6 @@ package com.example.superstoresimulator.domain.Transactions
 import android.annotation.SuppressLint
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
-import com.example.superstoresimulator.domain.RefundLine
-import com.example.superstoresimulator.domain.RefundRequest
 import com.example.superstoresimulator.domain.RegisterState
 import com.example.superstoresimulator.domain.findRegisterById
 import com.example.superstoresimulator.domain.updateRegister
@@ -23,7 +21,6 @@ import kotlin.random.Random
 
 class TransactionEngine(
     private val salesTaxRate: Double = DEFAULT_SALES_TAX_RATE,
-    private val refundChance: Double = 0.00,
     private val random: Random = Random.Default,
     private val cache: ItemMetadataCache? = null,
     private val pricingManager: PricingManager? = null,
@@ -33,17 +30,18 @@ class TransactionEngine(
     private var cachedAvailableIds: List<Int>? = null
     private var cachedResearchUpgrades: Set<String>? = null
     private var cachedVendorTier: Int = -1
-    private var cachedInventoryKeySize: Int = -1
+    private var cachedInventory: Map<Int, InventoryState>? = null
 
     private fun getAvailableItemIds(state: GameState): List<Int> {
         val upgrades = state.researchState.researchedUpgrades
         val vendorTier = state.vendorSystem.currentVendorTier
-        val keySize = state.inventory.size
 
+        // Key on the inventory map identity (===), not its size: a same-size key swap
+        // (one item removed, another added) must still invalidate the cache.
         if (cachedAvailableIds != null &&
             upgrades === cachedResearchUpgrades &&
             vendorTier == cachedVendorTier &&
-            keySize == cachedInventoryKeySize) {
+            state.inventory === cachedInventory) {
             return cachedAvailableIds!!
         }
 
@@ -56,7 +54,7 @@ class TransactionEngine(
         cachedAvailableIds = result
         cachedResearchUpgrades = upgrades
         cachedVendorTier = vendorTier
-        cachedInventoryKeySize = keySize
+        cachedInventory = state.inventory
         return result
     }
 
@@ -343,7 +341,6 @@ class TransactionEngine(
             }
         }
 
-        newState = maybeGenerateRefund(newState, lines, inventory, historyEntry.id)
         return newState
     }
 
@@ -454,221 +451,6 @@ class TransactionEngine(
         )
     }
 
-
-    /**
-     * Maybe create a pending RefundRequest and adjust inventory accordingly.
-     * [completedTransactionId] is the id of the just-completed transaction (from its historyEntry).
-     */
-    private fun maybeGenerateRefund(
-        state: GameState,
-        lines: List<TransactionLine>,
-        inventory: Map<Int, InventoryState>,
-        completedTransactionId: Int,
-    ): GameState {
-        if (random.nextDouble() >= refundChance) return state
-
-        val refundable = lines.filter { it.rungQty > 0 && !it.lostToOutOfStock }
-        if (refundable.isEmpty()) return state
-
-        val numLinesToRefund = (1..refundable.size).random(random)
-        val linesToRefund = refundable.shuffled(random).take(numLinesToRefund)
-
-        var updatedInventory = inventory
-        val refundLines = mutableListOf<TransactionLine>()
-        var refundSubtotal = Money(0)
-
-        for (line in linesToRefund) {
-            val qtyToRefund = (1..line.rungQty).random(random)
-            val itemId = line.itemId
-
-            val inv = updatedInventory[itemId]
-            if (inv != null) {
-                // Refunded items are added as a new batch with current day as receivedDay
-                val currentDay = state.currentTime.dayNumber
-                val metadata = cache?.get(itemId)
-                val expirationDay = if (metadata?.isPerishable == true) {
-                    currentDay + (metadata.shelfLifeDays ?: 0)
-                } else {
-                    Int.MAX_VALUE
-                }
-                
-                val newBatch = ItemBatch(
-                    receivedDay = currentDay,
-                    quantity = qtyToRefund,
-                    expirationDay = expirationDay
-                )
-                
-                val updatedShelfBatches = inv.mergeBatches(inv.shelfBatches + newBatch)
-                updatedInventory = updatedInventory + (itemId to inv.copy(
-                    shelfBatches = updatedShelfBatches
-                ))
-            }
-
-            val itemPrice = line.unitPrice
-
-            refundSubtotal += itemPrice * qtyToRefund
-
-            refundLines += TransactionLine(
-                itemId = itemId,
-                quantity = -qtyToRefund,
-                rungQty = -qtyToRefund,
-                unitPrice = itemPrice,
-                lineTotal = itemPrice * -qtyToRefund
-            )
-        }
-
-        if (refundLines.isEmpty()) return state
-
-        val refundTax = Money.Companion.fromDollars(refundSubtotal.toDouble() * salesTaxRate)
-
-        val refundRequest = RefundRequest(
-            id = state.nextRefundId,
-            timestamp = System.currentTimeMillis(),
-            originalTransactionId = completedTransactionId,
-            lines = refundLines.map { rl ->
-                RefundLine(
-                    itemId = rl.itemId,
-                    quantity = -rl.quantity,
-                    unitPrice = rl.unitPrice
-                )
-            },
-            subtotal = refundSubtotal,
-            tax = refundTax
-        )
-
-        return state.copy(
-            inventory = updatedInventory,
-            pendingRefunds = state.pendingRefunds + refundRequest,
-            nextRefundId = state.nextRefundId + 1
-        )
-    }
-
-    /**
-     * Process an entire pending refund by id.
-     */
-    fun processRefund(state: GameState, refundId: Int): GameState {
-        val refund = state.pendingRefunds.firstOrNull { it.id == refundId } ?: return state
-
-        val soldLines = refund.lines.map { rl ->
-            TransactionLine(
-                itemId = rl.itemId,
-                quantity = -rl.quantity,
-                rungQty = -rl.quantity,
-                unitPrice = rl.unitPrice,
-                lineTotal = rl.unitPrice * -rl.quantity
-            )
-        }
-
-        val refundTx = Transaction(
-            id = -(state.salesHistory.count { it.id < 0 } + 1),
-            lines = soldLines,
-            subtotal = -refund.subtotal,
-            tax = -refund.tax,
-            totalEarned = -refund.subtotal,
-            completedAt = getCurrentTime() // Use adjusted method
-        )
-
-        val refundTotal = refund.subtotal + refund.tax
-        return state.copy(
-            money = state.money - refund.subtotal,
-            totalTaxCollected = state.totalTaxCollected - refund.tax,
-            salesHistory = state.salesHistory + refundTx,
-            pendingRefunds = state.pendingRefunds.filter { it.id != refundId },
-            currentDayMetrics = state.currentDayMetrics.copy(
-                refundsProcessed = state.currentDayMetrics.refundsProcessed + 1,
-                refundAmount = state.currentDayMetrics.refundAmount + refundTotal,
-            ),
-        )
-    }
-
-
-    /**
-     * Process a specific quantity of one line within a pending refund.
-     */
-    fun processRefundLine(
-        state: GameState,
-        refundId: Int,
-        itemId: Int,
-        qty: Int = 1
-    ): GameState {
-        if (qty <= 0) return state
-
-        val refund = state.pendingRefunds.firstOrNull { it.id == refundId } ?: return state
-        val lineIndex = refund.lines.indexOfFirst { it.itemId == itemId }
-        if (lineIndex == -1) return state
-
-        val line = refund.lines[lineIndex]
-        val qtyToProcess = qty.coerceAtMost(line.quantity)
-        if (qtyToProcess <= 0) return state
-
-        val inv = state.inventory[itemId]
-        val updatedInventory =
-            if (inv != null) {
-                // Refunded items are added as a new batch with current day as receivedDay
-                val currentDay = state.currentTime.dayNumber
-                val metadata = cache?.get(itemId)
-                val expirationDay = if (metadata?.isPerishable == true) {
-                    currentDay + (metadata.shelfLifeDays ?: 0)
-                } else {
-                    Int.MAX_VALUE
-                }
-                
-                val newBatch = ItemBatch(
-                    receivedDay = currentDay,
-                    quantity = qtyToProcess,
-                    expirationDay = expirationDay
-                )
-                
-                val updatedShelfBatches = inv.mergeBatches(inv.shelfBatches + newBatch)
-                state.inventory + (itemId to inv.copy(
-                    shelfBatches = updatedShelfBatches
-                ))
-            } else {
-                state.inventory
-            }
-
-        val lineRefundSubtotal = line.unitPrice * qtyToProcess
-        val lineRefundTax = lineRefundSubtotal * salesTaxRate
-
-        val soldLine = TransactionLine(
-            itemId = itemId,
-            quantity = -qtyToProcess,
-            rungQty = -qtyToProcess,
-            unitPrice = line.unitPrice,
-            lineTotal = line.unitPrice * -qtyToProcess
-        )
-
-        val refundTx = Transaction(
-            id = -(state.salesHistory.count { it.id < 0 } + 1),
-            lines = listOf(soldLine),
-            subtotal = -lineRefundSubtotal,
-            tax = -lineRefundTax,
-            totalEarned = -lineRefundSubtotal,
-            completedAt = getCurrentTime() // Use adjusted method
-        )
-
-        val newRefundLines = refund.lines.toMutableList()
-        val remainingQty = line.quantity - qtyToProcess
-
-        if (remainingQty > 0) {
-            newRefundLines[lineIndex] = line.copy(quantity = remainingQty)
-        } else {
-            newRefundLines.removeAt(lineIndex)
-        }
-
-        val newPending = state.pendingRefunds
-            .map { if (it.id == refundId) it.copy(lines = newRefundLines) else it }
-            .filter { it.lines.isNotEmpty() }
-
-        return state.copy(
-            inventory = updatedInventory,
-            money = state.money - lineRefundSubtotal,
-            totalTaxCollected = state.totalTaxCollected - lineRefundTax,
-            salesHistory = state.salesHistory + refundTx,
-            pendingRefunds = newPending
-        )
-    }
-
     // ── Metrics-tracked ring-up (moved from GameEngine) ──────────────────────
 
     companion object {
@@ -723,7 +505,9 @@ class TransactionEngine(
         for (line in tx.lines) {
             if (line.lostToOutOfStock || line.quantity <= 0) continue
             val effectiveQty = line.weight?.toDouble() ?: line.quantity.toDouble()
-            val baseCents = (line.basePrice.cents * effectiveQty).toLong()
+            // Round, matching how lineTotal is computed (buildTransactionLine uses roundToLong),
+            // so an unmarked weighted item doesn't fabricate a 1-cent markup/markdown.
+            val baseCents = (line.basePrice.cents * effectiveQty).roundToLong()
             val diff = line.lineTotal.cents - baseCents
             if (diff > 0) {
                 txMarkupExtra += Money(diff)

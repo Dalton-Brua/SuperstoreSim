@@ -120,7 +120,6 @@ fun SuperstoreApp(
                             navState.navigateTo(screen)
                         }
                     },
-                    pendingRefundsCount = state.app.pendingRefunds,
                     hintScreen = state.tutorial.hintScreen,
                 )
             }

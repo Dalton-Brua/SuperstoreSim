@@ -166,14 +166,6 @@ class GameEngine @Inject constructor(
         state = transactionEngine.ringUpItemOnRegister(state, registerId)
     }
 
-    fun processRefund(refundId: Int) {
-        state = transactionEngine.processRefund(state, refundId)
-    }
-
-    fun processRefundLine(refundId: Int, itemId: Int, qty: Int = 1) {
-        state = transactionEngine.processRefundLine(state, refundId, itemId, qty)
-    }
-
     // ── Staff ─────────────────────────────────────────────────────────────────
 
     fun hireEntity(def: EntityDef) {

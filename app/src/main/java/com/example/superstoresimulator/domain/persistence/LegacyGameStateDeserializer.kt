@@ -17,8 +17,6 @@ import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.Transactions.TransactionLine
 import java.time.Instant
-import com.example.superstoresimulator.domain.RefundRequest
-import com.example.superstoresimulator.domain.RefundLine
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.metrics.DailyMetrics
 
@@ -58,7 +56,6 @@ object LegacyGameStateDeserializer {
                 money = Money(json.getLong("money")),
                 totalTransactionsCompleted = json.getInt("totalTransactionsCompleted"),
                 totalTaxCollected = Money(json.getLong("totalTaxCollected")),
-                nextRefundId = json.getInt("nextRefundId"),
                 playerPausedTime = json.getBoolean("playerPausedTime"),
                 totalRevenue = Money(json.getLong("totalRevenue")),
                 currentStoreSize = StoreSize.valueOf(json.getString("currentStoreSize")),
@@ -73,7 +70,6 @@ object LegacyGameStateDeserializer {
                 storeState = StoreState.valueOf(json.getString("storeState")),
                 storeConfig = deserializeStoreConfig(json.getJSONObject("storeConfig")),
                 salesHistory = deserializeTransactionList(json.getJSONArray("salesHistory")),
-                pendingRefunds = deserializeRefundRequestList(json.getJSONArray("pendingRefunds")),
                 inventory = deserializeInventory(json.getJSONObject("inventory")),
                 hiredEntityRegistry = deserializeHiredEntityRegistry(json.getJSONObject("hiredEntityRegistry")),
                 currentDayMetrics = if (json.has("currentDayMetrics")) {
@@ -241,38 +237,6 @@ object LegacyGameStateDeserializer {
         )
     }
 
-    private fun deserializeRefundRequest(json: JSONObject): RefundRequest {
-        val lines = mutableListOf<RefundLine>()
-        val linesArray = json.getJSONArray("lines")
-        for (i in 0 until linesArray.length()) {
-            lines.add(deserializeRefundLine(linesArray.getJSONObject(i)))
-        }
-        return RefundRequest(
-            id = json.getInt("id"),
-            timestamp = json.getLong("timestamp"),
-            originalTransactionId = json.getInt("originalTransactionId"),
-            lines = lines,
-            subtotal = Money(json.getLong("subtotal")),
-            tax = Money(json.getLong("tax"))
-        )
-    }
-
-    private fun deserializeRefundRequestList(jsonArray: JSONArray): List<RefundRequest> {
-        val list = mutableListOf<RefundRequest>()
-        for (i in 0 until jsonArray.length()) {
-            list.add(deserializeRefundRequest(jsonArray.getJSONObject(i)))
-        }
-        return list
-    }
-
-    private fun deserializeRefundLine(json: JSONObject): RefundLine {
-        return RefundLine(
-            itemId = json.getInt("itemId"),
-            quantity = json.getInt("quantity"),
-            unitPrice = Money(json.getLong("unitPrice"))
-        )
-    }
-
     private fun deserializeInventory(json: JSONObject): Map<Int, InventoryState> {
         val map = mutableMapOf<Int, InventoryState>()
         json.keys().forEach { key ->
@@ -352,7 +316,6 @@ object LegacyGameStateDeserializer {
         val revenue: Money, val subtotal: Money, val taxCollected: Money,
         val transactionsCompleted: Int,
         val rentPaid: Money, val wagesPaid: Money,
-        val refundsProcessed: Int, val refundAmount: Money,
         val customersServed: Int,
         val itemsSold: Int, val itemsStocked: Int, val itemsOrdered: Int,
         val lostRevenue: Money, val itemsLostToOutOfStock: Int,
@@ -377,8 +340,6 @@ object LegacyGameStateDeserializer {
         transactionsCompleted = json.getInt("transactionsCompleted"),
         rentPaid = Money(json.getLong("rentPaid")),
         wagesPaid = Money(json.getLong("wagesPaid")),
-        refundsProcessed = json.getInt("refundsProcessed"),
-        refundAmount = Money(json.getLong("refundAmount")),
         customersServed = json.getInt("customersServed"),
         itemsSold = json.getInt("itemsSold"),
         itemsStocked = json.getInt("itemsStocked"),
@@ -406,7 +367,6 @@ object LegacyGameStateDeserializer {
             subtotal = common.subtotal, taxCollected = common.taxCollected,
             transactionsCompleted = common.transactionsCompleted,
             rentPaid = common.rentPaid, wagesPaid = common.wagesPaid,
-            refundsProcessed = common.refundsProcessed, refundAmount = common.refundAmount,
             customersServed = common.customersServed,
             itemsSold = common.itemsSold, itemsStocked = common.itemsStocked, itemsOrdered = common.itemsOrdered,
             lostRevenue = common.lostRevenue, itemsLostToOutOfStock = common.itemsLostToOutOfStock,
@@ -431,7 +391,6 @@ object LegacyGameStateDeserializer {
             subtotal = common.subtotal, taxCollected = common.taxCollected,
             transactionsCompleted = common.transactionsCompleted,
             rentPaid = common.rentPaid, wagesPaid = common.wagesPaid,
-            refundsProcessed = common.refundsProcessed, refundAmount = common.refundAmount,
             customersServed = common.customersServed,
             itemsSold = common.itemsSold, itemsStocked = common.itemsStocked, itemsOrdered = common.itemsOrdered,
             lostRevenue = common.lostRevenue, itemsLostToOutOfStock = common.itemsLostToOutOfStock,

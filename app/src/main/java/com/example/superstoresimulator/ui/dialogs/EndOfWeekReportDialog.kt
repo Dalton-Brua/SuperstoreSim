@@ -98,15 +98,6 @@ fun EndOfWeekReportDialog(
                 WeekStatRow(Icons.Default.ShoppingCart, "Transactions", report.totalTransactions.toString())
                 WeekStatRow(Icons.AutoMirrored.Filled.TrendingUp, "Avg. Sale Value", report.averageTransactionValue.toString())
 
-                if (report.totalRefundsProcessed > 0) {
-                    Spacer(Modifier.height(4.dp))
-                    WeekStatRow(
-                        Icons.Default.Undo, "Refunds Issued",
-                        "${report.totalRefundsProcessed} (${report.totalRefundAmount})",
-                        tint = ClosedRed
-                    )
-                }
-
                 if (report.totalLostRevenue.cents > 0) {
                     Spacer(Modifier.height(4.dp))
                     WeekStatRow(

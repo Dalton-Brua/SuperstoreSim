@@ -102,10 +102,6 @@ data class DailyMetrics(
     val rentPaid: Money = Money.ZERO,       // Daily rent deducted
     val wagesPaid: Money = Money.ZERO,      // Total staff wages for the day
 
-    // ── Refunds ──────────────────────────────────────────────────────────
-    val refundsProcessed: Int = 0,
-    val refundAmount: Money = Money.ZERO,
-
     // ── Customers ────────────────────────────────────────────────────────
     val customersServed: Int = 0,
 
@@ -171,9 +167,9 @@ data class DailyMetrics(
             itemsSold.toFloat() / transactionsCompleted
         else 0f
 
-    /** Net revenue after refunds, rent, wages, and waste costs. */
+    /** Net revenue after rent, wages, and waste costs. */
     val netRevenue: Money
-        get() = (revenue - refundAmount) - rentPaid - wagesPaid - expiredWasteCost - vendorCommissionPaid
+        get() = revenue - rentPaid - wagesPaid - expiredWasteCost - vendorCommissionPaid
 
     val dayOfWeekName: String
         get() = GameTime.fullDayName(dayOfWeek)

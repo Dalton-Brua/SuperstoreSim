@@ -158,10 +158,6 @@ class GameViewModel @Inject constructor(
             is GameEvent.PromoteStaff -> gameEngine.promoteEntity(event.entityId)
             is GameEvent.FireStaff -> gameEngine.fireEntity(event.entityId)
             is GameEvent.ChangeStoreName -> gameEngine.updateStoreName(event.name)
-            is GameEvent.ProcessRefund -> gameEngine.processRefund(event.refundId)
-            is GameEvent.ProcessRefundLine -> {
-                gameEngine.processRefundLine(event.refundId, event.itemId, event.quantity)
-            }
             is GameEvent.SetGameSpeed -> {
                 gameEngine.setGameSpeed(event.multiplier)
                 return  // Don't update full UI state, just speed changed
@@ -477,7 +473,6 @@ class GameViewModel @Inject constructor(
         return GameUiState(
             app = AppUIState(
                 storeName = domain.storeName,
-                pendingRefunds = domain.pendingRefunds.size,
                 transactionActive = domain.transactionActive,
                 money = domain.money,
             ),
@@ -492,7 +487,6 @@ class GameViewModel @Inject constructor(
                 totalCompleted = domain.totalTransactionsCompleted,
                 isActive = domain.transactionActive,
                 isDialogOpen = oldUi?.transactions?.isDialogOpen ?: false,
-                pendingRefunds = domain.pendingRefunds,
                 pendingCustomers = domain.pendingCustomers,
                 completedToday = domain.currentDayMetrics.transactionsCompleted,
             ),
