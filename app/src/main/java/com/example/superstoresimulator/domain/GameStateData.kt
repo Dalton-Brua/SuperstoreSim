@@ -373,7 +373,13 @@ value class Money(val cents: Long) {
     operator fun times(multiplier: Long) = Money(cents * multiplier)
     operator fun unaryMinus() = Money(-cents)
     fun toDouble() = cents / 100.0
-    override fun toString(): String = String.format(Locale.US, "$%.2f", cents / 100.0)
+    // Full dollars under $1M; scientific (e.g. $5.00E6) above so the number stays short.
+    override fun toString(): String {
+        val dollars = cents / 100.0
+        if (kotlin.math.abs(dollars) < 1_000_000.0) return String.format(Locale.US, "$%.2f", dollars)
+        // "5.00E+06" -> "5.00E6"
+        return "$" + String.format(Locale.US, "%.2E", dollars).replace("E+0", "E").replace("E+", "E")
+    }
     companion object {
         val ZERO = Money(0)
         fun fromCents(c: Long) = Money(c)

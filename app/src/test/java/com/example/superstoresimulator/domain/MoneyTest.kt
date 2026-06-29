@@ -23,6 +23,10 @@ class MoneyTest {
         assertEquals("$1.00", Money(100).toString())
         assertEquals("$10.50", Money(1050).toString())
         assertEquals("$123.45", Money(12345).toString())
+        // $1M+ switches to scientific notation
+        assertEquals("$5.00E6", Money(500_000_000).toString())
+        assertEquals("$1.50E7", Money(1_500_000_000).toString())
+        assertEquals("$2.50E9", Money(250_000_000_000).toString())
     }
 
     @Test
