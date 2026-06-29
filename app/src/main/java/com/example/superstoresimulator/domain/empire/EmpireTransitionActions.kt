@@ -42,6 +42,9 @@ object EmpireTransitionActions {
                 hiredEntityRegistry = state.hiredEntityRegistry,
                 staffSchedules = state.staffSchedules,
                 truckConfig = state.truckConfig,
+                researchState = state.researchState,
+                currentDayMetrics = state.currentDayMetrics,
+                completedDayMetrics = state.completedDayMetrics,
             ),
         )
 

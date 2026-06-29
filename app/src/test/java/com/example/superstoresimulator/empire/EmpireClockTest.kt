@@ -122,6 +122,90 @@ class EmpireClockTest {
         assertTrue(reason!!.contains("loss", ignoreCase = true))
     }
 
+    /** One profitable mom-and-pop in a healthy region; [money] controls affordability pauses. */
+    private fun profitableEmpire(money: Money): GameState {
+        val region = Region(
+            regionId = 0,
+            name = "Hometown",
+            demandProfile = DemandProfile(baseSpendingPower = 1.0f, baseTraffic = 1.0f, growthRate = 0.0f),
+            capacity = 20f,
+            unlockCost = Money.ZERO,
+            unlocked = true,
+        )
+        val store = SecondaryStore(
+            storeId = 1,
+            storeName = "Corner Store",
+            regionId = 0,
+            storeSize = StoreSize.MOM_AND_POP,
+        )
+        return GameState().copy(
+            empireModeActive = true,
+            money = money,
+            empireClock = EmpireClock(speed = EmpireSpeed.NORMAL),
+            secondaryStores = listOf(store),
+            regions = listOf(region),
+        )
+    }
+
+    @Test
+    fun affordabilityPausesOnce_thenResumeDoesNotReNagSameSituation() {
+        // $2M can afford the 2nd location ($1M). First day pauses; after resume the same
+        // affordability must NOT re-pause every following day.
+        val day1 = EmpireClockController.advanceOneDay(profitableEmpire(Money(200_000_000L)))
+        assertEquals(EmpireSpeed.PAUSED, day1.empireClock.speed)
+        assertEquals("afford:2", day1.empireClock.pendingDecisionSignature)
+
+        val resumed = EmpireClockController.setSpeed(day1, EmpireSpeed.NORMAL)
+        val day2 = EmpireClockController.advanceOneDay(resumed)
+        assertNull("acknowledged affordability does not re-pause", day2.empireClock.pendingDecisionReason)
+        assertEquals(EmpireSpeed.NORMAL, day2.empireClock.speed)
+    }
+
+    @Test
+    fun secondStoreGoingToLossReTriggersPause() {
+        val deadRegion = Region(
+            regionId = 0,
+            name = "Ghost Town",
+            demandProfile = DemandProfile(baseSpendingPower = 1.0f, baseTraffic = 0.0f, growthRate = 0.0f),
+            capacity = 10f,
+            unlockCost = Money.ZERO,
+            unlocked = true,
+        )
+        val stores = listOf(
+            SecondaryStore(storeId = 1, storeName = "Mart A", regionId = 0, storeSize = StoreSize.MOM_AND_POP),
+            SecondaryStore(storeId = 2, storeName = "Mart B", regionId = 0, storeSize = StoreSize.MOM_AND_POP),
+        )
+        val state = GameState().copy(
+            empireModeActive = true,
+            money = Money.ZERO,
+            empireClock = EmpireClock(speed = EmpireSpeed.NORMAL),
+            secondaryStores = stores,
+            regions = listOf(deadRegion),
+        )
+
+        // First day pauses on store 1's loss; acknowledge it.
+        val day1 = EmpireClockController.advanceOneDay(state)
+        assertEquals("loss:1", day1.empireClock.pendingDecisionSignature)
+        val resumed = EmpireClockController.setSpeed(day1, EmpireSpeed.NORMAL)
+
+        // Store 2 is also losing → a *different* signature → re-pauses.
+        val day2 = EmpireClockController.advanceOneDay(resumed)
+        assertEquals(EmpireSpeed.PAUSED, day2.empireClock.speed)
+        assertEquals("loss:2", day2.empireClock.pendingDecisionSignature)
+    }
+
+    @Test
+    fun advanceToNextDecisionSkipsPastAlreadyAffordableMilestone() {
+        // Already affordable + paused on it. Skip-ahead must NOT stop on the same milestone;
+        // with no new condition it should run the full bounded horizon, not a single day.
+        val affordable = EmpireClockController.advanceOneDay(profitableEmpire(Money(200_000_000L)))
+        assertEquals("afford:2", affordable.empireClock.pendingDecisionSignature)
+
+        val skipped = EmpireClockController.advanceToNextDecision(affordable)
+        assertTrue("skip advances many days, not one", skipped.currentTime.dayNumber >= 300)
+        assertNull("no new decision fired", skipped.empireClock.pendingDecisionReason)
+    }
+
     @Test
     fun setSpeedClearsPendingDecisionReason() {
         val paused = GameState().copy(

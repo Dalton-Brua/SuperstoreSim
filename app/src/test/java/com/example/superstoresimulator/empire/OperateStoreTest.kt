@@ -47,11 +47,13 @@ class OperateStoreTest {
         stores: List<SecondaryStore>,
         operatingStoreId: Int? = null,
         day: Int = 3,
+        sessionStartDay: Int? = null,
     ) = GameState().copy(
         empireModeActive = true,
         regions = RegionRegistry.authored,
         secondaryStores = stores,
         operatingStoreId = operatingStoreId,
+        operateSessionStartDay = sessionStartDay,
         currentTime = GameTime(totalMinutesElapsed = day.toLong() * 1440L),
         empireClock = EmpireClock(speed = EmpireSpeed.NORMAL),
         playerPausedTime = true,
@@ -108,11 +110,13 @@ class OperateStoreTest {
             stores = listOf(store(id = 5, size = StoreSize.GROCERY_STORE)),
             operatingStoreId = 5,
             day = 9,
+            sessionStartDay = 8, // one full day played → score the session
         ).copy(completedDayMetrics = listOf(richDay))
 
         val result = OperateStoreController.dropOut(state)
 
         assertNull("operating store cleared", result.operatingStoreId)
+        assertNull("session start cleared", result.operateSessionStartDay)
         assertEquals(EmpireSpeed.PAUSED, result.empireClock.speed)
 
         val store = result.secondaryStores.first { it.storeId == 5 }
@@ -129,6 +133,38 @@ class OperateStoreTest {
             store.operatingPerformance,
             0.0001f,
         )
+    }
+
+    @Test
+    fun dropOut_leavesPerfUnchanged_whenNoFullDayPlayed() {
+        // Dropped in and out within the same day → no completed day to judge.
+        val richDay = DailyMetrics(dayNumber = 3, subtotal = Money.fromDollars(1_000_000.0))
+        val state = empireState(
+            stores = listOf(store(id = 5, operatingPerformance = 1.1f)),
+            operatingStoreId = 5,
+            day = 8,
+            sessionStartDay = 8, // same day → daysPlayed = 0
+        ).copy(completedDayMetrics = listOf(richDay))
+
+        val result = OperateStoreController.dropOut(state)
+        val store = result.secondaryStores.first { it.storeId == 5 }
+        assertEquals("sub-day session does not move performance", 1.1f, store.operatingPerformance, 0.0001f)
+    }
+
+    @Test
+    fun dropOut_snapshotsPerStoreMetrics_notGlobalLeftovers() {
+        // The operated store's own metrics get snapshotted into its operatingState.
+        val day = DailyMetrics(dayNumber = 7, subtotal = Money.fromDollars(500.0))
+        val state = empireState(
+            stores = listOf(store(id = 5)),
+            operatingStoreId = 5,
+            day = 7,
+        ).copy(completedDayMetrics = listOf(day))
+
+        val snapshot = OperateStoreController.dropOut(state)
+            .secondaryStores.first { it.storeId == 5 }.operatingState
+        assertNotNull(snapshot)
+        assertEquals(listOf(day), snapshot!!.completedDayMetrics)
     }
 
     @Test

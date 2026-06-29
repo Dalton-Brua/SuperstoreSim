@@ -27,6 +27,11 @@ import com.example.superstoresimulator.domain.time.TimeManager
 import com.example.superstoresimulator.domain.traffic.TrafficManager
 import com.example.superstoresimulator.domain.vendor.VendorManager
 import com.example.superstoresimulator.domain.empire.EmpireTransitionActions
+import com.example.superstoresimulator.domain.empire.StoreOperatingState
+import com.example.superstoresimulator.domain.empire.StoreReconstruction
+import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
+import com.example.superstoresimulator.domain.research.ResearchState
+import kotlin.random.Random
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -458,6 +463,50 @@ class GameEngine @Inject constructor(
         return inventory
     }
 
+    /**
+     * Build a full [StoreOperatingState] for a never-operated secondary store from
+     * [StoreReconstruction]'s per-size plan. Deterministic per [storeId]. Inventory is
+     * scoped to the researched product lines so a store missing a line also lacks its stock.
+     */
+    private fun reconstructOperatingState(size: StoreSize, storeId: Int): StoreOperatingState {
+        val plan = StoreReconstruction.plan(size, Random(storeId.toLong()))
+
+        var registry = HiredEntityRegistry()
+        val shifts = mutableListOf<StaffShift>()
+        for (def in plan.staff) {
+            registry = registry.hireEntity(def)
+            val newId = registry.hiredEntities.last().id
+            shifts.add(StaffShift(entityId = newId, startHour = 6, durationHours = 14))
+        }
+
+        val registers = (0 until plan.registerCount).map { RegisterState(registerId = it) }
+
+        return StoreOperatingState(
+            inventory = seedInventoryForResearch(plan.researchedUpgrades, quantity = 30, state.currentTime.dayNumber),
+            registers = registers,
+            hiredEntityRegistry = registry,
+            staffSchedules = shifts,
+            truckConfig = TruckConfig(deliveryDays = setOf(1, 4)),
+            researchState = ResearchState(researchedUpgrades = plan.researchedUpgrades),
+        )
+    }
+
+    /** Seed inventory for every item accessible under [researchedUpgrades]. */
+    private fun seedInventoryForResearch(
+        researchedUpgrades: Set<String>,
+        quantity: Int,
+        currentDay: Int,
+    ): Map<Int, InventoryState> {
+        val inventory = mutableMapOf<Int, InventoryState>()
+        itemMetadataCache.getAllItems().forEach { (itemId, item) ->
+            if (!itemMetadataCache.isItemAccessible(itemId, researchedUpgrades)) return@forEach
+            val expirationDay = if (item.shelfLifeDays != null) currentDay + item.shelfLifeDays else Int.MAX_VALUE
+            val batch = ItemBatch(receivedDay = currentDay, quantity = quantity, expirationDay = expirationDay)
+            inventory[itemId] = InventoryState(shelfBatches = listOf(batch), backroomBatches = listOf(batch))
+        }
+        return inventory
+    }
+
     private fun buildSeededState(): GameState {
         if (DEBUG_RICH_SEED) return buildDebugRichState()
 
@@ -543,6 +592,15 @@ class GameEngine @Inject constructor(
     }
 
     fun dropIntoStore(storeId: Int) {
+        // First-ever visit: fabricate a plausible already-running store (registers, research,
+        // staff, stocked shelves) scaled to its size, and persist it so the roll is stable.
+        val store = state.secondaryStores.firstOrNull { it.storeId == storeId }
+        if (store != null && store.operatingState == null) {
+            val seeded = store.copy(operatingState = reconstructOperatingState(store.storeSize, storeId))
+            state = state.copy(
+                secondaryStores = state.secondaryStores.map { if (it.storeId == storeId) seeded else it },
+            )
+        }
         state = com.example.superstoresimulator.domain.empire.OperateStoreController.dropIn(state, storeId)
         // Resume loop-1 timing from the empire-advanced clock so the first scoped tick
         // doesn't trigger a spurious day rollover (empire days advance without DayManager).

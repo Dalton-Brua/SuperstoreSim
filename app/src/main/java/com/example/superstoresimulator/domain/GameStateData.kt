@@ -336,6 +336,8 @@ data class GameState(
     val empireClock: EmpireClock = EmpireClock(),
     /** When non-null, the player is hands-on operating this store; loop-1 fields hold its state. */
     val operatingStoreId: Int? = null,
+    /** Day index the current operate session began, for full-day-gated performance scoring. */
+    val operateSessionStartDay: Int? = null,
 ) {
     val ownedRegisterCount: Int get() = registers.size
 

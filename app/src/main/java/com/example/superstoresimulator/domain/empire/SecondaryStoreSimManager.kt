@@ -57,7 +57,6 @@ object SecondaryStoreSimManager {
         val updatedStores = decayedStores.map { store ->
             val region = working.regions.firstOrNull { it.regionId == store.regionId }
             val satFactor = satByRegion[store.regionId] ?: 1.0f
-            val mods = EmpireTuning.modifiersFor(store.direction)
 
             if (region == null) {
                 // No region → no output this day, but still roll metrics forward.
@@ -67,41 +66,10 @@ object SecondaryStoreSimManager {
                     currentDayMetrics = empty,
                 )
             } else {
-                val customers = (
-                    EmpireTuning.BASE_DAILY_CUSTOMERS *
-                        store.storeSize.trafficMultiplier *
-                        mods.trafficMult *
-                        upgradeTrafficFactor(store) *
-                        region.demandProfile.baseTraffic *
-                        satFactor *
-                        globalFactor(working)
-                    ).toInt()
-
-                val avgBasketCents = EmpireTuning.BASE_AVG_BASKET.cents *
-                    store.storeSize.basketSizeMultiplier *
-                    region.demandProfile.baseSpendingPower *
-                    mods.priceMult
-
-                val revenue = Money((customers * avgBasketCents).toLong())
-                val operatingCost = Money(
-                    (EmpireTuning.BASE_OPERATING_COST.cents *
-                        EmpireTuning.sizeWeight(store.storeSize) *
-                        mods.costMult *
-                        upgradeCostFactor(store)
-                        ).toLong()
+                val metrics = storeDayMetrics(
+                    store, region, satFactor, store.direction, globalFactor(working), currentDay,
                 )
-                val netProfit = Money((revenue.cents * store.operatingPerformance).toLong()) - operatingCost
-                totalNet += netProfit
-
-                val metrics = SimStoreMetrics(
-                    dayIndex = currentDay,
-                    customers = customers,
-                    revenue = revenue,
-                    operatingCost = operatingCost,
-                    netProfit = netProfit,
-                    avgPriceLevel = mods.priceMult,
-                    trafficVsGoal = satFactor * mods.trafficMult,
-                )
+                totalNet += metrics.netProfit
                 store.copy(
                     completedDayMetrics = rollCompleted(store, currentDay),
                     currentDayMetrics = metrics,
@@ -203,9 +171,24 @@ object SecondaryStoreSimManager {
         saturationFactor: Float,
         overrideDirection: StoreDirection? = null,
     ): Money {
-        val dir = overrideDirection ?: store.direction
-        val mods = EmpireTuning.modifiersFor(dir)
         val region = state.regions.firstOrNull { it.regionId == store.regionId } ?: return Money.ZERO
+        val dir = overrideDirection ?: store.direction
+        return storeDayMetrics(store, region, saturationFactor, dir, globalFactor(state), dayIndex = 0).netProfit
+    }
+
+    /**
+     * Closed-form one-day economics for a single store. Single source of truth shared by the
+     * daily sim ([simulateDay]) and the manager's profit-floor estimator ([estimateStoreNetProfit]).
+     */
+    private fun storeDayMetrics(
+        store: SecondaryStore,
+        region: Region,
+        saturationFactor: Float,
+        direction: StoreDirection,
+        globalFactor: Float,
+        dayIndex: Int,
+    ): SimStoreMetrics {
+        val mods = EmpireTuning.modifiersFor(direction)
 
         val customers = (
             EmpireTuning.BASE_DAILY_CUSTOMERS *
@@ -214,7 +197,7 @@ object SecondaryStoreSimManager {
                 upgradeTrafficFactor(store) *
                 region.demandProfile.baseTraffic *
                 saturationFactor *
-                globalFactor(state)
+                globalFactor
             ).toInt()
 
         val avgBasketCents = EmpireTuning.BASE_AVG_BASKET.cents *
@@ -230,6 +213,16 @@ object SecondaryStoreSimManager {
                 upgradeCostFactor(store)
                 ).toLong()
         )
-        return Money((revenue.cents * store.operatingPerformance).toLong()) - operatingCost
+        val netProfit = Money((revenue.cents * store.operatingPerformance).toLong()) - operatingCost
+
+        return SimStoreMetrics(
+            dayIndex = dayIndex,
+            customers = customers,
+            revenue = revenue,
+            operatingCost = operatingCost,
+            netProfit = netProfit,
+            avgPriceLevel = mods.priceMult,
+            trafficVsGoal = saturationFactor * mods.trafficMult,
+        )
     }
 }

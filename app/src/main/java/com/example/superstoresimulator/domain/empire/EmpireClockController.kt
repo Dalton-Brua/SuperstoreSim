@@ -18,9 +18,23 @@ import com.example.superstoresimulator.domain.GameState
  */
 object EmpireClockController {
 
-    /** Set empire speed (PAUSED/NORMAL/FAST); clears any pending decision reason on resume. */
+    /**
+     * Set empire speed (PAUSED/NORMAL/FAST). Acknowledges the current pending decision so the
+     * same situation does not immediately re-pause; a genuinely new one still will.
+     */
     fun setSpeed(state: GameState, speed: EmpireSpeed): GameState {
-        return state.copy(empireClock = state.empireClock.copy(speed = speed, pendingDecisionReason = null))
+        val clock = state.empireClock
+        val acked = clock.pendingDecisionSignature
+            ?.let { clock.acknowledgedSignatures + it }
+            ?: clock.acknowledgedSignatures
+        return state.copy(
+            empireClock = clock.copy(
+                speed = speed,
+                pendingDecisionReason = null,
+                pendingDecisionSignature = null,
+                acknowledgedSignatures = acked,
+            ),
+        )
     }
 
     /** Real-ms driver. Advances whole sim days as elapsed time allows. */
@@ -52,43 +66,81 @@ object EmpireClockController {
         val newTime = state.currentTime.addMinutes(1440)
         var s = state.copy(currentTime = newTime)
         s = SecondaryStoreSimManager.simulateDay(s)
-        val decisionReason = evaluateDecisionPause(s)
-        if (decisionReason != null) {
-            s = s.copy(
-                empireClock = s.empireClock.copy(
+        return applyDecisionPause(s)
+    }
+
+    /**
+     * Auto-pause for the first active decision the player hasn't already acknowledged. Stale
+     * acknowledgements (conditions that have since cleared) are pruned so a recurrence re-fires.
+     */
+    private fun applyDecisionPause(state: GameState): GameState {
+        val active = activeDecisions(state)
+        val activeKeys = active.map { it.signature }.toSet()
+        // Keep only acks whose condition still holds; the rest re-arm.
+        val acked = state.empireClock.acknowledgedSignatures intersect activeKeys
+        val fresh = active.firstOrNull { it.signature !in acked }
+
+        return if (fresh == null) {
+            state.copy(empireClock = state.empireClock.copy(acknowledgedSignatures = acked))
+        } else {
+            state.copy(
+                empireClock = state.empireClock.copy(
                     speed = EmpireSpeed.PAUSED,
-                    pendingDecisionReason = decisionReason,
-                )
+                    pendingDecisionReason = fresh.reason,
+                    pendingDecisionSignature = fresh.signature,
+                    acknowledgedSignatures = acked,
+                ),
             )
         }
-        return s
     }
 
-    /** First matching anti-boredom auto-pause trigger, or null if none fire. */
-    private fun evaluateDecisionPause(state: GameState): String? {
-        if (state.secondaryStores.any { it.currentDayMetrics.netProfit.cents < 0 }) {
-            return "A store is operating at a loss."
-        }
+    /** A fired decision condition: a stable [signature] and the player-facing [reason]. */
+    private data class Decision(val signature: String, val reason: String)
 
-        val saturated = state.regions.any { region ->
+    /**
+     * Every decision condition currently firing, in priority order (losses, then saturation,
+     * then affordability). Signatures are per-store / per-region / per-location-number so each
+     * distinct situation is tracked independently.
+     */
+    private fun activeDecisions(state: GameState): List<Decision> {
+        val out = mutableListOf<Decision>()
+
+        state.secondaryStores
+            .filter { it.currentDayMetrics.netProfit.cents < 0 }
+            .forEach { out += Decision("loss:${it.storeId}", "${it.storeName} is operating at a loss.") }
+
+        state.regions.forEach { region ->
             val weight = state.secondaryStores
                 .filter { it.regionId == region.regionId }
-                .map { SecondaryStoreSimManager.storeWeight(it) }
-                .sum()
-            region.capacity > 0f && weight / region.capacity > 1.0f
+                .sumOf { SecondaryStoreSimManager.storeWeight(it).toDouble() }
+            if (region.capacity > 0f && weight / region.capacity > 1.0f) {
+                out += Decision("sat:${region.regionId}", "${region.name} has tipped into saturation.")
+            }
         }
-        if (saturated) return "A region has tipped into saturation."
 
-        val nextCost = EmpireTuning.locationCost(state.secondaryStores.size + 1)
-        if (state.money >= nextCost) return "You can afford a new location."
+        val nextLocation = state.secondaryStores.size + 1
+        if (state.money >= EmpireTuning.locationCost(nextLocation)) {
+            out += Decision("afford:$nextLocation", "You can afford a new location.")
+        }
 
-        return null
+        return out
     }
 
-    /** Skip-ahead: advance days until a decision-pause condition fires (bounded). */
+    /** Skip-ahead: advance days until a *new* (unacknowledged) decision fires (bounded). */
     fun advanceToNextDecision(state: GameState): GameState {
         if (!state.empireModeActive) return state
-        var s = state.copy(empireClock = state.empireClock.copy(pendingDecisionReason = null))
+        val clock = state.empireClock
+        // Acknowledge the current pause so the skip doesn't stop on it again immediately.
+        val acked = clock.pendingDecisionSignature
+            ?.let { clock.acknowledgedSignatures + it }
+            ?: clock.acknowledgedSignatures
+        var s = state.copy(
+            empireClock = clock.copy(
+                pendingDecisionReason = null,
+                pendingDecisionSignature = null,
+                acknowledgedSignatures = acked,
+            ),
+        )
         repeat(365) {
             s = advanceOneDay(s)
             if (s.empireClock.pendingDecisionReason != null) return s

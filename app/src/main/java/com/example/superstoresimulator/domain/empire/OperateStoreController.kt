@@ -54,6 +54,10 @@ object OperateStoreController {
             hiredEntityRegistry = op.hiredEntityRegistry,
             staffSchedules = op.staffSchedules,
             truckConfig = op.truckConfig,
+            researchState = op.researchState,
+            currentDayMetrics = op.currentDayMetrics,
+            completedDayMetrics = op.completedDayMetrics,
+            operateSessionStartDay = state.currentTime.dayNumber,
             storeConfig = state.storeConfig.copy(backroomCapPerItem = store.storeSize.backroomCapPerItem),
         )
     }
@@ -68,15 +72,27 @@ object OperateStoreController {
             hiredEntityRegistry = state.hiredEntityRegistry,
             staffSchedules = state.staffSchedules,
             truckConfig = state.truckConfig,
+            researchState = state.researchState,
+            currentDayMetrics = state.currentDayMetrics,
+            completedDayMetrics = state.completedDayMetrics,
         )
 
-        // ponytail: simple realized-vs-sim-baseline heuristic
+        // Score realized hands-on profit against the sim baseline, but only once at least one
+        // full day has been played — a sub-day visit has no completed day to judge, so leave
+        // operatingPerformance untouched. Metrics here are this store's own (loaded on drop-in),
+        // so there is no cross-store contamination. ponytail: averaged net over the session's days.
+        val startDay = state.operateSessionStartDay
+        val daysPlayed = if (startDay != null) (state.currentTime.dayNumber - startDay).coerceAtLeast(0) else 0
         val baseline = SecondaryStoreSimManager.estimateStoreNetProfit(state, store, 1.0f)
-        val realized = state.completedDayMetrics.lastOrNull()?.netRevenue
-        var perf =
-            if (baseline.cents > 0 && realized != null) realized.cents.toFloat() / baseline.cents.toFloat()
-            else store.operatingPerformance
-        perf = perf.coerceIn(EmpireTuning.OPERATING_PERFORMANCE_MIN, EmpireTuning.OPERATING_PERFORMANCE_MAX)
+        val window = state.completedDayMetrics.takeLast(daysPlayed)
+        val perf =
+            if (daysPlayed >= 1 && baseline.cents > 0 && window.isNotEmpty()) {
+                val avgNet = window.sumOf { it.netRevenue.cents } / window.size
+                (avgNet.toFloat() / baseline.cents.toFloat())
+                    .coerceIn(EmpireTuning.OPERATING_PERFORMANCE_MIN, EmpireTuning.OPERATING_PERFORMANCE_MAX)
+            } else {
+                store.operatingPerformance
+            }
 
         val updatedStore = store.copy(
             operatingState = snapshot,
@@ -86,6 +102,7 @@ object OperateStoreController {
 
         return state.copy(
             operatingStoreId = null,
+            operateSessionStartDay = null,
             secondaryStores = state.secondaryStores.map { if (it.storeId == storeId) updatedStore else it },
             empireClock = state.empireClock.copy(speed = EmpireSpeed.PAUSED), // player resumes empire clock manually
         )
