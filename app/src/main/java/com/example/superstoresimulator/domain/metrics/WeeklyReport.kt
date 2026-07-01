@@ -45,4 +45,6 @@ data class WeeklyReport(
         else 0f
 
     val totalDeliveredTrucks: Int get() = dailyReports.sumOf { it.deliveredTrucks.size }
+
+    val completedResearch: List<CompletedResearchEvent> get() = dailyReports.flatMap { it.completedResearch }
 }

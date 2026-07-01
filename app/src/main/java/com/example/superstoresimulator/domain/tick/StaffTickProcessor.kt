@@ -22,7 +22,14 @@ class StaffTickProcessor @Inject constructor(
     private val pricingManager: PricingManager,
     private val itemMetadataCache: ItemMetadataCache,
 ) {
-    fun process(state: GameState, delta: Double, speedMultiplier: Float, currentHour: Int, pricingData: PricingManager.PricingData? = null): GameState {
+    fun process(
+        state: GameState,
+        delta: Double,
+        speedMultiplier: Float,
+        currentHour: Int,
+        pricingData: PricingManager.PricingData? = null,
+        providedScan: InventoryScanResult? = null,
+    ): GameState {
         var s = state
         val dayOfWeek = s.currentTime.dayOfWeek
         val bonuses = StaffManager.computeAllBonuses(
@@ -48,8 +55,8 @@ class StaffTickProcessor @Inject constructor(
             }
         }
 
-        // Inventory scan
-        val scan = scanInventory(s.inventory, itemMetadataCache)
+        // Inventory scan (reuse the orchestrator's single per-tick scan when supplied)
+        val scan = providedScan ?: scanInventory(s.inventory, itemMetadataCache)
         var hasFreshBackroomStock = scan.hasFreshBackroomStock
 
         // Stocker work — split stocking managers from regular stockers
@@ -86,7 +93,6 @@ class StaffTickProcessor @Inject constructor(
 
                 if (remainingManagerActions > 0 && (scan.hasActionableBackroom || hasFreshBackroomStock)) {
                     if (hasFreshBackroomStock) {
-                        val freshBefore = remainingManagerActions
                         s = inventoryManager.stockMultipleFromBackroom(s, remainingManagerActions, freshOnly = true)
                         hasFreshBackroomStock = hasFreshBackroomStock(s)
                         remainingManagerActions = if (hasFreshBackroomStock) 0 else remainingManagerActions
@@ -112,7 +118,9 @@ class StaffTickProcessor @Inject constructor(
             if (remainingStockerActions > 0 && hasFreshBackroomStock) {
                 s = inventoryManager.stockMultipleFromBackroom(s, remainingStockerActions, freshOnly = true)
                 hasFreshBackroomStock = hasFreshBackroomStock(s)
-                if (!hasFreshBackroomStock) remainingStockerActions = 0
+                // Fresh still in backroom → actions exhausted on it; none left for normal.
+                // (Was inverted: cleared normal stocking exactly when fresh was done.)
+                if (hasFreshBackroomStock) remainingStockerActions = 0
             }
             if (remainingStockerActions > 0) {
                 s = inventoryManager.stockMultipleFromBackroom(s, remainingStockerActions, freshOnly = false)

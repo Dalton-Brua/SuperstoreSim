@@ -201,7 +201,7 @@ fun StoreManagerConfigDialog(
                     Button(
                         onClick = {
                             onConfigChanged(
-                                StoreManagerConfig(
+                                config.copy(
                                     autoHireEnabled = autoHire,
                                     autoHireCashiers = hireCashiers,
                                     autoHireStockers = hireStockers,

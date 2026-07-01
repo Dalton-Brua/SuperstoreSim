@@ -221,6 +221,23 @@ fun EndOfWeekReportDialog(
                     }
                 }
 
+                // Research Completed section
+                val weekResearch = report.completedResearch
+                if (weekResearch.isNotEmpty()) {
+                    WeekSectionHeader("🔬 Research Completed")
+                    weekResearch.forEach { research ->
+                        WeekStatRow(
+                            Icons.Default.Science,
+                            research.displayName,
+                            if (research.unlockedItemCount > 0)
+                                "+${research.unlockedItemCount} item${if (research.unlockedItemCount > 1) "s" else ""}"
+                            else "Unlocked",
+                            tint = Secondary
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+
                 Spacer(Modifier.height(20.dp))
 
                 // Dismiss button

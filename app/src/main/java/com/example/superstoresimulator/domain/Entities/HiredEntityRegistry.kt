@@ -1,9 +1,16 @@
 package com.example.superstoresimulator.domain.Entities
 
+import com.example.superstoresimulator.domain.persistence.TolerantListSerializer
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+
+/** Drops individual hires that fail to decode (e.g. a renamed/removed EntityDef.key)
+ *  instead of failing the whole registry — and by extension the whole save. */
+object HiredEntityListSerializer : KSerializer<List<HiredEntity>> by TolerantListSerializer(HiredEntity.serializer())
 
 @Serializable
 data class HiredEntityRegistry(
+    @Serializable(with = HiredEntityListSerializer::class)
     private val entities: List<HiredEntity> = emptyList(),
     private var nextEntityId: Int = 1
 ) {

@@ -86,31 +86,26 @@ object LegacyGameStateDeserializer {
                     deserializeDailyMetrics(json.getJSONObject("lastEndOfDayReport"))
                 } else null,
                 scheduledTrucks = if (json.has("scheduledTrucks")) {
-                    val arr = json.getJSONArray("scheduledTrucks")
-                    (0 until arr.length()).map { deserializeScheduledTruck(arr.getJSONObject(it)) }
+                    json.getJSONArray("scheduledTrucks").mapObjects { deserializeScheduledTruck(it) }
                 } else emptyList(),
                 truckConfig = if (json.has("truckConfig")) {
                     deserializeTruckConfig(json.getJSONObject("truckConfig"))
                 } else TruckConfig(),
                 nextTruckId = if (json.has("nextTruckId")) json.getInt("nextTruckId") else 1,
                 staffSchedules = if (json.has("staffSchedules")) {
-                    val arr = json.getJSONArray("staffSchedules")
-                    (0 until arr.length()).mapNotNull { i ->
-                        val shiftJson = arr.getJSONObject(i)
-                        val startHour = shiftJson.getInt("startHour")
-                        val duration = if (shiftJson.has("durationHours")) shiftJson.getInt("durationHours") else 8
-                        if (startHour in 6..20 && duration in 2..8 && startHour + duration <= 21) {
+                    // Let StaffShift.init enforce its bounds; drop any shift it rejects.
+                    json.getJSONArray("staffSchedules").mapObjects { shiftJson ->
+                        runCatching {
                             StaffShift(
                                 entityId = shiftJson.getInt("entityId"),
-                                startHour = startHour,
-                                durationHours = duration,
+                                startHour = shiftJson.getInt("startHour"),
+                                durationHours = if (shiftJson.has("durationHours")) shiftJson.getInt("durationHours") else 8,
                             )
-                        } else null
-                    }
+                        }.getOrNull()
+                    }.filterNotNull()
                 } else emptyList(),
                 registers = if (json.has("registers")) {
-                    val arr = json.getJSONArray("registers")
-                    (0 until arr.length()).map { deserializeRegisterState(arr.getJSONObject(it)) }
+                    json.getJSONArray("registers").mapObjects { deserializeRegisterState(it) }
                 } else {
                     listOf(
                         RegisterState(
@@ -151,9 +146,7 @@ object LegacyGameStateDeserializer {
                     )
                 } else FreshAutoOrderConfig(),
                 incompleteFreshOrders = if (json.has("incompleteFreshOrders")) {
-                    val arr = json.getJSONArray("incompleteFreshOrders")
-                    (0 until arr.length()).map { i ->
-                        val o = arr.getJSONObject(i)
+                    json.getJSONArray("incompleteFreshOrders").mapObjects { o ->
                         IncompleteOrderRequest(
                             itemId = o.getInt("itemId"),
                             casePacksRequested = o.getInt("casePacksRequested"),
@@ -277,11 +270,11 @@ object LegacyGameStateDeserializer {
     }
 
     private fun deserializeHiredEntityRegistry(json: JSONObject): HiredEntityRegistry {
-        val entities = mutableListOf<HiredEntity>()
-        val entitiesArray = json.getJSONArray("entities")
-        for (i in 0 until entitiesArray.length()) {
-            entities.add(deserializeHiredEntity(entitiesArray.getJSONObject(i)))
-        }
+        // Drop individual entities that fail to parse (e.g. a renamed/removed EntityDef.key)
+        // instead of letting one bad hire abort the whole save.
+        val entities = json.getJSONArray("entities").mapObjects { obj ->
+            runCatching { deserializeHiredEntity(obj) }.getOrNull()
+        }.filterNotNull()
         val fallbackNextId = (entities.maxOfOrNull { it.id } ?: 0) + 1
         val nextEntityId = json.optInt("nextEntityId", fallbackNextId)
         return HiredEntityRegistry(entities = entities, nextEntityId = nextEntityId)
@@ -475,8 +468,7 @@ object LegacyGameStateDeserializer {
         )
 
     private fun deserializeDeliveredTruckRecord(json: JSONObject): DeliveredTruckRecord {
-        val linesArray = json.getJSONArray("lines")
-        val lines = (0 until linesArray.length()).map { deserializeDeliveredItemLine(linesArray.getJSONObject(it)) }
+        val lines = json.getJSONArray("lines").mapObjects { deserializeDeliveredItemLine(it) }
         return DeliveredTruckRecord(
             truckId = json.getInt("truckId"),
             arrivalDay = json.getInt("arrivalDay"),
@@ -488,10 +480,7 @@ object LegacyGameStateDeserializer {
     }
 
     private fun deserializeScheduledTruck(json: JSONObject): ScheduledTruck {
-        val ordersArray = json.getJSONArray("orders")
-        val orders = (0 until ordersArray.length()).map {
-            deserializePendingOrderLine(ordersArray.getJSONObject(it))
-        }
+        val orders = json.getJSONArray("orders").mapObjects { deserializePendingOrderLine(it) }
         return ScheduledTruck(
             truckId = json.getInt("truckId"),
             scheduledArrivalDay = json.getInt("scheduledArrivalDay"),

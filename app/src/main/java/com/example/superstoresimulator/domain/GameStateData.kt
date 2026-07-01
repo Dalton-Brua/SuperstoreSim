@@ -20,6 +20,8 @@ import com.example.superstoresimulator.domain.empire.EmpireClock
 import com.example.superstoresimulator.domain.empire.Region
 import com.example.superstoresimulator.domain.empire.RegionalManager
 import com.example.superstoresimulator.domain.empire.SecondaryStore
+import com.example.superstoresimulator.domain.persistence.TolerantListSerializer
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import java.util.Locale
 
@@ -74,6 +76,12 @@ data class StaffShift(
 
     fun isOnShift(hour: Int, dayOfWeek: Int): Boolean =
         (workDays.isEmpty() || dayOfWeek in workDays) && hour >= startHour && hour < endHour
+
+    companion object {
+        /** Drops shifts that fail to decode (e.g. a since-tightened bound) instead of
+         *  failing the whole save — see [TolerantListSerializer]. */
+        object ListSerializer : KSerializer<List<StaffShift>> by TolerantListSerializer(StaffShift.serializer())
+    }
 }
 
 // ── Truck Delivery System ─────────────────────────────────────────────────────
@@ -298,6 +306,7 @@ data class GameState(
     val nextTruckId: Int = 1,
 
     // Staff scheduling
+    @Serializable(with = StaffShift.Companion.ListSerializer::class)
     val staffSchedules: List<StaffShift> = emptyList(),
 
     // ── Register System ───────────────────────────────────────────────────────

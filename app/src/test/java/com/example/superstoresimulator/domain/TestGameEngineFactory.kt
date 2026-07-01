@@ -62,7 +62,7 @@ fun createTestGameEngine(cache: ItemMetadataCache): GameEngine {
         playerTickProcessor, utilizationTracker,
         staffManager, dayManager,
         researchTickProcessor, tutorialTickProcessor,
-        metricsArchiver,
+        metricsArchiver, cache,
     )
     val engine = GameEngine(
         itemMetadataCache = cache,

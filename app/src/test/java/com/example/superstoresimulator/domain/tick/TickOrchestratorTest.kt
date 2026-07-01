@@ -81,7 +81,7 @@ class TickOrchestratorTest {
             playerTickProcessor, utilizationTracker,
             staffManager, dayManager,
             researchTickProcessor, tutorialTickProcessor,
-            metricsArchiver,
+            metricsArchiver, cache,
         )
     }
 

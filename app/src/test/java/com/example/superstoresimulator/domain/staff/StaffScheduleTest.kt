@@ -1,10 +1,14 @@
 package com.example.superstoresimulator.domain.staff
 
 import com.example.superstoresimulator.domain.Entities.EntityDef
+import com.example.superstoresimulator.domain.Entities.EntityTrait
+import com.example.superstoresimulator.domain.Entities.HiredEntity
 import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
+import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.StaffShift
+import com.example.superstoresimulator.domain.time.GameTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -134,6 +138,38 @@ class StaffScheduleTest {
             "Stocker shift should remain after firing cashier",
             state.staffSchedules.any { it.entityId == stockerId },
         )
+    }
+
+    // ── Weekly optimize: off-day rotation ────────────────────────────────────
+
+    // Returns the days-off the Store Manager assigns a lone cashier on the Monday
+    // rollover of the given week (dayOfWeek == 0 fires optimizeWeeklySchedules).
+    private fun cashierOffDaysForWeek(week: Int): Set<Int> {
+        val manager = HiredEntity(id = 1, name = "Boss", entityDefinition = EntityDef.MANAGER, trait = EntityTrait.EFFICIENT, tier = Tier.MANAGER)
+        val cashier = HiredEntity(id = 2, name = "Cash", entityDefinition = EntityDef.CASHIER, trait = EntityTrait.EFFICIENT)
+        val state = GameState(
+            money = Money(500_000L),
+            hiredEntityRegistry = HiredEntityRegistry(entities = listOf(manager, cashier), nextEntityId = 3),
+            staffSchedules = listOf(StaffShift(entityId = 2, startHour = 6)),
+            currentTime = GameTime(week * 7L * 1440L), // a Monday (dayOfWeek == 0)
+        )
+        val result = staffManager.optimizeWeeklySchedules(state)
+        val workDays = result.staffSchedules.first { it.entityId == 2 }.workDays
+        return (0..6).toSet() - workDays
+    }
+
+    @Test
+    fun `weekly optimize gives a 5-day cashier exactly two days off`() {
+        val offDays = cashierOffDaysForWeek(week = 0)
+        assertEquals("maxDays=5 → 2 days off", 2, offDays.size)
+    }
+
+    @Test
+    fun `weekly optimize does not always cut Friday`() {
+        // Regression: a stable high→low demand sort dropped Friday (day 4) every week because
+        // all weekdays share the same demand. Off-days must rotate, not pin to Friday.
+        val cutFridayEveryWeek = (0..6).all { 4 in cashierOffDaysForWeek(it) }
+        assertFalse("Friday must not be an off-day every single week", cutFridayEveryWeek)
     }
 
     // ── updateShift ──────────────────────────────────────────────────────────

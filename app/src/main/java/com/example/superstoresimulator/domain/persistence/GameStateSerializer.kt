@@ -16,6 +16,10 @@ object GameStateSerializer {
     fun serialize(state: GameState): String =
         json.encodeToString(state)
 
+    // The two fields most likely to reject a persisted value against a since-changed
+    // invariant — StaffShift's duration bound, an unresolvable HiredEntity def key — decode
+    // through TolerantListSerializer (see GameState.staffSchedules / HiredEntityRegistry),
+    // which drops the individual bad element instead of failing the whole decode.
     @Suppress("DEPRECATION")
     fun deserialize(raw: String): GameState? = runCatching {
         val probe = JSONObject(raw)

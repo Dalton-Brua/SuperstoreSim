@@ -77,6 +77,14 @@ data class AutoHireEvent(
 )
 
 @Serializable
+data class CompletedResearchEvent(
+    val upgradeId: String,
+    val displayName: String,
+    /** How many items this upgrade unlocked. */
+    val unlockedItemCount: Int,
+)
+
+@Serializable
 data class SoldItemEvent(
     val itemId: Int,
     val itemName: String = "",
@@ -152,6 +160,9 @@ data class DailyMetrics(
     val vendorCommissionPaid: Money = Money.ZERO,
     val vendorItemsSold: Int = 0,
     val vendorRevenue: Money = Money.ZERO,
+
+    // ── Research ──────────────────────────────────────────────────────────
+    val completedResearch: List<CompletedResearchEvent> = emptyList(),
 ) {
     val revenue: Money get() = subtotal + taxCollected
 

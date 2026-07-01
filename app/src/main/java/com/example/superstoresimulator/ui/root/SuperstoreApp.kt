@@ -2,6 +2,9 @@ package com.example.superstoresimulator.ui.root
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -19,6 +22,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.superstoresimulator.domain.Screen
 import com.example.superstoresimulator.domain.items.ItemDao
@@ -133,11 +138,22 @@ fun SuperstoreApp(
                         modifier = Modifier.padding(paddingValues),
                     )
                 } else {
+                    // The floating EmpireEntryCard (below) overlays every screen's bottom.
+                    // Reserve room for it so it doesn't cover the tail of any list.
+                    val cardVisible = !state.empire.active && state.empire.canEnterEmpire
+                    val pagerPadding = if (cardVisible) {
+                        PaddingValues(
+                            start = paddingValues.calculateStartPadding(LayoutDirection.Ltr),
+                            end = paddingValues.calculateEndPadding(LayoutDirection.Ltr),
+                            top = paddingValues.calculateTopPadding(),
+                            bottom = paddingValues.calculateBottomPadding() + 120.dp,
+                        )
+                    } else paddingValues
                     MainScreenPager(
                         state = state,
                         navState = navState,
                         itemDao = itemDao,
-                        paddingValues = paddingValues,
+                        paddingValues = pagerPadding,
                         onEvent = onEvent,
                         onFreshBulkOrder = { showFreshBulkOrderDialog = true },
                         onViewIncompleteOrders = { showIncompleteOrdersDialog = true },

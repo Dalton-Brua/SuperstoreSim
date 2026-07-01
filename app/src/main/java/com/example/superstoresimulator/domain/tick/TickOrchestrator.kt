@@ -7,6 +7,7 @@ import com.example.superstoresimulator.domain.Transactions.TransactionEngine
 import com.example.superstoresimulator.domain.expiration.SpoilageManager
 import com.example.superstoresimulator.domain.metrics.DayManager
 import com.example.superstoresimulator.domain.metrics.MetricsArchiver
+import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import com.example.superstoresimulator.domain.pricing.PricingManager
 import com.example.superstoresimulator.domain.registers.RegisterManager
 import com.example.superstoresimulator.domain.staff.StaffManager
@@ -35,6 +36,7 @@ class TickOrchestrator @Inject constructor(
     private val researchTickProcessor: ResearchTickProcessor,
     private val tutorialTickProcessor: TutorialTickProcessor,
     private val metricsArchiver: MetricsArchiver,
+    private val itemMetadataCache: ItemMetadataCache,
 ) {
     fun resetTickProcessors() {
         researchTickProcessor.reset()
@@ -83,12 +85,14 @@ class TickOrchestrator @Inject constructor(
         val dayOfWeek = s.currentTime.dayOfWeek
         s = registerManager.performShiftCheckAndReassignment(s, currentHour, dayOfWeek)
         s = trafficProcessor.process(s, delta, currentHour, tickPricingData)
-        s = staffTickProcessor.process(s, delta, speedMultiplier, currentHour, tickPricingData)
+        // One inventory scan per tick, shared by the staff processor and utilization sampler.
+        val inventoryScan = scanInventory(s.inventory, itemMetadataCache)
+        s = staffTickProcessor.process(s, delta, speedMultiplier, currentHour, tickPricingData, inventoryScan)
         if (!offlineMode) {
             s = playerTickProcessor.process(s, delta)
         }
         if (sampleUtilization) {
-            utilizationTracker.sample(s, currentHour)
+            utilizationTracker.sample(s, currentHour, inventoryScan)
         }
         s = researchTickProcessor.process(s)
         s = tutorialTickProcessor.process(s)

@@ -418,7 +418,9 @@ class StaffManager @Inject constructor() {
         val avgInLine = metrics.avgHourlyPendingCustomers
         val needMoreCheckout = avgInLine > registerCount
 
-        if (config.autoHireCashiers && (needMoreCheckout || metrics.hasUnstaffedRegisters)) {
+        // cashierCount > 0 mirrors the stocker guard below: when zero cashiers existed the
+        // bootstrap hire above already covered this rollover — don't hire a second in one day.
+        if (config.autoHireCashiers && cashierCount > 0 && (needMoreCheckout || metrics.hasUnstaffedRegisters)) {
             val cashierIds = result.hiredEntityRegistry.getByDef(EntityDef.CASHIER).map { it.id }.toSet()
             val cashierShifts = result.staffSchedules.filter { it.entityId in cashierIds }
             val hasUncoveredHours = (6..20).any { hour -> cashierShifts.none { it.isOnShift(hour) } }
@@ -465,9 +467,10 @@ class StaffManager @Inject constructor() {
             }
         }
 
-        // Fresh handler auto-hire: only when OOS items have no pending orders
+        // Fresh handler auto-hire: only when OOS items have no pending orders.
+        // freshCount > 0 mirrors the stocker/cashier guard — bootstrap covered the zero case.
         val unorderedOosIds = freshOosIds - freshOrderedIds
-        if (config.autoHireFreshHandlers && unorderedOosIds.isNotEmpty()) {
+        if (config.autoHireFreshHandlers && freshCount > 0 && unorderedOosIds.isNotEmpty()) {
             val freshIds = result.hiredEntityRegistry.getByDef(EntityDef.FRESH_HANDLER).map { it.id }.toSet()
             val freshShifts = result.staffSchedules.filter { it.entityId in freshIds }
             val hasUncoveredFreshHours = (6..20).any { hour -> freshShifts.none { it.isOnShift(hour) } }
@@ -509,11 +512,11 @@ class StaffManager @Inject constructor() {
 
         // 1. Buy register if all registers are manned and more cashiers could use one
         if (config.autoBuyRegistersEnabled) {
-            val maxCashiersPerShift = listOf(SHIFT_MORNING, SHIFT_MID, SHIFT_CLOSING).maxOf { shift ->
-                result.hiredEntityRegistry.getByDef(EntityDef.CASHIER).count { e ->
-                    result.staffSchedules.any { s -> s.entityId == e.id && s.startHour == shift }
-                }
-            }
+            // Peak concurrent cashiers across open hours — independent of shift start,
+            // so short/gap-fill shifts (pickBestShift) still count toward register demand.
+            val cashierIds = result.hiredEntityRegistry.getByDef(EntityDef.CASHIER).map { it.id }.toSet()
+            val cashierShifts = result.staffSchedules.filter { it.entityId in cashierIds }
+            val maxCashiersPerShift = coverageByHour(cashierShifts).values.maxOrNull() ?: 0
             if (maxCashiersPerShift > result.registers.size &&
                 result.ownedRegisterCount < result.currentStoreSize.maxRegisters
             ) {
@@ -590,9 +593,10 @@ class StaffManager @Inject constructor() {
             }
         }
 
-        // 4. Auto-terminate excess idle employees (graduated: reduce days first, fire as last resort)
-        val hiredToday = result.currentDayMetrics.autoHireEvents.any { it.action == com.example.superstoresimulator.domain.metrics.AutoHireAction.HIRED }
-        if (config.autoTerminateEnabled && !hiredToday) {
+        // 4. Auto-terminate excess idle employees (graduated: reduce days first, fire as last resort).
+        // Hire/fire mutual exclusion is enforced by evaluateAutoHire's firedToday check, which runs
+        // after this in DayRolloverProcessor — no hiredToday guard needed (hires haven't happened yet).
+        if (config.autoTerminateEnabled) {
             val currentDay = result.currentTime.dayNumber
             val recentDays = result.completedDayMetrics.takeLast(TERMINATE_LOOKBACK_DAYS)
             if (recentDays.size >= TERMINATE_LOOKBACK_DAYS) {
@@ -757,24 +761,33 @@ class StaffManager @Inject constructor() {
         var schedules = state.staffSchedules
         val events = mutableListOf<AutoHireEvent>()
 
+        // Rotates once per week so tie-broken off-day choices don't repeat every week.
+        val weekOffset = state.currentTime.dayNumber / 7
+
         for (def in listOf(EntityDef.CASHIER, EntityDef.STOCKER, EntityDef.FRESH_HANDLER)) {
             val entities = state.hiredEntityRegistry.getByDef(def)
             if (entities.isEmpty()) continue
 
-            // Days ranked high→low demand; days off come from the low-priority tail.
-            val ranked = demandScores(def.key).sortedByDescending { it.second }.map { it.first }
+            val scored = demandScores(def.key)
             val maxDays = config.maxDaysPerWeek.coerceIn(config.minDaysPerWeek.coerceIn(1, 5), 5)
             val daysOff = (7 - maxDays).coerceIn(0, 7)
 
-            // Stagger off-days across workers so no single day loses all coverage
-            // (otherwise every worker shares the same off-day, e.g. all off Friday).
+            // Days ordered lowest→highest demand; off-days come off the low end. The lowest-demand
+            // group is usually a tie (all five weekdays score equally for cashiers), so rotate WITHIN
+            // that tie by worker index + week number. That staggers coverage across workers AND stops
+            // the same day (Friday — the old stable-sort tail) from being cut every single week.
+            val byDemand = scored.sortedBy { it.second }
+            val lowestDemand = byDemand.firstOrNull()?.second
+            val tiedLow = byDemand.filter { it.second == lowestDemand }.map { it.first }.sorted()
+            val higherDemand = byDemand.filter { it.second != lowestDemand }.map { it.first }
+
             entities.forEachIndexed { idx, entity ->
-                val assignedDays = if (daysOff == 0) {
+                val assignedDays = if (daysOff == 0 || tiedLow.isEmpty()) {
                     (0..6).toSet()
                 } else {
-                    val offDays = (0 until daysOff)
-                        .map { ranked[ranked.size - 1 - ((idx + it) % ranked.size)] }
-                        .toSet()
+                    val shift = (idx + weekOffset) % tiedLow.size
+                    val rotatedLow = tiedLow.drop(shift) + tiedLow.take(shift)
+                    val offDays = (rotatedLow + higherDemand).take(daysOff).toSet()
                     (0..6).toSet() - offDays
                 }
 

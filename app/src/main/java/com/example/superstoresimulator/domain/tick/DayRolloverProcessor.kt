@@ -75,8 +75,10 @@ class DayRolloverProcessor @Inject constructor(
             s = s.copy(reputationState = updatedReputation)
         }
 
+        // Snapshot before launch: `s` is reassigned below before the coroutine runs.
+        val metricsToArchive = s.completedDayMetrics
         syncScope.launch {
-            metricsArchiver.archiveIfNeeded(s.completedDayMetrics)
+            metricsArchiver.archiveIfNeeded(metricsToArchive)
         }
 
         dayManager.advanceDay(newDayNumber)

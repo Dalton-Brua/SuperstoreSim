@@ -497,6 +497,22 @@ fun EndOfDayReportDialog(
                     Spacer(Modifier.height(12.dp))
                 }
 
+                // ── Research Completed section ────────────────────────────
+                if (report.completedResearch.isNotEmpty()) {
+                    SectionHeader("🔬 Research Completed")
+                    report.completedResearch.forEach { research ->
+                        StatRow(
+                            Icons.Default.Science,
+                            research.displayName,
+                            if (research.unlockedItemCount > 0)
+                                "+${research.unlockedItemCount} item${if (research.unlockedItemCount > 1) "s" else ""}"
+                            else "Unlocked",
+                            tint = Secondary
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+
                 // ── Dismiss button ────────────────────────────────────────
                 Button(
                     onClick = onDismiss,

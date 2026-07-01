@@ -24,6 +24,8 @@ import com.example.superstoresimulator.domain.store.StoreSize
 import com.example.superstoresimulator.domain.store.StoreState
 import com.example.superstoresimulator.domain.tick.TickOrchestrator
 import com.example.superstoresimulator.domain.time.TimeManager
+import com.example.superstoresimulator.domain.tutorial.TutorialState
+import com.example.superstoresimulator.domain.tutorial.TutorialStep
 import com.example.superstoresimulator.domain.traffic.TrafficManager
 import com.example.superstoresimulator.domain.vendor.VendorManager
 import com.example.superstoresimulator.domain.empire.EmpireTransitionActions
@@ -157,17 +159,17 @@ class GameEngine @Inject constructor(
         }
     }
 
+    /** Where a player's manual register actions go: their assigned register, else the first one. */
+    private fun defaultActionRegisterId(): Int? =
+        state.playerAssignedRegisterId ?: state.registers.firstOrNull()?.registerId
+
     fun ringUpItem(itemId: Int) {
-        val registerId = state.playerAssignedRegisterId
-            ?: state.registers.firstOrNull()?.registerId
-            ?: return
+        val registerId = defaultActionRegisterId() ?: return
         state = transactionEngine.ringUpItemAndTrackMetrics(state, itemId, registerId)
     }
 
     fun ringUpItem() {
-        val registerId = state.playerAssignedRegisterId
-            ?: state.registers.firstOrNull()?.registerId
-            ?: return
+        val registerId = defaultActionRegisterId() ?: return
         state = transactionEngine.ringUpItemOnRegister(state, registerId)
     }
 
@@ -442,23 +444,17 @@ class GameEngine @Inject constructor(
 
     fun resetState() = seedNewGame()
 
-    private fun seedInventory(starterOnly: Boolean, quantity: Int, currentDay: Int): Map<Int, InventoryState> {
+    private fun seedInventory(
+        quantity: Int,
+        currentDay: Int,
+        include: (itemId: Int, item: Item) -> Boolean,
+    ): Map<Int, InventoryState> {
         val inventory = mutableMapOf<Int, InventoryState>()
         itemMetadataCache.getAllItems().forEach { (itemId, item) ->
-            val meta = itemMetadataCache.get(itemId) ?: return@forEach
-            if (starterOnly && meta.researchGate != null && !meta.isVendorItem) return@forEach
-            val expirationDay = if (item.shelfLifeDays != null) {
-                currentDay + item.shelfLifeDays
-            } else Int.MAX_VALUE
-            val startingBatch = ItemBatch(
-                receivedDay = currentDay,
-                quantity = quantity,
-                expirationDay = expirationDay,
-            )
-            inventory[itemId] = InventoryState(
-                shelfBatches = listOf(startingBatch),
-                backroomBatches = listOf(startingBatch),
-            )
+            if (!include(itemId, item)) return@forEach
+            val expirationDay = if (item.shelfLifeDays != null) currentDay + item.shelfLifeDays else Int.MAX_VALUE
+            val batch = ItemBatch(receivedDay = currentDay, quantity = quantity, expirationDay = expirationDay)
+            inventory[itemId] = InventoryState(shelfBatches = listOf(batch), backroomBatches = listOf(batch))
         }
         return inventory
     }
@@ -476,35 +472,24 @@ class GameEngine @Inject constructor(
         for (def in plan.staff) {
             registry = registry.hireEntity(def)
             val newId = registry.hiredEntities.last().id
-            shifts.add(StaffShift(entityId = newId, startHour = 6, durationHours = 14))
+            // StaffShift caps at 8h; alternate morning (6–14) / afternoon (13–21)
+            // shifts so coverage spans the open day without violating the invariant.
+            val startHour = if (shifts.size % 2 == 0) 6 else 13
+            shifts.add(StaffShift(entityId = newId, startHour = startHour, durationHours = 8))
         }
 
         val registers = (0 until plan.registerCount).map { RegisterState(registerId = it) }
 
         return StoreOperatingState(
-            inventory = seedInventoryForResearch(plan.researchedUpgrades, quantity = 30, state.currentTime.dayNumber),
+            inventory = seedInventory(quantity = 30, currentDay = state.currentTime.dayNumber) { itemId, _ ->
+                itemMetadataCache.isItemAccessible(itemId, plan.researchedUpgrades)
+            },
             registers = registers,
             hiredEntityRegistry = registry,
             staffSchedules = shifts,
             truckConfig = TruckConfig(deliveryDays = setOf(1, 4)),
             researchState = ResearchState(researchedUpgrades = plan.researchedUpgrades),
         )
-    }
-
-    /** Seed inventory for every item accessible under [researchedUpgrades]. */
-    private fun seedInventoryForResearch(
-        researchedUpgrades: Set<String>,
-        quantity: Int,
-        currentDay: Int,
-    ): Map<Int, InventoryState> {
-        val inventory = mutableMapOf<Int, InventoryState>()
-        itemMetadataCache.getAllItems().forEach { (itemId, item) ->
-            if (!itemMetadataCache.isItemAccessible(itemId, researchedUpgrades)) return@forEach
-            val expirationDay = if (item.shelfLifeDays != null) currentDay + item.shelfLifeDays else Int.MAX_VALUE
-            val batch = ItemBatch(receivedDay = currentDay, quantity = quantity, expirationDay = expirationDay)
-            inventory[itemId] = InventoryState(shelfBatches = listOf(batch), backroomBatches = listOf(batch))
-        }
-        return inventory
     }
 
     private fun buildSeededState(): GameState {
@@ -514,7 +499,10 @@ class GameEngine @Inject constructor(
         if (itemMetadataCache.getAllItems().isEmpty()) return baseState
 
         val seeded = baseState.copy(
-            inventory = seedInventory(starterOnly = true, quantity = 10, baseState.currentTime.dayNumber),
+            inventory = seedInventory(quantity = 10, currentDay = baseState.currentTime.dayNumber) { itemId, _ ->
+                val meta = itemMetadataCache.get(itemId)
+                meta != null && !(meta.researchGate != null && !meta.isVendorItem)
+            },
             money = Money(100_000),
             // Start at 5:00 AM (300 minutes) so the player has lead time before opening.
             currentTime = com.example.superstoresimulator.domain.time.GameTime(300),
@@ -607,6 +595,10 @@ class GameEngine @Inject constructor(
         timeManager.syncTime(state.currentTime)
         timeManager.config = state.storeConfig.copy()
         dayManager.syncDay(state.currentTime.dayNumber)
+        // Clear the prior store's manager accumulators (cashier/zoning progress keyed
+        // to its entity IDs, traffic build-up) so they don't bleed into this store.
+        staffManager.reset()
+        trafficManager.accumulatedCustomers = 0.0
         tickOrchestrator.resetTickProcessors()
     }
 
@@ -619,7 +611,9 @@ class GameEngine @Inject constructor(
         if (itemMetadataCache.getAllItems().isEmpty()) return baseState
 
         val storeSize = StoreSize.SUPERCENTER
-        val inventory = seedInventory(starterOnly = false, quantity = 50, baseState.currentTime.dayNumber)
+        val inventory = seedInventory(quantity = 50, currentDay = baseState.currentTime.dayNumber) { itemId, _ ->
+            itemMetadataCache.get(itemId) != null
+        }
 
         var registry = baseState.hiredEntityRegistry
         // Hire staff: 8 cashiers, 6 stockers, 2 fresh handlers, 1 manager
@@ -658,6 +652,11 @@ class GameEngine @Inject constructor(
                 RegisterState(registerId = 7),
             ),
             researchState = research,
+            tutorialState = TutorialState(
+                currentStep = TutorialStep.TUTORIAL_COMPLETE,
+                completedSteps = TutorialStep.entries.toSet(),
+                tutorialComplete = true,
+            ),
         )
     }
 
