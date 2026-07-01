@@ -77,6 +77,14 @@ data class AutoHireEvent(
 )
 
 @Serializable
+data class CompletedResearchEvent(
+    val upgradeId: String,
+    val displayName: String,
+    /** How many items this upgrade unlocked. */
+    val unlockedItemCount: Int,
+)
+
+@Serializable
 data class SoldItemEvent(
     val itemId: Int,
     val itemName: String = "",
@@ -101,10 +109,6 @@ data class DailyMetrics(
     // ── Operating Costs ──────────────────────────────────────────────────
     val rentPaid: Money = Money.ZERO,       // Daily rent deducted
     val wagesPaid: Money = Money.ZERO,      // Total staff wages for the day
-
-    // ── Refunds ──────────────────────────────────────────────────────────
-    val refundsProcessed: Int = 0,
-    val refundAmount: Money = Money.ZERO,
 
     // ── Customers ────────────────────────────────────────────────────────
     val customersServed: Int = 0,
@@ -156,6 +160,9 @@ data class DailyMetrics(
     val vendorCommissionPaid: Money = Money.ZERO,
     val vendorItemsSold: Int = 0,
     val vendorRevenue: Money = Money.ZERO,
+
+    // ── Research ──────────────────────────────────────────────────────────
+    val completedResearch: List<CompletedResearchEvent> = emptyList(),
 ) {
     val revenue: Money get() = subtotal + taxCollected
 
@@ -171,9 +178,9 @@ data class DailyMetrics(
             itemsSold.toFloat() / transactionsCompleted
         else 0f
 
-    /** Net revenue after refunds, rent, wages, and waste costs. */
+    /** Net revenue after rent, wages, and waste costs. */
     val netRevenue: Money
-        get() = (revenue - refundAmount) - rentPaid - wagesPaid - expiredWasteCost - vendorCommissionPaid
+        get() = revenue - rentPaid - wagesPaid - expiredWasteCost - vendorCommissionPaid
 
     val dayOfWeekName: String
         get() = GameTime.fullDayName(dayOfWeek)

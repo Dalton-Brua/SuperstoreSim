@@ -98,15 +98,6 @@ fun EndOfWeekReportDialog(
                 WeekStatRow(Icons.Default.ShoppingCart, "Transactions", report.totalTransactions.toString())
                 WeekStatRow(Icons.AutoMirrored.Filled.TrendingUp, "Avg. Sale Value", report.averageTransactionValue.toString())
 
-                if (report.totalRefundsProcessed > 0) {
-                    Spacer(Modifier.height(4.dp))
-                    WeekStatRow(
-                        Icons.Default.Undo, "Refunds Issued",
-                        "${report.totalRefundsProcessed} (${report.totalRefundAmount})",
-                        tint = ClosedRed
-                    )
-                }
-
                 if (report.totalLostRevenue.cents > 0) {
                     Spacer(Modifier.height(4.dp))
                     WeekStatRow(
@@ -228,6 +219,23 @@ fun EndOfWeekReportDialog(
                             }
                         }
                     }
+                }
+
+                // Research Completed section
+                val weekResearch = report.completedResearch
+                if (weekResearch.isNotEmpty()) {
+                    WeekSectionHeader("🔬 Research Completed")
+                    weekResearch.forEach { research ->
+                        WeekStatRow(
+                            Icons.Default.Science,
+                            research.displayName,
+                            if (research.unlockedItemCount > 0)
+                                "+${research.unlockedItemCount} item${if (research.unlockedItemCount > 1) "s" else ""}"
+                            else "Unlocked",
+                            tint = Secondary
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
                 }
 
                 Spacer(Modifier.height(20.dp))

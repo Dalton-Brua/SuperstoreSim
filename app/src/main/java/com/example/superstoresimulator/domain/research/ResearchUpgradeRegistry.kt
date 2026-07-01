@@ -97,6 +97,16 @@ object ResearchUpgradeRegistry {
             prerequisites = listOf("store_supercenter"),
             requiredStoreSize = StoreSize.SUPERCENTER,
         ))
+        put("second_location", ResearchableUpgrade(
+            id = "second_location",
+            displayName = "Regional Expansion Study",
+            description = "Unlocks opening a second location — and going corporate. Permanent.",
+            teaserDescription = "One store is just the beginning. Build an empire.",
+            category = ResearchCategory.STORE_EXPANSION,
+            researchCost = 250,
+            prerequisites = listOf("building_purchase"),
+            requiredStoreSize = StoreSize.SUPERCENTER,
+        ))
 
         // ── Product Lines: Grocery ────────────────────────────────────────────
         put("prod_breakfast", ResearchableUpgrade(

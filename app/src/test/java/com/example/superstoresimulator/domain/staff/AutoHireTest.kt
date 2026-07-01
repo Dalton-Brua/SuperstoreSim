@@ -148,6 +148,24 @@ class AutoHireTest {
         )
     }
 
+    @Test
+    fun `bootstrap from zero cashiers hires exactly one, not two`() {
+        // hadUnstaffedRegisters is true after this, which previously triggered a second
+        // (metric) cashier hire on top of the bootstrap hire — a double-hire bug.
+        simulateUnstaffedRegisters()
+
+        val state = buildState(
+            entities = listOf(entity(10, EntityDef.MANAGER)),
+            registers = listOf(RegisterState(0), RegisterState(1)),
+        )
+        val result = staffManager.evaluateAutoHire(state)
+        assertEquals(
+            "Bootstrap should hire one cashier, metric block must not pile on a second",
+            1,
+            result.hiredEntityRegistry.getByDef(EntityDef.CASHIER).size,
+        )
+    }
+
     // ── No manager = no auto-hire ────────────────────────────────────────────
 
     @Test

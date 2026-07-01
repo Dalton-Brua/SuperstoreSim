@@ -122,11 +122,7 @@ private fun PaginatedHistoryList(
             }
         } else {
             items(sortedSalesHistory.take(itemsToShow), key = { it.id }) { tx ->
-                if (tx.subtotal < Money.ZERO) {
-                    RefundCard(transaction = tx, onClick = { onTransactionSelect(tx) }, itemViewModel = itemViewModel)
-                } else {
-                    TransactionCard(transaction = tx, onClick = { onTransactionSelect(tx) }, itemViewModel = itemViewModel)
-                }
+                TransactionCard(transaction = tx, onClick = { onTransactionSelect(tx) }, itemViewModel = itemViewModel)
             }
         }
     }
@@ -180,60 +176,6 @@ private fun TransactionCard(transaction: Transaction, onClick: () -> Unit, itemV
 
             Text(
                 text = "Tax: ${transaction.tax}",
-                fontSize = 13.sp,
-                color = TextSecondary
-            )
-        }
-    }
-}
-
-@Composable
-private fun RefundCard(transaction: Transaction, onClick: () -> Unit, itemViewModel: ItemViewModel) {
-    val items = remember { mutableStateOf(emptyList<String>()) }
-
-    LaunchedEffect(transaction.lines) {
-        val fetchedItems = transaction.lines.map { line ->
-            // Convert integer itemId to database format "item_XXX"
-            val dbItemId = "item_" + String.format(Locale.US, "%03d", line.itemId)
-            itemViewModel.getItemById(dbItemId)?.name ?: "Unknown Item"
-        }
-        items.value = fetchedItems
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = ErrorSurfaceSubtle),
-        elevation = CardDefaults.cardElevation(2.dp)
-    ) {
-        Column(Modifier.padding(12.dp)) {
-            Text(
-                text = "Refund #${transaction.id}",
-                fontWeight = FontWeight.Medium,
-                fontSize = 16.sp,
-                color = CriticalRed
-            )
-
-            Text(
-                text = "Total refunded: ${-transaction.subtotal}",
-                color = CriticalRed,
-                fontSize = 14.sp
-            )
-
-            Spacer(Modifier.height(4.dp))
-
-            items.value.forEachIndexed { index, itemName ->
-                val line = transaction.lines[index]
-                Text(
-                    text = "$itemName: ${line.quantity} × ${line.unitPrice} = ${line.lineTotal}",
-                    fontSize = 13.sp,
-                    color = TextSecondary
-                )
-            }
-
-            Text(
-                text = "Tax refunded: ${-transaction.tax}",
                 fontSize = 13.sp,
                 color = TextSecondary
             )

@@ -43,7 +43,6 @@ fun MainScreenPager(
             Screen.GAME -> StoreHomeScreen(
                 state = state,
                 onStoreNameChange = { onEvent(GameEvent.ChangeStoreName(it)) },
-                onProcessRefundLine = { refundId: Int, itemId: Int, qty: Int -> onEvent(GameEvent.ProcessRefundLine(refundId, itemId, qty)) },
                 onViewItem = { itemId: Int -> onEvent(GameEvent.FocusInventoryItem(itemId)) },
                 itemDao = itemDao,
                 onNavigateToInventory = { navState.navigateTo(Screen.INVENTORY) },
@@ -80,7 +79,6 @@ fun MainScreenPager(
                 money = state.app.money,
                 researchedUpgrades = state.research.researchedUpgrades,
                 currentDay = state.time?.currentTime?.dayNumber ?: 0,
-                metricsData = state.metrics.completedDays,
                 resetTrigger = navState.inventoryResetTrigger,
                 incompleteFreshOrdersCount = state.inventory.incompleteFreshOrders.size,
                 incompleteNormalOrdersCount = state.inventory.incompleteNormalOrders.size,

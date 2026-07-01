@@ -6,7 +6,9 @@ import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.GameEngine
 import com.example.superstoresimulator.domain.GameState
 import com.example.superstoresimulator.domain.Money
+import com.example.superstoresimulator.domain.StaffShift
 import com.example.superstoresimulator.domain.createTestGameEngine
+import com.example.superstoresimulator.domain.time.GameTime
 import com.example.superstoresimulator.domain.items.ItemDao
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
 import kotlinx.coroutines.runBlocking
@@ -284,6 +286,56 @@ class StaffManagerTest {
             stockerCount = 5f, delta = 2.0, multiplier = 1.0f,
         )
         assertEquals(1, result)
+    }
+
+    // ── optimizeWeeklySchedules ───────────────────────────────────────────────
+
+    /** Registry with [cashiers] cashiers plus one promoted Store Manager. GameTime(0) is a week boundary (dayOfWeek 0). */
+    private fun storeManagerState(cashiers: Int, withManager: Boolean = true): GameState {
+        var reg = HiredEntityRegistry()
+        repeat(cashiers) { reg = reg.hireEntity(EntityDef.CASHIER) }
+        if (withManager) {
+            reg = reg.hireEntity(EntityDef.MANAGER)
+            val mgrId = reg.getByDef(EntityDef.MANAGER).first().id
+            reg = reg.promoteEntity(mgrId).promoteEntity(mgrId) // BASE → FAST → MANAGER (Store Manager)
+        }
+        val schedules = (1..cashiers).map { StaffShift(entityId = it, startHour = 9) }
+        return GameState(hiredEntityRegistry = reg, staffSchedules = schedules, currentTime = GameTime(0))
+    }
+
+    @Test
+    fun `optimizeWeeklySchedules does nothing when no store manager is hired`() {
+        val state = storeManagerState(cashiers = 3, withManager = false)
+        val result = staffManager.optimizeWeeklySchedules(state)
+        assertEquals("Schedules must be untouched without a store manager", state.staffSchedules, result.staffSchedules)
+    }
+
+    @Test
+    fun `optimizeWeeklySchedules keeps coverage on every day including Friday`() {
+        val state = storeManagerState(cashiers = 3)
+        val result = staffManager.optimizeWeeklySchedules(state)
+        for (day in 0..6) {
+            assertTrue("Day $day must keep at least one cashier", result.staffSchedules.any { day in it.workDays })
+        }
+        // Friday (day 4) regression: previously every cashier was dropped from Friday.
+        assertTrue("Friday must keep coverage", result.staffSchedules.any { 4 in it.workDays })
+    }
+
+    @Test
+    fun `optimizeWeeklySchedules assigns maxDays per worker and staggers off-days`() {
+        val state = storeManagerState(cashiers = 3) // default maxDaysPerWeek = 5 → 2 days off each
+        val result = staffManager.optimizeWeeklySchedules(state)
+        result.staffSchedules.forEach { assertEquals("Each worker gets 5 days", 5, it.workDays.size) }
+        val offDays = result.staffSchedules.map { (0..6).toSet() - it.workDays }
+        assertEquals("Off-days must differ across workers", offDays.size, offDays.toSet().size)
+    }
+
+    @Test
+    fun `hired worker gets a 4-8 hour shift and at most 5 days`() {
+        val result = staffManager.hireEntity(GameState(money = Money.ZERO), EntityDef.CASHIER)
+        val shift = result.staffSchedules.single()
+        assertTrue("duration must be 4..8", shift.durationHours in 4..8)
+        assertTrue("days must be 1..5", shift.workDays.size in 1..5)
     }
 
     // ── GameEngine integration tests ──────────────────────────────────────────

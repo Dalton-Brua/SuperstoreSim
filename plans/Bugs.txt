@@ -5,3 +5,8 @@ Entity staff cards have wrong theming
 Remove points earned from subtitle under research screen (replace with idle researchers?)
 Hide fleet capacity card until researched
 Hide register purchase button until researched
+Empire mode requires 1,000,000 but does not tell you that. Should say you don't have enough money
+Entering into store mode on a specific store type (grocery store vs superstore vs supercenter), should load the store with preset values. It should have maximum registers, enough cashier to fill them, a certain number of stockers, a store manager, and whatever else the store needs to be running smoothly.
+The user should be able to override a regional manager's direction.
+The money amount gets too long, we need to abbreviate it with scientific numbers or E+10 or something similar
+Serialization is broken for empire mode. I closed the app but it did not save. And there is no save button or menu where I can save the game manually.

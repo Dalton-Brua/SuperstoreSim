@@ -1,9 +1,16 @@
 package com.example.superstoresimulator.domain.Entities
 
+import com.example.superstoresimulator.domain.persistence.TolerantListSerializer
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+
+/** Drops individual hires that fail to decode (e.g. a renamed/removed EntityDef.key)
+ *  instead of failing the whole registry — and by extension the whole save. */
+object HiredEntityListSerializer : KSerializer<List<HiredEntity>> by TolerantListSerializer(HiredEntity.serializer())
 
 @Serializable
 data class HiredEntityRegistry(
+    @Serializable(with = HiredEntityListSerializer::class)
     private val entities: List<HiredEntity> = emptyList(),
     private var nextEntityId: Int = 1
 ) {
@@ -81,15 +88,6 @@ data class HiredEntityRegistry(
             entity.copy(xp = newXp, level = newLevel)
         }
         return copy(entities = updatedList)
-    }
-
-    fun grantXpDistributed(entityIds: List<Int>, totalRawAmount: Int): HiredEntityRegistry {
-        if (entityIds.isEmpty()) return this
-        val perEntity = totalRawAmount / entityIds.size
-        if (perEntity <= 0) return this
-        var updated = this
-        entityIds.forEach { id -> updated = updated.grantXp(id, perEntity) }
-        return updated
     }
 
     private fun computeLevel(xp: Int, thresholds: List<Int> = HiredEntity.XP_THRESHOLDS): Int {

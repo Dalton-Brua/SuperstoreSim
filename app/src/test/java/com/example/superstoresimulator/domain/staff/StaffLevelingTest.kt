@@ -170,19 +170,4 @@ class StaffLevelingTest {
         )
         assertEquals(1.4f, entity.levelMultiplier, 0.001f)
     }
-
-    // ── grantXpToAll ─────────────────────────────────────────────────────────
-
-    @Test
-    fun `grantXpDistributed grants XP to listed entities`() {
-        val e1 = HiredEntity(id = 1, name = "A", entityDefinition = EntityDef.CASHIER, trait = EntityTrait.EFFICIENT)
-        val e2 = HiredEntity(id = 2, name = "B", entityDefinition = EntityDef.CASHIER, trait = EntityTrait.EFFICIENT)
-        val e3 = HiredEntity(id = 3, name = "C", entityDefinition = EntityDef.STOCKER, trait = EntityTrait.EFFICIENT)
-        val reg = HiredEntityRegistry(entities = listOf(e1, e2, e3), nextEntityId = 4)
-
-        val updated = reg.grantXpDistributed(listOf(1, 2), 100)
-        assertEquals(50, updated.getById(1).xp)
-        assertEquals(50, updated.getById(2).xp)
-        assertEquals(0, updated.getById(3).xp)
-    }
 }

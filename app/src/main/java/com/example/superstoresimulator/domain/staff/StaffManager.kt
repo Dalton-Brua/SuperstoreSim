@@ -50,7 +50,6 @@ class StaffManager @Inject constructor() {
     private var stockerTotalTicks: Int = 0
     private var freshBusyTicks: Int = 0
     private var freshTotalTicks: Int = 0
-    private var peakPendingCustomers: Int = 0
     private var hadUnstaffedRegisters: Boolean = false
     private var lastSampledHour: Int = -1
     private val pendingCustomersByHour: MutableMap<Int, Int> = mutableMapOf()
@@ -222,10 +221,6 @@ class StaffManager @Inject constructor() {
         val registers = state.registers
         val assignedIds = registers.mapNotNull { it.assignedCashierId }.toSet()
 
-        if (state.pendingCustomers > peakPendingCustomers) {
-            peakPendingCustomers = state.pendingCustomers
-        }
-
         // Sample pending customers once per hour (keep max seen that hour)
         if (currentHour != lastSampledHour) {
             lastSampledHour = currentHour
@@ -347,15 +342,12 @@ class StaffManager @Inject constructor() {
     fun currentFreshUtilization(): Float = utilization(freshBusyTicks, freshTotalTicks)
 
     fun snapshotDailyMetrics(): DailyStaffMetrics = DailyStaffMetrics(
-        peakPendingCustomers = peakPendingCustomers,
         avgHourlyPendingCustomers = if (pendingCustomersByHour.isNotEmpty())
             pendingCustomersByHour.values.sum().toFloat() / pendingCustomersByHour.size else 0f,
         avgCashierUtilization = utilization(cashierBusyTicks, cashierTotalTicks),
         avgStockerUtilization = utilization(stockerBusyTicks, stockerTotalTicks),
         avgFreshUtilization = utilization(freshBusyTicks, freshTotalTicks),
         hasUnstaffedRegisters = hadUnstaffedRegisters,
-        freshItemsOutOfStock = 0,
-        freshOrdersAttempted = 0,
     )
 
     // ── Auto-Hire (Phase 5B) ─────────────────────────────────────────────────
@@ -426,7 +418,9 @@ class StaffManager @Inject constructor() {
         val avgInLine = metrics.avgHourlyPendingCustomers
         val needMoreCheckout = avgInLine > registerCount
 
-        if (config.autoHireCashiers && (needMoreCheckout || metrics.hasUnstaffedRegisters)) {
+        // cashierCount > 0 mirrors the stocker guard below: when zero cashiers existed the
+        // bootstrap hire above already covered this rollover — don't hire a second in one day.
+        if (config.autoHireCashiers && cashierCount > 0 && (needMoreCheckout || metrics.hasUnstaffedRegisters)) {
             val cashierIds = result.hiredEntityRegistry.getByDef(EntityDef.CASHIER).map { it.id }.toSet()
             val cashierShifts = result.staffSchedules.filter { it.entityId in cashierIds }
             val hasUncoveredHours = (6..20).any { hour -> cashierShifts.none { it.isOnShift(hour) } }
@@ -473,9 +467,10 @@ class StaffManager @Inject constructor() {
             }
         }
 
-        // Fresh handler auto-hire: only when OOS items have no pending orders
+        // Fresh handler auto-hire: only when OOS items have no pending orders.
+        // freshCount > 0 mirrors the stocker/cashier guard — bootstrap covered the zero case.
         val unorderedOosIds = freshOosIds - freshOrderedIds
-        if (config.autoHireFreshHandlers && unorderedOosIds.isNotEmpty()) {
+        if (config.autoHireFreshHandlers && freshCount > 0 && unorderedOosIds.isNotEmpty()) {
             val freshIds = result.hiredEntityRegistry.getByDef(EntityDef.FRESH_HANDLER).map { it.id }.toSet()
             val freshShifts = result.staffSchedules.filter { it.entityId in freshIds }
             val hasUncoveredFreshHours = (6..20).any { hour -> freshShifts.none { it.isOnShift(hour) } }
@@ -517,11 +512,11 @@ class StaffManager @Inject constructor() {
 
         // 1. Buy register if all registers are manned and more cashiers could use one
         if (config.autoBuyRegistersEnabled) {
-            val maxCashiersPerShift = listOf(SHIFT_MORNING, SHIFT_MID, SHIFT_CLOSING).maxOf { shift ->
-                result.hiredEntityRegistry.getByDef(EntityDef.CASHIER).count { e ->
-                    result.staffSchedules.any { s -> s.entityId == e.id && s.startHour == shift }
-                }
-            }
+            // Peak concurrent cashiers across open hours — independent of shift start,
+            // so short/gap-fill shifts (pickBestShift) still count toward register demand.
+            val cashierIds = result.hiredEntityRegistry.getByDef(EntityDef.CASHIER).map { it.id }.toSet()
+            val cashierShifts = result.staffSchedules.filter { it.entityId in cashierIds }
+            val maxCashiersPerShift = coverageByHour(cashierShifts).values.maxOrNull() ?: 0
             if (maxCashiersPerShift > result.registers.size &&
                 result.ownedRegisterCount < result.currentStoreSize.maxRegisters
             ) {
@@ -598,9 +593,10 @@ class StaffManager @Inject constructor() {
             }
         }
 
-        // 4. Auto-terminate excess idle employees (graduated: reduce days first, fire as last resort)
-        val hiredToday = result.currentDayMetrics.autoHireEvents.any { it.action == com.example.superstoresimulator.domain.metrics.AutoHireAction.HIRED }
-        if (config.autoTerminateEnabled && !hiredToday) {
+        // 4. Auto-terminate excess idle employees (graduated: reduce days first, fire as last resort).
+        // Hire/fire mutual exclusion is enforced by evaluateAutoHire's firedToday check, which runs
+        // after this in DayRolloverProcessor — no hiredToday guard needed (hires haven't happened yet).
+        if (config.autoTerminateEnabled) {
             val currentDay = result.currentTime.dayNumber
             val recentDays = result.completedDayMetrics.takeLast(TERMINATE_LOOKBACK_DAYS)
             if (recentDays.size >= TERMINATE_LOOKBACK_DAYS) {
@@ -732,6 +728,10 @@ class StaffManager @Inject constructor() {
     }
 
     fun optimizeWeeklySchedules(state: GameState): GameState {
+        val hasStoreManager = state.hiredEntityRegistry.getByDef(EntityDef.MANAGER)
+            .any { it.isStoreManager }
+        if (!hasStoreManager) return state
+
         val config = state.storeManagerConfig
         if (!config.autoOptimizeWeeklySchedule) return state
         if (state.currentTime.dayOfWeek != 0) return state
@@ -761,16 +761,35 @@ class StaffManager @Inject constructor() {
         var schedules = state.staffSchedules
         val events = mutableListOf<AutoHireEvent>()
 
+        // Rotates once per week so tie-broken off-day choices don't repeat every week.
+        val weekOffset = state.currentTime.dayNumber / 7
+
         for (def in listOf(EntityDef.CASHIER, EntityDef.STOCKER, EntityDef.FRESH_HANDLER)) {
             val entities = state.hiredEntityRegistry.getByDef(def)
             if (entities.isEmpty()) continue
 
-            val scores = demandScores(def.key).sortedByDescending { it.second }
-            val maxDays = config.maxDaysPerWeek.coerceIn(config.minDaysPerWeek, 7)
+            val scored = demandScores(def.key)
+            val maxDays = config.maxDaysPerWeek.coerceIn(config.minDaysPerWeek.coerceIn(1, 5), 5)
+            val daysOff = (7 - maxDays).coerceIn(0, 7)
 
-            for (entity in entities) {
-                val daysToAssign = maxDays.coerceAtMost(7)
-                val assignedDays = scores.take(daysToAssign).map { it.first }.toSet()
+            // Days ordered lowest→highest demand; off-days come off the low end. The lowest-demand
+            // group is usually a tie (all five weekdays score equally for cashiers), so rotate WITHIN
+            // that tie by worker index + week number. That staggers coverage across workers AND stops
+            // the same day (Friday — the old stable-sort tail) from being cut every single week.
+            val byDemand = scored.sortedBy { it.second }
+            val lowestDemand = byDemand.firstOrNull()?.second
+            val tiedLow = byDemand.filter { it.second == lowestDemand }.map { it.first }.sorted()
+            val higherDemand = byDemand.filter { it.second != lowestDemand }.map { it.first }
+
+            entities.forEachIndexed { idx, entity ->
+                val assignedDays = if (daysOff == 0 || tiedLow.isEmpty()) {
+                    (0..6).toSet()
+                } else {
+                    val shift = (idx + weekOffset) % tiedLow.size
+                    val rotatedLow = tiedLow.drop(shift) + tiedLow.take(shift)
+                    val offDays = (rotatedLow + higherDemand).take(daysOff).toSet()
+                    (0..6).toSet() - offDays
+                }
 
                 schedules = schedules.map { s ->
                     if (s.entityId == entity.id) s.copy(workDays = assignedDays) else s
@@ -831,9 +850,9 @@ class StaffManager @Inject constructor() {
             val gapSpan = gapEnd - gapStart
             // Only short-shift if the gap is contiguous and compact
             if (gapSpan == uncoveredHours.size && gapSpan <= 4) {
-                val duration = gapSpan.coerceIn(2, 8)
+                val duration = gapSpan.coerceIn(4, 8)
                 val start = gapStart.coerceIn(6, 21 - duration)
-                return StaffShift(entityId = entityId, startHour = start, durationHours = duration)
+                return StaffShift(entityId = entityId, startHour = start, durationHours = duration, workDays = DEFAULT_WORK_DAYS)
             }
         }
 
@@ -845,7 +864,7 @@ class StaffManager @Inject constructor() {
             val totalGap = shiftHours.sumOf { h -> 1.0 / ((coverageByHour[h] ?: 0) + 1) }
             zeroCoverage * 100 + totalGap
         } ?: SHIFT_MORNING
-        return StaffShift(entityId = entityId, startHour = bestPreset)
+        return StaffShift(entityId = entityId, startHour = bestPreset, workDays = DEFAULT_WORK_DAYS)
     }
 
     fun promoteEntity(state: GameState, entityId: Int): GameState {
@@ -923,7 +942,6 @@ class StaffManager @Inject constructor() {
         stockerTotalTicks = 0
         freshBusyTicks = 0
         freshTotalTicks = 0
-        peakPendingCustomers = 0
         hadUnstaffedRegisters = false
         lastSampledHour = -1
         pendingCustomersByHour.clear()
@@ -939,6 +957,10 @@ class StaffManager @Inject constructor() {
         const val SHIFT_MORNING = 6
         const val SHIFT_MID     = 10
         const val SHIFT_CLOSING = 13
+
+        // Default work days for a new shift: Mon–Fri (5 = max days/week). Avoids the
+        // emptySet "every day" (7) default which would exceed the 5-day cap.
+        val DEFAULT_WORK_DAYS = (0..4).toSet()
 
         // XP constants
         const val XP_PER_STOCK_ACTION = 1

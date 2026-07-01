@@ -170,8 +170,8 @@ fun StoreManagerConfigDialog(
                     ConfigSlider(
                         label = "Max Days/Week",
                         value = maxDays,
-                        range = 4f..7f,
-                        steps = 2,
+                        range = 1f..5f,
+                        steps = 3,
                         onValueChange = { maxDays = it; if (minDays > it) minDays = it },
                         valueSuffix = " days",
                     )
@@ -201,7 +201,7 @@ fun StoreManagerConfigDialog(
                     Button(
                         onClick = {
                             onConfigChanged(
-                                StoreManagerConfig(
+                                config.copy(
                                     autoHireEnabled = autoHire,
                                     autoHireCashiers = hireCashiers,
                                     autoHireStockers = hireStockers,

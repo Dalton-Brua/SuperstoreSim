@@ -17,13 +17,16 @@ fun scanInventory(
     var hasUnzonedItems = false
     var hasFreshBackroomStock = false
     for ((itemId, inv) in inventory) {
-        if (!hasActionableBackroom && inv.backroomStock > 0 && cache.get(itemId)?.isPerishable != true) {
+        // null = item has no metadata; treat as neither fresh nor actionable rather than
+        // letting `!= true` misclassify an unknown item as non-fresh actionable backroom.
+        val perishable = cache.get(itemId)?.isPerishable
+        if (!hasActionableBackroom && inv.backroomStock > 0 && perishable == false) {
             hasActionableBackroom = true
         }
         if (!hasUnzonedItems && inv.shelfStock > 0 && inv.zoneScore < 1.0f) {
             hasUnzonedItems = true
         }
-        if (!hasFreshBackroomStock && inv.backroomStock > 0 && cache.get(itemId)?.isPerishable == true) {
+        if (!hasFreshBackroomStock && inv.backroomStock > 0 && perishable == true) {
             hasFreshBackroomStock = true
         }
         if (hasActionableBackroom && hasUnzonedItems && hasFreshBackroomStock) break

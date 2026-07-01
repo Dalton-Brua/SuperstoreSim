@@ -342,148 +342,7 @@ Customers order online for pickup or delivery. Players must fulfill orders withi
 
 ---
 
-## Feature #8: Multi-Store Chain Management
-
-### Concept
-Expand beyond one store to manage 2-10 locations. Each store has independent inventory, staff, traffic, and metrics.
-
-### Gameplay Depth: 5/5
-- Store locations: 10 pre-defined markets (Downtown, Suburb, Airport, University, etc.)
-- Per-store state: Independent GameState per location (inventory, staff, registers, metrics)
-- Resource transfer: Move inventory between stores via existing truck system
-- Market differences: Each location has traffic multiplier, rent, and category preferences
-- Expansion costs: $500,000+ per new location + daily operating costs
-- District Manager: Hire to run stores autonomously (charges 10% of profit)
-- Unlocks at SUPERSTORE tier + $1M total revenue
-
-### Systems Affected
-- **GameState → GameWorld**: Top-level state wraps multiple `StoreState` instances.
-- **GameEngine → GameWorldEngine + StoreEngine**: Extract per-store logic into StoreEngine.
-- **GameViewModel**: Store selector, dispatch events to specific stores.
-- **TruckManager**: Inter-store transfers as a new truck type.
-- **All Managers**: Operate on `StoreState` instead of `GameState`.
-- **Persistence**: Serialize multiple stores (5-10× data).
-- **UI**: Store switcher, empire overview map, per-store dashboards.
-
-### Performance & Memory Impact
-
-| Metric | Current (1 store) | With 5 Stores | With 10 Stores |
-|--------|-------------------|---------------|----------------|
-| Tick time | 0.039ms (max) | ~0.2ms | ~0.4ms |
-| Frame budget | 0.23% | 1.2% | 2.4% |
-| Memory | ~60-90 MB | ~150-250 MB | ~250-400 MB |
-| Save file | ~50 KB | ~250 KB | ~500 KB |
-| Serialization | ~5ms | ~25ms | ~50ms |
-
-**Mitigation strategies:**
-- **Lazy activation**: Only fully tick the store player is viewing. Background stores use simplified daily simulation.
-- **Statistical simulation**: Inactive stores estimate revenue = avgTransaction × avgCustomers × multiplier (no full tick).
-- **Coroutine parallelism**: Tick active stores on Dispatchers.Default (Pixel 8a has 9 cores).
-- **Capped history**: Background stores keep only last 7 days of metrics.
-
-**Verdict**: Significant but manageable with lazy activation. Active store performs identically to current. Background stores add ~0.01ms each with statistical sim.
-
-### Implementation Effort: 60-80 hours
-
-### Breaking Changes
-- Complete GameState restructuring (GameWorld wrapper)
-- All managers need StoreState parameter
-- Existing saves need migration to single-store GameWorld
-- ViewModel event routing needs store ID
-- All tests need updating
-
----
-
-## Feature #9: Franchise & Passive Income
-
-### Concept
-At endgame, sell franchise licenses. AI franchisees operate independently and pay royalties. Player becomes a passive income tycoon.
-
-### Gameplay Depth: 5/5
-- Unlock at SUPERCENTER + $2M total revenue
-- Franchise license: $500,000 per location sold
-- Royalty: 5% of franchisee daily revenue paid to player
-- AI franchisees: Simulated performance (Poor/Average/Excellent tier)
-- Failure risk: 10% annual closure rate (lose that royalty stream)
-- Brand reputation (0-100): Affects franchise sale price and franchisee performance
-- Corporate upgrades: Training ($100K → +10% franchisee revenue), National ads ($50K/day → +20% traffic all stores), Supply chain ($250K → -10% item costs)
-- Franchise control panel: View all franchisees, revoke underperformers, set mandatory policies
-
-### Systems Affected
-- **GameState**: New `CorporateState` — brand reputation, franchise list, corporate upgrades.
-- **New FranchiseSimulator**: Runs once per day, simulates each franchisee revenue and collects royalties.
-- **DayManager**: Trigger franchise simulation at midnight. Royalty collection.
-- **Money**: Royalty income stream (new revenue source unrelated to transactions).
-- **DailyMetrics**: Franchise royalties earned, franchisees opened/closed.
-- **UI**: Franchise management screen, corporate upgrade panel, brand reputation display.
-
-### Performance & Memory Impact
-
-| Metric | Current | With 20 Franchises | With 100 Franchises |
-|--------|---------|-------------------|---------------------|
-| Tick time | 0.0095ms | unchanged | unchanged |
-| Midnight calc | 0ms | +1ms | +5ms |
-| Memory | baseline | +~5 KB | +~25 KB |
-| Save file | baseline | +~3 KB | +~15 KB |
-
-**Verdict**: Trivial. Franchise simulation runs once per day. Per-tick cost is zero. Each franchise is ~250 bytes (ID, name, location, revenue, tier).
-
-### Implementation Effort: 30-40 hours
-
-### Breaking Changes
-- GameState new fields (migration: empty franchise state, disabled)
-- New revenue source in DayManager
-
----
-
-## Feature #10: Store Reputation & Customer Reviews
-
-### Concept
-Customers leave reviews based on their experience. Reputation affects traffic, pricing power, and unlocks.
-
-### Gameplay Depth: 3/5
-- Reputation score (1.0 - 5.0 stars, displayed as average)
-- Review factors per customer: wait time, OOS items in their basket, price fairness, store zoning quality
-- Review volume: ~10% of customers leave reviews
-- Reputation effects:
-  - < 2.0 stars: -30% traffic, can't expand
-  - 2.0-3.0: -10% traffic
-  - 3.0-4.0: Normal
-  - 4.0-4.5: +10% traffic, +5% pricing power
-  - 4.5-5.0: +20% traffic, +10% pricing power, premium customers
-- Recent reviews weighted more heavily (rolling 30-day average)
-- Review types visible: "Great prices!", "Always out of stock...", "Long wait times", "Clean and organized"
-- Response system: Spend $100 to "respond" to bad review (mitigates 50% of its impact)
-
-### Systems Affected
-- **TransactionEngine**: Generate review after transaction completion (probabilistic).
-- **GameState**: New `ReputationState` — score, review count, recent reviews list.
-- **TrafficManager**: Apply reputation multiplier to traffic generation.
-- **PricingManager**: Reputation affects acceptable markup ceiling.
-- **DailyMetrics**: Reviews received, score change, review breakdown.
-- **StoreController**: Expansion requires minimum reputation.
-- **UI**: Reputation display, review feed, response buttons.
-
-### Performance & Memory Impact
-
-| Metric | Current | With Feature | Notes |
-|--------|---------|--------------|-------|
-| Tick time | 0.0095ms | ~0.010ms (+5%) | One RNG roll + score lookup per transaction |
-| Memory | baseline | +~15 KB | Last 100 reviews × 150 bytes each |
-| Save file | baseline | +~4 KB | Reputation score + recent reviews |
-| Review generation | 0ms | +0.01ms | Per completed transaction, 10% chance |
-
-**Verdict**: Trivial. Review generation is a side-effect of existing transaction completion. Reputation is a cached float.
-
-### Implementation Effort: 20-25 hours
-
-### Breaking Changes
-- GameState new fields (migration: 3.0 star default, empty reviews)
-- TrafficManager gains reputation multiplier
-
----
-
-## Feature #11: Loan & Investment System
+## Feature #8: Loan & Investment System
 
 ### Concept
 Take out loans for rapid expansion or invest surplus cash for returns. Financial management adds risk/reward decisions.
@@ -525,7 +384,7 @@ Take out loans for rapid expansion or invest surplus cash for returns. Financial
 
 ---
 
-## Feature #12: Store Layout & Optimization
+## Feature #9: Store Layout & Optimization
 
 ### Concept
 Design physical store layout with placeable shelves, checkouts, and facilities. Layout quality affects customer flow, theft rate, and sales efficiency.
@@ -588,13 +447,8 @@ Design physical store layout with placeable shelves, checkouts, and facilities. 
 | 5 | Customer Loyalty | 4/5 | Trivial | +1 KB | 20-30 hrs | None |
 | 6 | Supply Chain/Vendors | 5/5 | Zero per-tick | +30 KB | 40-50 hrs | None |
 | 7 | Online Ordering | 5/5 | Low | +20 KB | 45-55 hrs | None |
-| 8 | Multi-Store Chain | 5/5 | Significant | +100-300 MB | 60-80 hrs | None (but benefits from all others) |
-| 9 | Franchise System | 5/5 | Trivial | +5-25 KB | 30-40 hrs | Multi-Store recommended |
-| 10 | Store Reputation | 3/5 | Trivial | +15 KB | 20-25 hrs | None |
-| 11 | Loan & Investment | 3/5 | Zero per-tick | +2 KB | 20-30 hrs | None |
-| 12 | Store Layout | 5/5 | Complex (mitigated) | +15-120 KB | 70-90 hrs | None |
-
-**Total (all features)**: 435-570 hours (11-14 weeks full-time)
+| 8 | Loan & Investment | 3/5 | Zero per-tick | +2 KB | 20-30 hrs | None |
+| 9 | Store Layout | 5/5 | Complex (mitigated) | +15-120 KB | 70-90 hrs | None |
 
 ---
 
@@ -606,24 +460,11 @@ Design physical store layout with placeable shelves, checkouts, and facilities. 
 | Maximum Load | 0.039ms | ~0.2ms | ~0.8ms |
 | Frame Budget Used (max) | 0.23% | 1.2% | 4.8% |
 
-**With Multi-Store (5 active):**
-| Scenario | Lazy Activation | Full Tick All |
-|----------|----------------|---------------|
-| 5 stores realistic | ~0.1ms (0.6%) | ~0.75ms (4.5%) |
-| 5 stores maximum | ~0.25ms (1.5%) | ~4ms (24%) |
-
-**Memory worst-case (all features + 5 stores):**
-- Per-store overhead: ~50-80 MB (inventory batches, staff, layout, orders)
-- Total with 5 stores: ~300-450 MB
-- Mitigation: Lazy loading, compressed inactive store state, capped histories
-- Target devices (4+ GB RAM): Safe with 512 MB heap
-
----
 
 ## Implementation Roadmap
 
 ### Phase 1: Low-Hanging Fruit (Weeks 1-4)
-Features: **Weather (#1)**, **Crime (#2)**, **Reputation (#10)**, **Loyalty (#5)**
+Features: **Weather (#1)**, **Crime (#2)**, **Loyalty (#5)**
 
 Rationale: All are independent, low-risk, add variety without major refactoring. Each is 20-45 hours. Total: ~100-135 hours.
 
@@ -637,12 +478,7 @@ Features: **Online Ordering (#7)**, **Competitor AI (#4)**
 
 Rationale: New revenue streams and external pressure. Both require moderate refactoring but create compelling gameplay. Total: ~85-105 hours.
 
-### Phase 4: Empire Mode (Weeks 19-26)
-Features: **Multi-Store (#8)**, **Franchise (#9)**
-
-Rationale: End-game expansion content. Multi-Store is the biggest single refactor. Franchise provides passive income endgame. Total: ~90-120 hours.
-
-### Phase 5: Spatial (Optional / Post-Launch)
+### Phase 4: Spatial (Optional / Post-Launch)
 Feature: **Store Layout (#12)**
 
 Rationale: Heaviest UI work. Adds a unique puzzle dimension but isn't required for tycoon loop. Best saved for a major content update. Total: ~70-90 hours.

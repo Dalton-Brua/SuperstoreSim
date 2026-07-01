@@ -6,6 +6,7 @@ import com.example.superstoresimulator.domain.Money
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.inventory.ItemBatch
 import com.example.superstoresimulator.domain.items.ItemMetadataCache
+import com.example.superstoresimulator.domain.metrics.CompletedResearchEvent
 import com.example.superstoresimulator.domain.staff.StaffManager
 import com.example.superstoresimulator.domain.store.StoreSize
 import javax.inject.Inject
@@ -113,6 +114,22 @@ class ResearchManager @Inject constructor(
             analystAssignments = updatedAssignments,
         )
         s = s.copy(researchState = researchState)
+
+        // Log completions onto the day's metrics so the end-of-day / week report can
+        // surface them. During simulation no toast fires, so this is the only signal.
+        val researchEvents = newlyCompleted.mapNotNull { id ->
+            val upgrade = ResearchUpgradeRegistry.allUpgrades[id] ?: return@mapNotNull null
+            val unlockedItemCount = itemMetadataCache.getAllItems()
+                .count { (_, item) -> item.researchGate == id }
+            CompletedResearchEvent(id, upgrade.displayName, unlockedItemCount)
+        }
+        if (researchEvents.isNotEmpty()) {
+            s = s.copy(
+                currentDayMetrics = s.currentDayMetrics.copy(
+                    completedResearch = s.currentDayMetrics.completedResearch + researchEvents,
+                )
+            )
+        }
 
         // Add newly accessible items to inventory, seeded with starter stock
         // (SEED_QTY on the shelf + SEED_QTY in the backroom) so a freshly unlocked

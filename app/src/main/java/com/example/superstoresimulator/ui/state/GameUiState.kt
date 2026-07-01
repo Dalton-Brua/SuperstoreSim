@@ -6,7 +6,6 @@ import com.example.superstoresimulator.domain.Entities.HiredEntityRegistry
 import com.example.superstoresimulator.domain.FreshAutoOrderConfig
 import com.example.superstoresimulator.domain.IncompleteOrderRequest
 import com.example.superstoresimulator.domain.NormalAutoOrderConfig
-import com.example.superstoresimulator.domain.RefundRequest
 import com.example.superstoresimulator.domain.StoreManagerConfig
 import com.example.superstoresimulator.domain.TruckConfig
 import com.example.superstoresimulator.domain.Transactions.Transaction
@@ -41,14 +40,13 @@ data class GameUiState(
     val pricing: PricingUIState = PricingUIState(),
     val vendors: VendorUIState = VendorUIState(),
     val reputation: ReputationUIState = ReputationUIState(),
+    val empire: EmpireUIState = EmpireUIState(),
 )
 
 data class AppUIState(
     val storeName: String,
     val transactionActive: Boolean = false,
-    val pendingRefunds: Int,
     val showTransactionDialog: Boolean = false,
-    val showPendingRefundsDialog: Boolean = false,
     val money: Money,
     val playerHasOpenedStore: Boolean = false,
 )
@@ -67,7 +65,6 @@ data class TransactionUIState(
     val totalCompleted: Int,
     val isActive: Boolean,
     val isDialogOpen: Boolean,
-    val pendingRefunds: List<RefundRequest>,
     val pendingCustomers: Int = 0,  // customers waiting for an open register
     val completedToday: Int = 0,    // transactions completed in the current game day
 )

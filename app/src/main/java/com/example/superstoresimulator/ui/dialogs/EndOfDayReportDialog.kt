@@ -96,13 +96,6 @@ fun EndOfDayReportDialog(
                 StatRow(Icons.Default.ShoppingCart, "Transactions",      report.transactionsCompleted.toString())
                 StatRow(Icons.AutoMirrored.Filled.TrendingUp, "Avg. Sale Value", report.averageTransactionValue.toString())
 
-                if (report.refundsProcessed > 0) {
-                    Spacer(Modifier.height(4.dp))
-                    StatRow(Icons.AutoMirrored.Filled.Undo, "Refunds Issued",
-                        "${report.refundsProcessed} (${report.refundAmount})",
-                        tint = ClosedRed)
-                }
-
                 if (report.lostRevenue.cents > 0) {
                     Spacer(Modifier.height(4.dp))
                     StatRow(
@@ -501,6 +494,22 @@ fun EndOfDayReportDialog(
                             tint = Amber)
                     }
 
+                    Spacer(Modifier.height(12.dp))
+                }
+
+                // ── Research Completed section ────────────────────────────
+                if (report.completedResearch.isNotEmpty()) {
+                    SectionHeader("🔬 Research Completed")
+                    report.completedResearch.forEach { research ->
+                        StatRow(
+                            Icons.Default.Science,
+                            research.displayName,
+                            if (research.unlockedItemCount > 0)
+                                "+${research.unlockedItemCount} item${if (research.unlockedItemCount > 1) "s" else ""}"
+                            else "Unlocked",
+                            tint = Secondary
+                        )
+                    }
                     Spacer(Modifier.height(12.dp))
                 }
 

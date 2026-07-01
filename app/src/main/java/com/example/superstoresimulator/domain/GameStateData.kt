@@ -16,6 +16,12 @@ import com.example.superstoresimulator.domain.pricing.PricingState
 import com.example.superstoresimulator.domain.store.StoreConfig
 import com.example.superstoresimulator.domain.store.StoreState
 import com.example.superstoresimulator.domain.vendor.VendorSystemState
+import com.example.superstoresimulator.domain.empire.EmpireClock
+import com.example.superstoresimulator.domain.empire.Region
+import com.example.superstoresimulator.domain.empire.RegionalManager
+import com.example.superstoresimulator.domain.empire.SecondaryStore
+import com.example.superstoresimulator.domain.persistence.TolerantListSerializer
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import java.util.Locale
 
@@ -70,6 +76,12 @@ data class StaffShift(
 
     fun isOnShift(hour: Int, dayOfWeek: Int): Boolean =
         (workDays.isEmpty() || dayOfWeek in workDays) && hour >= startHour && hour < endHour
+
+    companion object {
+        /** Drops shifts that fail to decode (e.g. a since-tightened bound) instead of
+         *  failing the whole save — see [TolerantListSerializer]. */
+        object ListSerializer : KSerializer<List<StaffShift>> by TolerantListSerializer(StaffShift.serializer())
+    }
 }
 
 // ── Truck Delivery System ─────────────────────────────────────────────────────
@@ -174,7 +186,7 @@ data class StoreManagerConfig(
     // Weekly scheduling
     val autoOptimizeWeeklySchedule: Boolean = true,
     val minDaysPerWeek: Int = 3,
-    val maxDaysPerWeek: Int = 6,
+    val maxDaysPerWeek: Int = 5,
 )
 
 @Serializable
@@ -205,14 +217,11 @@ data class IncompleteOrderRequest(
 
 @Serializable
 data class DailyStaffMetrics(
-    val peakPendingCustomers: Int = 0,
     val avgHourlyPendingCustomers: Float = 0f,
     val avgCashierUtilization: Float = 0f,
     val avgStockerUtilization: Float = 0f,
     val avgFreshUtilization: Float = 0f,
     val hasUnstaffedRegisters: Boolean = false,
-    val freshItemsOutOfStock: Int = 0,
-    val freshOrdersAttempted: Int = 0,
 )
 
 @Serializable
@@ -230,11 +239,6 @@ data class GameState(
     val salesHistory: List<Transaction> = emptyList(),
 
     val totalTaxCollected: Money = Money(0),
-
-    // Pending refunds that must be handled manually (by player or staff)
-    val pendingRefunds: List<RefundRequest> = emptyList(),
-    // Counter for assigning refund IDs
-    val nextRefundId: Int = 1,
 
     val inventory: Map<Int, InventoryState> = emptyMap(),
 
@@ -302,6 +306,7 @@ data class GameState(
     val nextTruckId: Int = 1,
 
     // Staff scheduling
+    @Serializable(with = StaffShift.Companion.ListSerializer::class)
     val staffSchedules: List<StaffShift> = emptyList(),
 
     // ── Register System ───────────────────────────────────────────────────────
@@ -328,6 +333,20 @@ data class GameState(
 
     // Simulation accumulators — fractional progress, traffic, day tracking
     val simAccumulators: SimAccumulators = SimAccumulators(),
+
+    // ── Empire mode (loop 2) — additive, all defaulted; off until the player goes corporate ──
+    /** One-way flag: once true, the home store is an abstract directed store and loop 1 is retired. */
+    val empireModeActive: Boolean = false,
+    /** Unlocked/known markets (seeded from RegionRegistry on entering empire mode). */
+    val regions: List<Region> = emptyList(),
+    val secondaryStores: List<SecondaryStore> = emptyList(),
+    val nextSecondaryStoreId: Int = 1,
+    val regionalManager: RegionalManager? = null,
+    val empireClock: EmpireClock = EmpireClock(),
+    /** When non-null, the player is hands-on operating this store; loop-1 fields hold its state. */
+    val operatingStoreId: Int? = null,
+    /** Day index the current operate session began, for full-day-gated performance scoring. */
+    val operateSessionStartDay: Int? = null,
 ) {
     val ownedRegisterCount: Int get() = registers.size
 
@@ -359,11 +378,17 @@ value class Money(val cents: Long) {
     operator fun minus(other: Money) = Money(cents - other.cents)
     operator fun compareTo(other: Money) = cents.compareTo(other.cents)
     operator fun times(multiplier: Int) = Money(cents * multiplier)
-    operator fun times(multiplier: Double) = Money(cents/100 * (multiplier*100).toLong())
+    operator fun times(multiplier: Double) = Money((cents * multiplier).toLong())
     operator fun times(multiplier: Long) = Money(cents * multiplier)
     operator fun unaryMinus() = Money(-cents)
     fun toDouble() = cents / 100.0
-    override fun toString(): String = String.format(Locale.US, "$%.2f", cents / 100.0)
+    // Full dollars under $1M; scientific (e.g. $5.00E6) above so the number stays short.
+    override fun toString(): String {
+        val dollars = cents / 100.0
+        if (kotlin.math.abs(dollars) < 1_000_000.0) return String.format(Locale.US, "$%.2f", dollars)
+        // "5.00E+06" -> "5.00E6"
+        return "$" + String.format(Locale.US, "%.2E", dollars).replace("E+0", "E").replace("E+", "E")
+    }
     companion object {
         val ZERO = Money(0)
         fun fromCents(c: Long) = Money(c)

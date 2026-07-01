@@ -44,7 +44,6 @@ import com.example.superstoresimulator.domain.Entities.Tier
 import com.example.superstoresimulator.domain.persistence.GameStateRepository
 import com.example.superstoresimulator.domain.inventory.InventoryState
 import com.example.superstoresimulator.domain.Entities.EntityDef
-import com.example.superstoresimulator.domain.Transactions.Transaction
 import com.example.superstoresimulator.domain.offline.OfflineCatchUpRunner
 import com.example.superstoresimulator.domain.offline.OfflineProgress
 import com.example.superstoresimulator.domain.offline.OfflineState
@@ -145,11 +144,6 @@ class GameViewModel @Inject constructor(
         return gameEngine.currentState().inventory[itemId]
     }
     
-    private fun currentState(): GameState {
-        if (!gameEngineInitialized) return GameState()
-        return gameEngine.currentState()
-    }
-
     fun onEvent(event: GameEvent) {
         if (!gameEngineInitialized) return
         if (_offlineState.value !is OfflineState.Idle) return
@@ -164,10 +158,6 @@ class GameViewModel @Inject constructor(
             is GameEvent.PromoteStaff -> gameEngine.promoteEntity(event.entityId)
             is GameEvent.FireStaff -> gameEngine.fireEntity(event.entityId)
             is GameEvent.ChangeStoreName -> gameEngine.updateStoreName(event.name)
-            is GameEvent.ProcessRefund -> gameEngine.processRefund(event.refundId)
-            is GameEvent.ProcessRefundLine -> {
-                gameEngine.processRefundLine(event.refundId, event.itemId, event.quantity)
-            }
             is GameEvent.SetGameSpeed -> {
                 gameEngine.setGameSpeed(event.multiplier)
                 return  // Don't update full UI state, just speed changed
@@ -337,9 +327,11 @@ class GameViewModel @Inject constructor(
             }
 
             is GameEvent.UpdateShift -> {
-                val duration = event.newDuration.coerceIn(2, 8)
+                val duration = event.newDuration.coerceIn(4, 8)
                 val clampedHour = event.newStartHour.coerceIn(6, 21 - duration)
-                gameEngine.updateShift(event.entityId, clampedHour, duration, event.workDays)
+                // Cap scheduled days at 5 (empty = legacy "every day", left untouched).
+                val days = if (event.workDays.size > 5) event.workDays.take(5).toSet() else event.workDays
+                gameEngine.updateShift(event.entityId, clampedHour, duration, days)
             }
 
             // Register System (Phase 3)
@@ -392,7 +384,15 @@ class GameViewModel @Inject constructor(
             }
 
             GameEvent.Tick -> {
-                if (!gameEngine.isSimulating) gameEngine.tick(tickDelta)
+                if (gameEngine.isSimulating) return
+                val s = gameEngine.currentState()
+                // Empire mode suspends the minute tick — unless the player is hands-on
+                // operating a store, in which case loop 1 runs for that one store.
+                if (s.empireModeActive && s.operatingStoreId == null) {
+                    gameEngine.empireTick(tickDelta)
+                } else {
+                    gameEngine.tick(tickDelta)
+                }
             }
 
             is GameEvent.LoadArchivedDayDetail -> {
@@ -406,6 +406,22 @@ class GameViewModel @Inject constructor(
             GameEvent.ClearLoadedArchivedDay -> {
                 loadedArchivedDay = null
             }
+
+            // ── Empire mode (loop 2) ──────────────────────────────────────────
+            GameEvent.EnterEmpireMode -> gameEngine.enterEmpireMode()
+            is GameEvent.UnlockRegion -> gameEngine.unlockRegion(event.regionId)
+            is GameEvent.OpenLocation -> gameEngine.openLocation(event.regionId)
+            is GameEvent.CloseStore -> gameEngine.closeStore(event.storeId)
+            is GameEvent.SetRegionInvesting -> gameEngine.setRegionInvesting(event.regionId, event.investing)
+            is GameEvent.SetStoreDirection -> gameEngine.setStoreDirection(event.storeId, event.direction)
+            is GameEvent.BuyStoreUpgrade -> gameEngine.buyStoreUpgrade(event.storeId, event.upgrade)
+            is GameEvent.ExpandStoreSize -> gameEngine.expandStoreSize(event.storeId)
+            is GameEvent.HireRegionalManager -> gameEngine.hireRegionalManager(event.personality)
+            GameEvent.FireRegionalManager -> gameEngine.fireRegionalManager()
+            is GameEvent.SetEmpireSpeed -> gameEngine.setEmpireSpeed(event.speed)
+            GameEvent.AdvanceToNextDecision -> gameEngine.advanceToNextDecision()
+            is GameEvent.DropIntoStore -> gameEngine.dropIntoStore(event.storeId)
+            GameEvent.ExitOperatedStore -> gameEngine.exitOperatedStore()
         }
 
         refreshUiState()
@@ -423,9 +439,10 @@ class GameViewModel @Inject constructor(
                 lastUiState = ui
                 lastDomainState = ds
             }
+            return
         }
         val newDomainState = gameEngine.currentState()
-        if (!shouldRebuildUiState(newDomainState)) return
+        if (newDomainState == lastDomainState) return
         val newUiState = toUiState(newDomainState, _uiState.value)
         _uiState.value = newUiState
         lastUiState = newUiState
@@ -452,11 +469,11 @@ class GameViewModel @Inject constructor(
     }
     private fun toUiState(domain: GameState, oldUi: GameUiState?): GameUiState {
         val scheduleEntries = buildStaffScheduleEntries(domain)
+        val managers = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER)
         return GameUiState(
             app = AppUIState(
                 storeName = domain.storeName,
-                pendingRefunds = domain.pendingRefunds.size,
-                transactionActive = domain.registers.firstOrNull()?.transactionActive ?: false,
+                transactionActive = domain.transactionActive,
                 money = domain.money,
             ),
             dashboard = DashboardUIState(
@@ -466,11 +483,10 @@ class GameViewModel @Inject constructor(
                 avgZoneScore = domain.avgZoneScore,
             ),
             transactions = TransactionUIState(
-                current = domain.registers.firstOrNull()?.currentTransaction ?: Transaction(),
+                current = domain.currentTransaction,
                 totalCompleted = domain.totalTransactionsCompleted,
-                isActive = domain.registers.firstOrNull()?.transactionActive ?: false,
+                isActive = domain.transactionActive,
                 isDialogOpen = oldUi?.transactions?.isDialogOpen ?: false,
-                pendingRefunds = domain.pendingRefunds,
                 pendingCustomers = domain.pendingCustomers,
                 completedToday = domain.currentDayMetrics.transactionsCompleted,
             ),
@@ -485,7 +501,7 @@ class GameViewModel @Inject constructor(
                 selectedCategory = oldUi?.inventory?.selectedCategory,
                 focusedItemId = oldUi?.inventory?.focusedItemId,
             ).withDomainInventoryFields(domain),
-            staff = (oldUi?.staff?.copy(
+            staff = (oldUi?.staff ?: StaffUIState(registry = domain.hiredEntityRegistry)).copy(
                 registry = domain.hiredEntityRegistry,
                 scheduleEntries = scheduleEntries,
                 currentHour = domain.currentTime.hour,
@@ -494,23 +510,9 @@ class GameViewModel @Inject constructor(
                 cashierUtilization = gameEngine.cashierUtilization(),
                 stockerUtilization = gameEngine.stockerUtilization(),
                 freshUtilization = gameEngine.freshUtilization(),
-                hasManagerOnStaff = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).isNotEmpty(),
-                hasSeniorManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.tier != Tier.BASE },
-                hasStoreManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.isStoreManager },
-                autoHireBudget = domain.autoHireBudget,
-                storeManagerConfig = domain.storeManagerConfig,
-            )) ?: StaffUIState(
-                registry = domain.hiredEntityRegistry,
-                scheduleEntries = scheduleEntries,
-                currentHour = domain.currentTime.hour,
-                currentDayOfWeek = domain.currentTime.dayOfWeek,
-                employeeActivities = gameEngine.employeeActivities(),
-                cashierUtilization = gameEngine.cashierUtilization(),
-                stockerUtilization = gameEngine.stockerUtilization(),
-                freshUtilization = gameEngine.freshUtilization(),
-                hasManagerOnStaff = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).isNotEmpty(),
-                hasSeniorManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.tier != Tier.BASE },
-                hasStoreManager = domain.hiredEntityRegistry.getByDef(EntityDef.MANAGER).any { it.isStoreManager },
+                hasManagerOnStaff = managers.isNotEmpty(),
+                hasSeniorManager = managers.any { it.tier != Tier.BASE },
+                hasStoreManager = managers.any { it.isStoreManager },
                 autoHireBudget = domain.autoHireBudget,
                 storeManagerConfig = domain.storeManagerConfig,
             ),
@@ -527,6 +529,7 @@ class GameViewModel @Inject constructor(
             pricing = buildPricingUiState(domain),
             vendors = buildVendorUiState(domain, itemMetadataCache),
             reputation = buildReputationUiState(domain),
+            empire = com.example.superstoresimulator.ui.state.mappers.buildEmpireUiState(domain),
         )
     }
 
@@ -557,10 +560,6 @@ class GameViewModel @Inject constructor(
                 ?: com.example.superstoresimulator.domain.Money.ZERO)
         },
     )
-
-    private fun shouldRebuildUiState(newDomainState: GameState): Boolean {
-        return newDomainState != lastDomainState
-    }
 
     private fun buildTimeUiState(domain: GameState) = TimeUIState(
         currentTime = domain.currentTime,

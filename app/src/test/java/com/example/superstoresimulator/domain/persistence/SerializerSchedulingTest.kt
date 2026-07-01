@@ -161,7 +161,7 @@ class SerializerSchedulingTest {
     fun `nextEntityId is preserved across round-trip`() {
         val entity = HiredEntity(
             id = 5, name = "Five", entityDefinition = EntityDef.STOCKER,
-            trait = EntityTrait.FRIENDLY,
+            trait = EntityTrait.HARDWORKER,
         )
         val registry = HiredEntityRegistry(entities = listOf(entity), nextEntityId = 10)
         val state = GameState(hiredEntityRegistry = registry)
@@ -295,7 +295,6 @@ class SerializerSchedulingTest {
         json.put("transactionActive", false)
         json.put("totalTransactionsCompleted", 0)
         json.put("totalTaxCollected", 0L)
-        json.put("nextRefundId", 1)
         json.put("playerPausedTime", false)
         json.put("totalRevenue", 0L)
         json.put("currentTier", "TIER_1")
@@ -319,7 +318,6 @@ class SerializerSchedulingTest {
         })
         json.put("currentTransaction", org.json.JSONObject())
         json.put("salesHistory", org.json.JSONArray())
-        json.put("pendingRefunds", org.json.JSONArray())
         json.put("inventory", org.json.JSONObject())
         json.put("hiredEntityRegistry", org.json.JSONObject().apply {
             put("entities", org.json.JSONArray())
@@ -333,8 +331,6 @@ class SerializerSchedulingTest {
             put("transactionsCompleted", 0)
             put("rentPaid", 0L)
             put("wagesPaid", 0L)
-            put("refundsProcessed", 0)
-            put("refundAmount", 0L)
             put("customersServed", 0)
             put("itemsSold", 0)
             put("itemsStocked", 0)

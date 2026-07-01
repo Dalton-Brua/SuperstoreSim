@@ -21,7 +21,6 @@ class SerializerMigrationTest {
         json.put("transactionActive", false)
         json.put("totalTransactionsCompleted", 0)
         json.put("totalTaxCollected", 0L)
-        json.put("nextRefundId", 1)
         json.put("playerPausedTime", false)
         json.put("totalRevenue", 0L)
         json.put("currentTier", "TIER_1")
@@ -45,7 +44,6 @@ class SerializerMigrationTest {
         })
         json.put("currentTransaction", JSONObject())
         json.put("salesHistory", org.json.JSONArray())
-        json.put("pendingRefunds", org.json.JSONArray())
         json.put("inventory", JSONObject())
         json.put("hiredEntityRegistry", JSONObject().apply {
             put("entities", org.json.JSONArray())

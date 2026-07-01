@@ -18,9 +18,6 @@ interface ArchivedDailyMetricsDao {
     @Query("SELECT * FROM archived_daily_metrics ORDER BY dayNumber DESC")
     suspend fun getAllSummaries(): List<ArchivedDailyMetricsEntity>
 
-    @Query("SELECT COUNT(*) FROM archived_daily_metrics")
-    suspend fun count(): Int
-
     @Query("DELETE FROM archived_daily_metrics")
     suspend fun deleteAll()
 }

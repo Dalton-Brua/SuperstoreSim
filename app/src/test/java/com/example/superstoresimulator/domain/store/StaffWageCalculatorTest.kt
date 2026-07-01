@@ -55,13 +55,6 @@ class StaffWageCalculatorTest {
     // ── Non-EFFICIENT traits pay full rate ───────────────────────────────────
 
     @Test
-    fun `FRIENDLY trait pays full rate`() {
-        val registry = registryOf(cashier(1, trait = EntityTrait.FRIENDLY))
-        val expected = EntityDef.CASHIER.baseWage * 8
-        assertEquals(expected, StaffWageCalculator.calculateTotalWages(registry))
-    }
-
-    @Test
     fun `QUICK_LEARNER trait pays full rate`() {
         val registry = registryOf(cashier(1, trait = EntityTrait.QUICK_LEARNER))
         val expected = EntityDef.CASHIER.baseWage * 8

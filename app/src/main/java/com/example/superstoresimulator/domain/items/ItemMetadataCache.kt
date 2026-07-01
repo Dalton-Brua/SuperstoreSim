@@ -11,8 +11,6 @@ class ItemMetadataCache @Inject constructor(private val itemDao: ItemDao) {
     private var metadataCache: Map<Int, ItemMetadata> = emptyMap()
     private var itemsCache: Map<Int, Item> = emptyMap()
     private var itemNamesCache: Map<Int, String> = emptyMap()
-    private var affinityIndex: Map<String, Set<Int>> = emptyMap()
-    private var substitutionIndex: Map<String, Set<Int>> = emptyMap()
     private var initialized = false
 
     suspend fun initialize() = withContext(Dispatchers.IO) {
@@ -23,8 +21,6 @@ class ItemMetadataCache @Inject constructor(private val itemDao: ItemDao) {
         val metadata = mutableMapOf<Int, ItemMetadata>()
         val fullItems = mutableMapOf<Int, Item>()
         val names = mutableMapOf<Int, String>()
-        val affinity = mutableMapOf<String, MutableSet<Int>>()
-        val substitution = mutableMapOf<String, MutableSet<Int>>()
 
         items.forEach { item ->
             val itemId = item.id.removePrefix("item_").toIntOrNull() ?: 0
@@ -53,20 +49,11 @@ class ItemMetadataCache @Inject constructor(private val itemDao: ItemDao) {
             )
             fullItems[itemId] = item
             names[itemId] = item.name
-
-            for (group in groups) {
-                affinity.getOrPut(group) { mutableSetOf() }.add(itemId)
-            }
-            item.substitutionGroup?.let { sg ->
-                substitution.getOrPut(sg) { mutableSetOf() }.add(itemId)
-            }
         }
 
         metadataCache = metadata
         itemsCache = fullItems
         itemNamesCache = names
-        affinityIndex = affinity
-        substitutionIndex = substitution
         initialized = true
     }
 
@@ -82,9 +69,6 @@ class ItemMetadataCache @Inject constructor(private val itemDao: ItemDao) {
         val meta = get(itemId) ?: return false
         return meta.researchGate == null || meta.researchGate in researchedUpgrades
     }
-
-    fun getAccessibleItemIds(researchedUpgrades: Set<String>): Set<Int> =
-        metadataCache.keys.filter { isItemAccessible(it, researchedUpgrades) }.toSet()
 
     fun sharesAffinityGroup(id1: Int, id2: Int): Boolean {
         val g1 = get(id1)?.affinityGroups ?: return false

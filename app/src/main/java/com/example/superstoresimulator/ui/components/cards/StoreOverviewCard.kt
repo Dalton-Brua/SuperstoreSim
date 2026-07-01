@@ -71,7 +71,7 @@ private fun CashMetric(cash: Money) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Cash", color = TextSecondary, fontSize = 14.sp)
         Text(
-            "$${String.format(java.util.Locale.US, "%.2f", cash.toDouble())}",
+            cash.toString(),
             fontSize = 28.sp,
             fontWeight = FontWeight.ExtraBold,
             color = Primary

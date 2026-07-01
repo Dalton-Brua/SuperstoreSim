@@ -13,9 +13,9 @@ class UtilizationTracker @Inject constructor(
     private val inventoryManager: InventoryManager,
     private val itemMetadataCache: ItemMetadataCache,
 ) {
-    fun sample(state: GameState, currentHour: Int) {
+    fun sample(state: GameState, currentHour: Int, providedScan: InventoryScanResult? = null) {
         if (state.hiredEntityRegistry.hiredEntities.isEmpty()) return
-        val scan = scanInventory(state.inventory, itemMetadataCache)
+        val scan = providedScan ?: scanInventory(state.inventory, itemMetadataCache)
         val hasFreshWork = scan.hasFreshBackroomStock ||
             (state.freshAutoOrderConfig.enabled && state.inventory.any { (itemId, _) ->
                 inventoryManager.shouldAutoOrderFreshItem(state, itemId, state.freshAutoOrderConfig)
